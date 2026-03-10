@@ -535,7 +535,7 @@ for (let i = 1; i <= 20; i++) {
   const images: string[] = [];
   const numImages = 4;
   for (let j = 0; j < numImages; j++) {
-    const imgId = carImageIds[(i + j * 7) % carImageIds.length];
+    const imgId = carImageIds[(i + j) % carImageIds.length];
     images.push(`https://images.unsplash.com/photo-${imgId}?auto=format&fit=crop&q=80&w=800`);
   }
 
@@ -2886,10 +2886,12 @@ firstName = ?, lastName = ?, email = ?, phone = ?,
     } catch (ve) {
       console.error("❌ Vite Initialization Failed:", ve);
     }
-  } else {
+  } else if (process.env.NODE_ENV === "production" || process.env.RENDER) {
     app.use(express.static(path.join(__dirname, "dist")));
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(__dirname, "dist", "index.html"));
+
+    // Catch-all route to serve React app for client-side routing
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(__dirname, 'dist', 'index.html'));
     });
   }
 
