@@ -1,0 +1,91 @@
+# AutoPro Platform - Core Source Bundle (2026-03-07)
+
+This file contains the primary source code files (Backend & Core State) for Google AI Studio to understand the system's logic deeply.
+
+---
+
+## [1/3] File: server.ts (Central Engine)
+Description: DB initialization, API routes, Socket.io auction engine (~2100 lines).
+
+```typescript
+// Core database setup:
+const db = new Database("auction.db");
+// Tables: users, cars, bids, transactions, messages, shipments, invoices, notifications, branch_configs, offices.
+
+// Key Feature: Triple Invoice Creation on Win
+const createWinInvoices = (userId: string, carId: string, amount: number) => {
+  const now = new Date().toISOString();
+  const dueDate7 = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+  const commission = amount * 0.07; // 7% platform commission
+  const transportFee = 450; // Fixed internal transport fee
+  const shippingFee = 1200; // Estimated international shipping
+  
+  // Invoice 1: Purchase (active immediately)
+  db.prepare(`INSERT INTO invoices(id, userId, carId, amount, status, type, timestamp, dueDate) VALUES(?, ?, ?, ?, 'unpaid', 'purchase', ?, ?)`)
+    .run(`inv-pur-${Date.now()}`, userId, carId, amount + commission, now, dueDate7);
+  // Invoice 2: Transport (pending)
+  db.prepare(`INSERT INTO invoices(id, userId, carId, amount, status, type, timestamp, dueDate) VALUES(?, ?, ?, ?, 'pending', 'transport', ?, ?)`)
+    .run(`inv-trn-${Date.now()}`, userId, carId, transportFee, now, dueDate7);
+  // Invoice 3: Shipping (pending)
+  db.prepare(`INSERT INTO invoices(id, userId, carId, amount, status, type, timestamp, dueDate) VALUES(?, ?, ?, ?, 'pending', 'shipping', ?, ?)`)
+    .run(`inv-shp-${Date.now()}`, userId, carId, shippingFee, now, dueDate7);
+  // ... and create shipment record.
+}
+
+// Logic: Moving to Offer Market if reserve price not met.
+// Logic: Simulation Seeding for testing.
+```
+
+---
+
+## [2/3] File: src/context/StoreContext.tsx (Global State)
+Description: React Context for managing cars, users, biddings, notifications, messages, and socket updates.
+
+```typescript
+export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  // States: cars, currentUser, socket, users, notifications, messages, unreadCounts.
+
+  // Real-time updates:
+  useEffect(() => {
+    const newSocket = io(window.location.origin);
+    newSocket.on('global_bid_update', ({ carId, currentBid }) => { ... });
+    newSocket.on('auction_started', ({ carId }) => { ... });
+    newSocket.on('auction_closed', ({ carId, winnerId }) => { ... });
+    // ... handles messages and notifications as well.
+  }, []);
+
+  // Shared Logic: placeBid checks for active status and buyingPower.
+  const placeBid = (carId: string, amount: number, userId: string) => {
+    if (!currentUser || amount > currentUser.buyingPower || currentUser.status !== 'active') {
+      showAlert("Permission Denied: Either inactive account or insufficient buying power.");
+      return;
+    }
+    socket.emit('place_bid', { carId, userId, amount });
+  }
+}
+```
+
+---
+
+## [3/3] File: src/types.ts (Data Structures)
+Description: Data interfaces for User, Car, Invoice, Transaction, Message, etc.
+
+```typescript
+export interface User {
+  id: string; firstName: string; lastName: string; email: string; phone: string;
+  role: 'admin' | 'buyer' | 'seller';
+  status: 'active' | 'pending_approval' | 'rejected' | 'inactive';
+  kycStatus: string; deposit: number; buyingPower: number; 
+  // etc.
+}
+
+export interface Car {
+  id: string; lotNumber: string; vin: string; make: string; model: string; year: number;
+  status: 'upcoming' | 'live' | 'closed' | 'offer_market';
+  reservePrice: number; currentBid: number; 
+  // etc.
+}
+```
+
+---
+Prepared by Antigravity on 2026-03-07.

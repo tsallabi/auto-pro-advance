@@ -1,0 +1,256 @@
+import React, { useState, useEffect } from 'react';
+import { Bell, Mail, Menu, X, LogOut, ChevronDown, Car, Calculator, Gavel, Search, LayoutDashboard, ShieldCheck, Wallet } from 'lucide-react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { useStore } from '../context/StoreContext';
+import { AuthModal } from './AuthModal';
+import { NotificationDropdown } from './NotificationDropdown';
+import { MessageDropdown } from './MessageDropdown';
+import { BranchSelector } from './BranchSelector';
+
+const NAV_LINKS = [
+  { label: 'المزادات المباشرة', href: '/marketplace?tab=live' },
+  { label: 'البحث عن سيارة', href: '/marketplace' },
+  { label: 'حاسبة التكلفة', href: '/calculator' },
+  { label: 'خدمات الشحن', href: '/shipping' },
+];
+
+
+export const Navbar = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { currentUser, setCurrentUser, branchConfig, unreadCounts } = useStore();
+
+  const [scrolled, setScrolled] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [showMessages, setShowMessages] = useState(false);
+  const [isAuthOpen, setIsAuthOpen] = useState(false);
+
+  /* ── scroll effect ── */
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 50);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll(); // run once on mount
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  /* ── close mobile on route change ── */
+  useEffect(() => { setMobileOpen(false); setShowDropdown(false); }, [location.pathname]);
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+    localStorage.removeItem('currentUser');
+    localStorage.removeItem('token');
+    setShowDropdown(false);
+    navigate('/');
+  };
+
+  const dashboardPath =
+    currentUser?.role === 'admin' ? '/dashboard/admin' :
+      currentUser?.role === 'seller' ? '/dashboard/seller' :
+        '/dashboard/user';
+
+  const isOnLanding = location.pathname === '/';
+
+  /* ── glass class helper ── */
+  const navClass = isOnLanding
+    ? scrolled
+      ? 'bg-slate-900/95 backdrop-blur-xl shadow-2xl shadow-black/30 border-b border-white/10'
+      : 'bg-transparent backdrop-blur-0'
+    : 'bg-slate-900 shadow-lg border-b border-slate-800';
+
+  return (
+    <>
+      <nav
+        dir="rtl"
+        className="sticky top-0 z-[200] bg-slate-900 shadow-lg border-b border-slate-800 font-cairo"
+      >
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-20 flex items-center justify-between">
+
+          {/* ── Logo ── */}
+          <Link to="/" className="flex items-center gap-3 group shrink-0">
+            <div className="w-10 h-10 bg-orange-500 rounded-xl flex items-center justify-center shadow-lg shadow-orange-500/30 group-hover:scale-110 transition-transform">
+              <Car className="w-6 h-6 text-white" />
+            </div>
+            {branchConfig ? (
+              <span className="font-black text-xl tracking-tight leading-tight text-white">
+                {branchConfig.logoText.split(' ')[0]}
+                <br />
+                <span className="text-orange-500 text-sm font-bold">
+                  {branchConfig.logoText.split(' ').slice(1).join(' ')}
+                </span>
+              </span>
+            ) : (
+              <span className="font-black text-xl tracking-tight leading-tight text-white">
+                ليبيا<br /><span className="text-orange-500 text-sm font-bold">أوتو برو</span>
+              </span>
+            )}
+          </Link>
+
+          {/* ── Desktop Nav ── */}
+          <div className="hidden md:flex items-center gap-1">
+            {NAV_LINKS.map(link => (
+              <Link
+                key={link.href}
+                to={link.href}
+                className="px-3 py-2 rounded-xl text-sm font-bold text-slate-300 hover:text-white hover:bg-white/10 transition-all whitespace-nowrap"
+              >
+                {link.label}
+              </Link>
+            ))}
+          </div>
+
+          {/* ── Desktop Actions ── */}
+          <div className="hidden md:flex items-center gap-2">
+            <BranchSelector />
+
+            {/* Messages */}
+            <div className="relative">
+              <button
+                onClick={() => { setShowMessages(!showMessages); setShowNotifications(false); }}
+                className={`p-2.5 rounded-xl transition-all relative ${showMessages ? 'bg-white/10 text-orange-400' : 'text-slate-300 hover:text-white hover:bg-white/10'}`}
+              >
+                <Mail className="w-5 h-5" />
+                {unreadCounts.messages > 0 && (
+                  <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-blue-500 rounded-full border border-slate-900" />
+                )}
+              </button>
+              {showMessages && <MessageDropdown onClose={() => setShowMessages(false)} />}
+            </div>
+
+            {/* Notifications */}
+            <div className="relative">
+              <button
+                onClick={() => { setShowNotifications(!showNotifications); setShowMessages(false); }}
+                className={`p-2.5 rounded-xl transition-all relative ${showNotifications ? 'bg-white/10 text-orange-400' : 'text-slate-300 hover:text-white hover:bg-white/10'}`}
+              >
+                <Bell className="w-5 h-5" />
+                {unreadCounts.notifications > 0 && (
+                  <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full animate-pulse border border-slate-900" />
+                )}
+              </button>
+              {showNotifications && <NotificationDropdown onClose={() => setShowNotifications(false)} />}
+            </div>
+
+            <div className="h-6 w-px bg-slate-700 mx-1" />
+
+            {/* User / Login */}
+            {currentUser ? (
+              <div className="relative flex items-center gap-2">
+                {/* Dashboard quick link */}
+                <button
+                  onClick={() => navigate(dashboardPath)}
+                  className="flex items-center gap-1.5 bg-orange-500/20 text-orange-400 border border-orange-500/30 text-xs font-black px-3 py-2 rounded-xl hover:bg-orange-500 hover:text-white transition-all"
+                >
+                  <LayoutDashboard className="w-3.5 h-3.5" />
+                  لوحة التحكم
+                </button>
+
+                {/* Avatar dropdown */}
+                <button
+                  onClick={() => setShowDropdown(!showDropdown)}
+                  className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 px-3 py-2 rounded-xl transition-colors"
+                >
+                  <div className="w-6 h-6 bg-orange-500 rounded-lg flex items-center justify-center text-[10px] font-black text-white">
+                    {currentUser.firstName[0]}{currentUser.lastName?.[0] ?? ''}
+                  </div>
+                  <span className="text-sm font-bold text-white">{currentUser.firstName}</span>
+                  <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${showDropdown ? 'rotate-180' : ''}`} />
+                </button>
+
+                {showDropdown && (
+                  <div className="absolute top-full mt-2 left-0 w-60 bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden text-slate-800 z-50">
+                    <div className="px-4 py-3 bg-gradient-to-r from-slate-50 to-orange-50 border-b border-slate-100">
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">نوع الحساب</p>
+                      <p className="font-black text-slate-800 flex items-center gap-2">
+                        {currentUser.role === 'admin' && <><ShieldCheck className="w-4 h-4 text-orange-500" /> مدير النظام</>}
+                        {currentUser.role === 'seller' && <><Car className="w-4 h-4 text-blue-500" /> بائع / معرض</>}
+                        {currentUser.role === 'buyer' && <><LayoutDashboard className="w-4 h-4 text-green-500" /> مشتري</>}
+                      </p>
+                    </div>
+                    <Link to={dashboardPath} onClick={() => setShowDropdown(false)}
+                      className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 border-b border-slate-100 font-bold text-sm transition-colors">
+                      <LayoutDashboard className="w-4 h-4 text-orange-500" />
+                      لوحة التحكم
+                    </Link>
+                    {currentUser?.role !== 'admin' && (
+                      <Link to="/wallet" onClick={() => setShowDropdown(false)}
+                        className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 border-b border-slate-100 font-bold text-sm transition-colors">
+                        <Wallet className="w-4 h-4 text-green-500" />
+                        محفظتي 💰
+                      </Link>
+                    )}
+                    <button onClick={handleLogout}
+                      className="w-full flex items-center justify-between px-4 py-3 hover:bg-red-50 text-red-600 font-bold text-sm transition-colors">
+                      تسجيل الخروج
+                      <LogOut className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <button
+                onClick={() => setIsAuthOpen(true)}
+                className="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2.5 rounded-xl font-black text-sm transition-all shadow-lg shadow-orange-500/20 hover:scale-105 active:scale-95"
+              >
+                سجّل الآن
+              </button>
+            )}
+          </div>
+
+          {/* ── Mobile Hamburger ── */}
+          <button
+            className="md:hidden text-slate-300 hover:text-white p-2 transition-colors"
+            onClick={() => setMobileOpen(!mobileOpen)}
+          >
+            {mobileOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+          </button>
+        </div>
+
+        {/* ── Mobile Menu ── */}
+        {mobileOpen && (
+          <div className="md:hidden bg-slate-900/98 backdrop-blur-xl border-t border-white/10">
+            <div className="px-4 pt-3 pb-5 space-y-1">
+              {NAV_LINKS.map(link => (
+                <Link key={link.href} to={link.href} onClick={() => setMobileOpen(false)}
+                  className="block px-4 py-3 rounded-xl text-base font-bold text-slate-300 hover:text-white hover:bg-white/10 transition-colors">
+                  {link.label}
+                </Link>
+              ))}
+
+              <div className="border-t border-slate-700/50 pt-3 mt-3 space-y-1">
+                {currentUser ? (
+                  <>
+                    <div className="px-4 py-2 text-xs font-black text-slate-500 uppercase tracking-widest">
+                      مرحباً، {currentUser.firstName}
+                    </div>
+                    <Link to={dashboardPath} onClick={() => setMobileOpen(false)}
+                      className="flex items-center gap-3 px-4 py-3 rounded-xl text-base font-bold text-orange-400 hover:bg-orange-500/10 transition-colors">
+                      <LayoutDashboard className="w-5 h-5" />
+                      لوحة التحكم
+                    </Link>
+                    <button onClick={handleLogout}
+                      className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-base font-bold text-red-400 hover:bg-red-500/10 transition-colors">
+                      <LogOut className="w-5 h-5" />
+                      تسجيل الخروج
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={() => { setIsAuthOpen(true); setMobileOpen(false); }}
+                    className="w-full bg-orange-500 text-white py-3 rounded-xl font-black text-base hover:bg-orange-600 transition-colors"
+                  >
+                    سجّل دخول / إنشاء حساب
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </nav>
+
+      <AuthModal isOpen={isAuthOpen} onClose={() => setIsAuthOpen(false)} />
+    </>
+  );
+};

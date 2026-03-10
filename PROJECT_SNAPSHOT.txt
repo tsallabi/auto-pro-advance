@@ -1,0 +1,73 @@
+# AutoPro Platform - Project Snapshot (2026-03-07)
+
+This is a comprehensive summary of where we are with the AutoPro project, prepared specifically for Google AI Studio.
+
+---
+
+## Overview
+AutoPro is an imported car auction platform (Copart/IAAI style) serving the Libyan and Arab markets.
+
+### Technology Stack:
+- Frontend: React + TypeScript + Vite + TailwindCSS
+- Backend: Express.js + Socket.IO + better-sqlite3
+- Database: SQLite (auction.db)
+- Path: C:\Users\Pawel\.gemini\antigravity\scratch\autopro\
+
+---
+
+## Latest Achievements
+
+1. Image Seeding Fix:
+- Updated image IDs in `server.ts` to use real, high-quality car photos from Unsplash.
+- Implemented a "per-car" image rotation system for variety.
+
+2. Full Simulation Suite:
+- Created `/api/debug/seed-simulation` endpoint.
+- Populates the DB with:
+    - 5 Buyers with varied balances.
+    - 20 Cars (Live, Upcoming, and Offer Market statuses).
+    - Past wins, invoices, internal messages, and notifications.
+
+3. "Offer Market" Logic:
+- Automatic transition of cars to Offer Market if reserve price isn't met.
+- Admin review system for offers.
+
+4. Triple Invoice System on Win:
+- Automatically generates:
+    1. Purchase Invoice (Car + Commission) - Active immediately.
+    2. Internal Transport Invoice - Pending until purchase paid.
+    3. International Shipping - Pending until warehouse arrival.
+
+5. Dashboard Synchronisation:
+- Messages and Notifications synced across Admin and User dashboards.
+- Refined Header and Sidebar UI.
+
+---
+
+## Database Tables
+- users: KYC data, balance, Buying Power (Deposit x 10).
+- cars: Specs, damage info, live/upcoming/closed/offer_market statuses.
+- bids: History of manual and auto-bids.
+- transactions: Deposits, purchases, commissions.
+- invoices: Multi-stage payments.
+- notifications & messages: Internal communication system.
+- shipments: Vertical timeline tracking for won vehicles.
+- branch_configs: Multi-country settings (colors, currencies).
+
+---
+
+## Key Files
+- server.ts: Central logic and DB initialization (~2.1k lines).
+- src/pages/AdminDashboard.tsx: Command center (~3k lines).
+- src/pages/UserDashboard.tsx: Buyer's wallet and activities (~1k lines).
+- src/context/StoreContext.tsx: Global state and API/Socket coordination.
+
+---
+
+## How to Run
+1. Run `npm install`
+2. Run `npm run dev`
+3. Visit `http://localhost:5173/api/debug/seed-simulation` to populate test data.
+
+---
+Prepared by Antigravity on 2026-03-07.

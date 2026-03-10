@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>غير متصل بالإنترنت | أوتو برو</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Cairo', sans-serif;
+            background: #0f172a;
+            color: white;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 24px;
+        }
+
+        .card {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 24px;
+            padding: 48px 32px;
+            max-width: 400px;
+            width: 100%;
+        }
+
+        .icon {
+            font-size: 64px;
+            margin-bottom: 16px;
+        }
+
+        h1 {
+            font-size: 24px;
+            font-weight: 900;
+            color: #f97316;
+            margin-bottom: 12px;
+        }
+
+        p {
+            color: #94a3b8;
+            font-size: 14px;
+            line-height: 1.8;
+        }
+
+        button {
+            margin-top: 24px;
+            background: #f97316;
+            color: white;
+            border: none;
+            border-radius: 16px;
+            padding: 14px 32px;
+            font-size: 15px;
+            font-weight: 900;
+            cursor: pointer;
+            font-family: 'Cairo', sans-serif;
+            width: 100%;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background: #ea6c0a;
+        }
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <div class="card">
+        <div class="icon">📡</div>
+        <h1>لا يوجد اتصال بالإنترنت</h1>
+        <p>يبدو أنك غير متصل بالإنترنت. تحقق من اتصالك وحاول مرة أخرى.</p>
+        <button onclick="window.location.reload()">🔄 إعادة المحاولة</button>
+    </div>
+</body>
+
+</html>

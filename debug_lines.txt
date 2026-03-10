@@ -1,0 +1,120 @@
+﻿      db.prepare("INSERT INTO bids (id, carId, userId, amount, timestamp) VALUES (?, ?, ?, ?, ?)").run(`bid-${Date.now()}-1`, "sim-car-2", "buyer-3", 35000, new Date().toISOString());
+      sendNotification("buyer-3", "ðŸ˜” Ø§Ù„Ù…Ø²Ø§Ø¯ Ù„Ù… ÙŠØµÙ„ Ù„Ù„Ø³Ø¹Ø± Ø§Ù„Ù…Ø·Ù„ÙˆØ¨", "Ø³ÙŠØ§Ø±Ø© sim-car-2 Ø§Ù†ØªÙ‚Ù„Øª Ù„Ø³ÙˆÙ‚ Ø§Ù„Ø¹Ø±ÙˆØ¶ØŒ ÙŠÙ…ÙƒÙ†Ùƒ ØªÙ‚Ø¯ÙŠÙ… Ø¹Ø±Ø¶ Ø¬Ø¯ÙŠØ¯ Ù‡Ù†Ø§Ùƒ!");
+
+      db.prepare("UPDATE cars SET status = 'offer_market', currentBid = 62000 WHERE id = ?").run("sim-car-17");
+      db.prepare("INSERT INTO bids (id, carId, userId, amount, timestamp) VALUES (?, ?, ?, ?, ?)").run(`bid-${Date.now()}-2`, "sim-car-17", "buyer-4", 62000, new Date().toISOString());
+      sendInternalMessage("buyer-4", "admin-1", "Ø·Ù„Ø¨ Ø´Ø±Ø§Ø¡ | Ø³ÙŠØ§Ø±Ø© sim-car-17", "Ù„Ù‚Ø¯ Ù‚Ø¯Ù…Øª Ø¹Ø±Ø¶Ø§Ù‹ Ø¨Ù‚ÙŠÙ…Ø© $62,000 ÙˆØ£Ù†ØªØ¸Ø± Ù…ÙˆØ§ÙÙ‚ØªÙƒÙ….");
+
+      sendNotification("buyer-5", "ðŸ’¡ ÙØ±Øµ Ø¬Ø¯ÙŠØ¯Ø© Ø¨Ø§Ù†ØªØ¸Ø§Ø±ÙƒÙ…", "Ù„Ù… ÙŠØ­Ø§Ù„ÙÙƒ Ø§Ù„Ø­Ø¸ Ø§Ù„ÙŠÙˆÙ…ØŸ Ø´Ø§Ù‡Ø¯ Ù‡Ø°Ù‡ Ø§Ù„Ø³ÙŠØ§Ø±Ø§Øª Ø§Ù„Ù…Ù…ÙŠØ²Ø© Ø§Ù„ØªÙŠ ØªÙ†Ø§Ø³Ø¨ Ù…ÙŠØ²Ø§Ù†ÙŠØªÙƒ!");
+
+      res.json({ success: true, message: "Simulation seeded successfully" });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Auction Management Logic
+  const checkUpcomingAuctions = () => {
+    const now = new Date().toISOString();
+    const upcoming = db.prepare("SELECT * FROM cars WHERE status = 'upcoming' AND auctionEndDate <= ?").all(now);
+
+    upcoming.forEach((car: any) => {
+      db.prepare("UPDATE cars SET status = 'live' WHERE id = ?").run(car.id);
+      auctionTimers[car.id] = { timeLeft: 300, isActive: true }; // Start with 300s for new live auction
+      io.emit("auction_started", { carId: car.id });
+      console.log(`Auction started for car: ${car.id} `);
+    });
+  };
+
+  const finalizeAuction = (carId: string) => {
+    try {
+      const car = db.prepare("SELECT * FROM cars WHERE id = ?").get(carId) as any;
+      if (!car) return;
+
+      const lastBid = db.prepare("SELECT userId FROM bids WHERE carId = ? ORDER BY amount DESC LIMIT 1").get(carId) as any;
+      const winnerId = lastBid ? lastBid.userId : null;
+
+      // RESERVE PRICE CHECK: If bid < reserve, move to 'offer_market'
+      if (winnerId && car.reservePrice && car.currentBid < car.reservePrice) {
+        const offerMarketEndTime = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(); // 2 days
+        db.prepare("UPDATE cars SET status = 'offer_market', offerMarketEndTime = ? WHERE id = ?").run(offerMarketEndTime, carId);
+        console.log(`Auction ended for ${carId} - Reserve NOT met. Moving to OFFER MARKET.`);
+        io.emit("car_updated", { id: carId, status: 'offer_market', offerMarketEndTime });
+        return;
+      }
+
+      db.prepare("UPDATE cars SET status = 'closed', winnerId = ? WHERE id = ?").run(winnerId, carId);
+
+      if (winnerId) {
+        // Create 3 invoices automatically for winner using helper
+        createWinInvoices(winnerId, carId, car.currentBid);
+
+        // Send congratulations message to winner
+        sendInternalMessage('admin-1', winnerId,
+          `ðŸ† ØªÙ‡Ø§Ù†ÙŠÙ†Ø§! ÙØ²Øª Ø¨Ø³ÙŠØ§Ø±Ø© ${car.make} ${car.model} ${car.year}`,
+          `ØªÙ‡Ø§Ù†ÙŠÙ†Ø§! Ù„Ù‚Ø¯ ÙØ²Øª ÙÙŠ Ø§Ù„Ù…Ø²Ø§Ø¯ Ø¹Ù„Ù‰ Ø³ÙŠØ§Ø±Ø© ${car.make} ${car.model} ${car.year}!\n\nØ³Ø¹Ø± Ø§Ù„ÙÙˆØ²: $${car.currentBid.toLocaleString()}\nØ±Ù‚Ù… Ø§Ù„Ù„ÙˆØª: ${car.lotNumber}\n\nðŸ“„ ØªÙ… Ø¥Ù†Ø´Ø§Ø¡ 3 ÙÙˆØ§ØªÙŠØ± ÙÙŠ Ø­Ø³Ø§Ø¨Ùƒ:\n1. ÙØ§ØªÙˆØ±Ø© Ø§Ù„Ø´Ø±Ø§Ø¡ (Ù…Ø³ØªØ­Ù‚Ø© Ø§Ù„Ø¢Ù†)\n2. ÙØ§ØªÙˆØ±Ø© Ø§Ù„Ù†Ù‚Ù„ Ø§Ù„Ø¯Ø§Ø®Ù„ÙŠ (ØªÙÙØ¹Ù‘Ù„ Ø¨Ø¹Ø¯ Ø¯ÙØ¹ Ø§Ù„Ø´Ø±Ø§Ø¡)\n3. ÙØ§ØªÙˆØ±Ø© Ø§Ù„Ø´Ø­Ù† Ø§Ù„Ø¯ÙˆÙ„ÙŠ (ØªÙÙØ¹Ù‘Ù„ Ø¨Ø¹Ø¯ ÙˆØµÙˆÙ„ Ø§Ù„Ù…Ø³ØªÙˆØ¯Ø¹)\n\nØªÙˆØ¬Ù‡ Ø¥Ù„Ù‰ Ù‚Ø³Ù… Ø§Ù„ÙÙˆØ§ØªÙŠØ± ÙÙŠ Ù„ÙˆØ­Ø© Ø§Ù„ØªØ­ÙƒÙ… Ù„Ø¥ØªÙ…Ø§Ù… Ø§Ù„Ø¯ÙØ¹.\n\nÙØ±ÙŠÙ‚ Ù„ÙŠØ¨ÙŠØ§ Ø£ÙˆØªÙˆ Ø¨Ø±Ùˆ ðŸš—`
+        );
+
+        // Notify losers
+        const losers = db.prepare("SELECT DISTINCT userId FROM bids WHERE carId = ? AND userId != ?").all(carId, winnerId);
+        losers.forEach((loser: any) => {
+          sendInternalMessage('admin-1', loser.userId,
+            `ðŸ˜” Ù„Ù… ØªÙØ² Ø¨Ø³ÙŠØ§Ø±Ø© ${car.make} ${car.model}`,
+            `Ù„Ù„Ø£Ø³ÙØŒ Ù„Ù… ØªÙØ² ÙÙŠ Ù…Ø²Ø§Ø¯ Ø³ÙŠØ§Ø±Ø© ${car.make} ${car.model} ${car.year}.\n\nØ§Ù„Ø³Ø¹Ø± Ø§Ù„Ù†Ù‡Ø§Ø¦ÙŠ: $${car.currentBid.toLocaleString()}\n\nØ§Ù„Ù…Ø¨Ù„Øº Ø§Ù„Ù…Ø­Ø¬ÙˆØ² ØªÙ… ØªØ­Ø±ÙŠØ±Ù‡ ÙˆØ¹Ø§Ø¯ Ù„Ù‚ÙˆØªÙƒ Ø§Ù„Ø´Ø±Ø§Ø¦ÙŠØ©.\n\nðŸ” ØªØµÙØ­ Ø³ÙŠØ§Ø±Ø§Øª Ù…Ø´Ø§Ø¨Ù‡Ø© ÙÙŠ Ø§Ù„Ù…Ø²Ø§Ø¯Ø§Øª Ø§Ù„Ù‚Ø§Ø¯Ù…Ø©!\n\nÙØ±ÙŠÙ‚ Ù„ÙŠØ¨ÙŠØ§ Ø£ÙˆØªÙˆ Ø¨Ø±Ùˆ ðŸš—`
+          );
+        });
+      }
+
+      io.emit("car_updated", { id: carId, status: 'closed', winnerId });
+      console.log(`Auction closed for car: ${carId}. Winner: ${winnerId}`);
+    } catch (e) {
+      console.error(`Error finalizing auction ${carId}:`, e);
+    }
+  };
+
+  const tickAuctions = () => {
+    checkUpcomingAuctions();
+
+    const activeTimers: Record<string, number> = {};
+    let hasUpdates = false;
+
+    Object.keys(auctionTimers).forEach(carId => {
+      const timer = auctionTimers[carId];
+      if (timer.isActive && timer.timeLeft > 0) {
+        timer.timeLeft -= 1;
+        activeTimers[carId] = timer.timeLeft;
+        hasUpdates = true;
+
+        if (timer.timeLeft === 0) {
+          timer.isActive = false;
+          finalizeAuction(carId);
+        }
+      }
+    });
+
+    if (hasUpdates) {
+      io.emit("timers_update", activeTimers);
+    }
+  };
+
+  setInterval(tickAuctions, 1000);
+
+  // Heartbeat to monitor event loop health
+  setInterval(() => {
+    console.log(`[HEARTBEAT] ${new Date().toISOString()} - Memory: ${Math.round(process.memoryUsage().rss / 1024 / 1024)}MB`);
+  }, 10000);
+
+
+  const tickUltimoAndOffers = () => {
+    const now = new Date().toISOString();
+
+    // 1. Move expired Ultimo cars to Offer Market (Fallback for existing data)
+    const expiredUltimo = db.prepare("SELECT id FROM cars WHERE status = 'ultimo' AND (ultimoEndTime < ? OR ultimoEndTime IS NULL)").all(now);
+    expiredUltimo.forEach((car: any) => {
+      const offerMarketEndTime = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(); // 2 days
+      db.prepare("UPDATE cars SET status = 'offer_market', offerMarketEndTime = ? WHERE id = ?").run(offerMarketEndTime, car.id);
+      io.emit("car_updated", { id: car.id, status: 'offer_market', offerMarketEndTime });
+    });
+
+    // 2. Close expired Offer Market cars
+    const expiredOffers = db.prepare("SELECT id FROM cars WHERE status = 'offer_market' AND offerMarketEndTime < ?").all(now);

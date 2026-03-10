@@ -1,0 +1,72 @@
+# منصة أوتو برو - تسليم المشروع النهائي (Project Handover)
+
+لقد اكتملت بنية النظام (Architecture) الخاصة بمنصة **ليبيا أوتو برو** بالكامل. يتكون النظام الآن من طبقتين منفصلتين لضمان أعلى درجات الأمان، الأداء، وقابلية التوسع مستقبلاً.
+
+## 1. الهيكلية العامة (System Overview)
+
+### الواجهة الأمامية (Frontend)
+- **التقنيات:** `React`, `Vite`, `TailwindCSS`
+- **الموقع:** مجلد `autopro`
+- **المميزات:** واجهات مستخدم سريعة، لوحات تحكم للأدمن والبائع (شاشة عرض السيارات، المحفظة، المزايدات، حاسبة التكلفة).
+
+### الواجهة الخلفية (Backend API)
+- **التقنيات:** `NestJS`, `Prisma ORM`, `PostgreSQL`, [Redis](file:///c:/Users/Pawel/.gemini/antigravity/scratch/autopro-backend/src/events/redis-io.adapter.ts#6-24)
+- **الموقع:** مجلد `autopro-backend`
+- **المميزات:** 
+  - نظام توثيق ومصادقة محمي بـ `JWT`.
+  - مزايدات حية (Live Bidding) عبر الـ `WebSockets (Socket.io)` مع دعم للتوسع عبر `Redis Adapter`.
+  - بوابات الدفع وجاهزية لربط [Stripe](file:///c:/Users/Pawel/.gemini/antigravity/scratch/autopro-backend/src/stripe/stripe.module.ts#5-11).
+  - نظام الـ SMS والـ OTP جاهز عبر `Twilio`.
+  - حماية (Security) متقدمة ضد خروقات الـ DDoS عبر `express-rate-limit` وتأمين بالـ `Helmet`.
+
+---
+
+## 2. كيفية تشغيل النظام محلياً (How to Run Locally)
+
+لكي يعمل النظام بشكل كامل (Full System)، يجب تشغيل الواجهتين الأمامية والخلفية في نفس الوقت.
+
+### الخطوة الأولى: تشغيل قواعد البيانات (Databases)
+تحتاج إلى تشغيل `PostgreSQL` (لتخزين المستخدمين والسيارات والفواتير) و [Redis](file:///c:/Users/Pawel/.gemini/antigravity/scratch/autopro-backend/src/events/redis-io.adapter.ts#6-24) (للمزايدات الحية). يمكن تشغيلهما عبر Docker:
+```bash
+docker run --name autopro-postgres -e POSTGRES_PASSWORD=password -e POSTGRES_USER=postgres -e POSTGRES_DB=autopro -d -p 5432:5432 postgres:15
+docker run --name autopro-redis -d -p 6379:6379 redis:7
+```
+
+### الخطوة الثانية: تشغيل الواجهة الخلفية (Start Backend)
+في موجه الأوامر (Terminal)، قم بالدخول لمجلد Backend وشغل السيرفر:
+```bash
+cd autopro-backend
+
+# تثبيت الحزم البرمجية
+npm install
+
+# بناء قاعدة البيانات
+npx prisma generate
+npx prisma db push
+
+# تشغيل السيرفر
+npm run start:dev
+```
+> [!NOTE] 
+> السيرفر سيعمل على الرابط `http://localhost:3000`
+
+### الخطوة الثالثة: تشغيل الواجهة الأمامية (Start Frontend)
+في نافذة موجه أوامر **جديدة** (Terminal):
+```bash
+cd autopro
+
+# تثبيت الحزم
+npm install
+
+# تشغيل الواجهة
+npm run dev
+```
+> [!NOTE] 
+> الواجهة ستعمل على الرابط `http://localhost:5173`
+
+---
+
+## 3. الخطوات القادمة للمستقبل (Next Steps - Beta Integration)
+بما أن هيكل الـ Backend قد اكتمل وتم اختباره، خطوتك البرمجية القادمة هي:
+1. **استبدال Mock Data:** الذهاب إلى ملفات مثل [autopro/src/pages/Home.tsx](file:///c:/Users/Pawel/.gemini/antigravity/scratch/autopro/src/pages/Home.tsx) أو `autopro/src/services` وتغيير البيانات الوهمية لكي تستخدم [fetch](file:///c:/Users/Pawel/.gemini/antigravity/scratch/autopro/src/context/StoreContext.tsx#138-173) وتجلب البيانات الحقيقية من `http://localhost:3000/api/cars`.
+2. **إعداد بيئة الإنتاج (Production Variables):** وضع المفاتيح الأمنية السرية (Secret Keys) الخاصة بك لـ Stripe و Twilio في ملف `.env` آمن على السيرفر الخارجي.
