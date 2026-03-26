@@ -2,7 +2,6 @@ import React from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { Navbar } from '../components/Navbar';
 import { SiteFooter } from '../components/SiteFooter';
-import { MobileBottomNav } from '../components/MobileBottomNav';
 
 export const MainLayout = () => {
   const location = useLocation();
@@ -16,13 +15,11 @@ export const MainLayout = () => {
   return (
     <div className="min-h-screen flex flex-col selection:bg-orange-500/30">
       {!hideLayout && <Navbar />}
-      {/* pb-16 on mobile leaves room for MobileBottomNav */}
-      <main className="flex-grow pb-16 md:pb-0">
+      {/* pb-24 on mobile leaves room for MobileBottomNav */}
+      <main className="flex-grow pb-24 md:pb-0">
         <Outlet />
       </main>
       {!hideLayout && <SiteFooter />}
-      {/* Phase 14: Mobile bottom navigation */}
-      <MobileBottomNav />
     </div>
   );
 };

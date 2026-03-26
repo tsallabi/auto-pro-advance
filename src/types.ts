@@ -21,13 +21,18 @@ export interface Car {
   titleType?: string;
   location: string;
   currentBid: number;
+  startingBid?: number;
   reservePrice?: number;
   buyItNow?: number;
   currency: string;
   images: string[];
+  youtubeVideoUrl?: string;
+  engineSoundUrl?: string;
+  inspectionReportUrl?: string;
   videoUrl?: string;
   inspectionPdf?: string;
   status: 'live' | 'upcoming' | 'ended' | 'ultimo' | 'offer_market' | 'closed' | 'pending_approval' | 'rejected';
+  auctionStartTime?: string;
   auctionEndDate?: string;
   sellerId?: string;
   winnerId?: string;
@@ -56,6 +61,7 @@ export interface User {
   email: string;
   phone: string;
   role: string;
+  supportTeam?: string;
   manager: string;
   office: string;
   companyName: string;
@@ -80,11 +86,12 @@ export interface Invoice {
   userId: string;
   carId: string;
   amount: number;
-  status: 'unpaid' | 'paid' | 'pending';
+  status: 'unpaid' | 'pending' | 'paid' | 'release_issued' | 'delivered_to_buyer' | 'seller_paid_by_admin';
   type: 'purchase' | 'transport' | 'shipping' | 'Auction Fee' | 'Purchase';
   timestamp: string;
   dueDate: string;
   pickupAuthCode?: string;
+  releaseCardUrl?: string;
   // Joined fields
   make?: string;
   model?: string;
@@ -120,8 +127,15 @@ export interface Message {
   category?: string;
   timestamp: string;
   isRead: number;
+  repliedAt?: string;
+  repliedBy?: string;
+  replyTimeMs?: number;
   senderFirstName?: string;
   senderLastName?: string;
+  title?: string;
+  supportTeam?: string;
+  message?: string;
+  replyContent?: string;
 }
 
 export interface Notification {
@@ -151,6 +165,15 @@ export const INVOICE_TYPE_LABELS: Record<string, string> = {
   'Auction Fee': '🔨 رسوم المزاد',
   'Purchase': '💰 الشراء'
 };
+
+export const INVOICE_STATUS_LABELS: Record<string, string> = {
+  'unpaid': '❌ غير مدفوعة',
+  'pending': '⏳ قيد المراجعة',
+  'paid': '✅ تم الدفع',
+  'release_issued': '📄 تم اصدار كرت افراج',
+  'delivered_to_buyer': '🤝 تم الاستلام من الزبون',
+  'seller_paid_by_admin': '💰 تم تحويل القيمة للبائع'
+};
 export interface BranchConfig {
   id: string;
   name: string;
@@ -166,3 +189,17 @@ export interface BranchConfig {
   default_buying_power_multiplier?: number;
 }
 
+export interface MarketEstimate {
+  id: number;
+  make: string;
+  makeEn: string;
+  model: string;
+  modelEn: string;
+  year: number;
+  condition: string;
+  transmission: string;
+  fuel: string;
+  mileage: string;
+  price: string;
+  city: string;
+}

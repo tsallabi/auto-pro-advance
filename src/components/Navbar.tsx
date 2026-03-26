@@ -1,17 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { Bell, Mail, Menu, X, LogOut, ChevronDown, Car, Calculator, Gavel, Search, LayoutDashboard, ShieldCheck, Wallet } from 'lucide-react';
+import { Bell, Mail, Menu, X, LogOut, ChevronDown, Car, Calculator, Gavel, Search, LayoutDashboard, ShieldCheck, Wallet, Globe } from 'lucide-react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useStore } from '../context/StoreContext';
 import { AuthModal } from './AuthModal';
 import { NotificationDropdown } from './NotificationDropdown';
 import { MessageDropdown } from './MessageDropdown';
 import { BranchSelector } from './BranchSelector';
 
-const NAV_LINKS = [
-  { label: 'المزادات المباشرة', href: '/marketplace?tab=live' },
-  { label: 'البحث عن سيارة', href: '/marketplace' },
-  { label: 'حاسبة التكلفة', href: '/calculator' },
-  { label: 'خدمات الشحن', href: '/shipping' },
+const getNavLinks = (t: any) => [
+  { label: t('nav.liveAuction'), href: '/marketplace?tab=live' },
+  { label: t('nav.searchCars'), href: '/marketplace' },
+  { label: t('nav.calculator'), href: '/calculator' },
+  { label: t('nav.shipping'), href: '/shipping' },
 ];
 
 
@@ -19,6 +20,12 @@ export const Navbar = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { currentUser, setCurrentUser, branchConfig, unreadCounts } = useStore();
+  const { t, i18n } = useTranslation();
+
+  const toggleLanguage = () => {
+    const newLang = i18n.language === 'ar' ? 'en' : 'ar';
+    i18n.changeLanguage(newLang);
+  };
 
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -63,7 +70,7 @@ export const Navbar = () => {
   return (
     <>
       <nav
-        dir="rtl"
+        dir={i18n.dir()}
         className="sticky top-0 z-[200] bg-slate-900 shadow-lg border-b border-slate-800 font-cairo"
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-20 flex items-center justify-between">
@@ -75,22 +82,21 @@ export const Navbar = () => {
             </div>
             {branchConfig ? (
               <span className="font-black text-xl tracking-tight leading-tight text-white">
-                {branchConfig.logoText.split(' ')[0]}
-                <br />
+                {i18n.language === 'en' ? (branchConfig.englishName?.split(' ')[0] || 'Libya') : branchConfig.logoText?.split(' ')[0]}<br />
                 <span className="text-orange-500 text-sm font-bold">
-                  {branchConfig.logoText.split(' ').slice(1).join(' ')}
+                  {i18n.language === 'en' ? 'AUTO PRO' : branchConfig.logoText?.split(' ').slice(1).join(' ')}
                 </span>
               </span>
             ) : (
               <span className="font-black text-xl tracking-tight leading-tight text-white">
-                ليبيا<br /><span className="text-orange-500 text-sm font-bold">أوتو برو</span>
+                {t('nav.libya')}<br /><span className="text-orange-500 text-sm font-bold">{t('nav.autoPro')}</span>
               </span>
             )}
           </Link>
 
           {/* ── Desktop Nav ── */}
           <div className="hidden md:flex items-center gap-1">
-            {NAV_LINKS.map(link => (
+            {getNavLinks(t).map(link => (
               <Link
                 key={link.href}
                 to={link.href}
@@ -103,6 +109,14 @@ export const Navbar = () => {
 
           {/* ── Desktop Actions ── */}
           <div className="hidden md:flex items-center gap-2">
+            <button
+              onClick={toggleLanguage}
+              className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-bold text-slate-300 hover:text-white hover:bg-white/10 transition-all border border-slate-700 mx-2"
+            >
+              <Globe className="w-4 h-4" />
+              {i18n.language === 'ar' ? 'English' : 'عربي'}
+            </button>
+
             <BranchSelector />
 
             {/* Messages */}
@@ -144,7 +158,7 @@ export const Navbar = () => {
                   className="flex items-center gap-1.5 bg-orange-500/20 text-orange-400 border border-orange-500/30 text-xs font-black px-3 py-2 rounded-xl hover:bg-orange-500 hover:text-white transition-all"
                 >
                   <LayoutDashboard className="w-3.5 h-3.5" />
-                  لوحة التحكم
+                  {t('nav.dashboard')}
                 </button>
 
                 {/* Avatar dropdown */}
@@ -153,37 +167,39 @@ export const Navbar = () => {
                   className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 px-3 py-2 rounded-xl transition-colors"
                 >
                   <div className="w-6 h-6 bg-orange-500 rounded-lg flex items-center justify-center text-[10px] font-black text-white">
-                    {currentUser.firstName[0]}{currentUser.lastName?.[0] ?? ''}
+                    {currentUser.role === 'seller' && currentUser.companyName ? currentUser.companyName[0] : (currentUser.firstName?.[0] || 'U')}
                   </div>
-                  <span className="text-sm font-bold text-white">{currentUser.firstName}</span>
-                  <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${showDropdown ? 'rotate-180' : ''}`} />
+                  <span className="text-sm font-bold text-white max-w-[120px] truncate">
+                    {currentUser.role === 'seller' && currentUser.companyName ? currentUser.companyName : (currentUser.firstName || 'مستخدم')}
+                  </span>
+                  <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform flex-shrink-0 ${showDropdown ? 'rotate-180' : ''}`} />
                 </button>
 
                 {showDropdown && (
                   <div className="absolute top-full mt-2 left-0 w-60 bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden text-slate-800 z-50">
                     <div className="px-4 py-3 bg-gradient-to-r from-slate-50 to-orange-50 border-b border-slate-100">
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">نوع الحساب</p>
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">{t('nav.accountType')}</p>
                       <p className="font-black text-slate-800 flex items-center gap-2">
-                        {currentUser.role === 'admin' && <><ShieldCheck className="w-4 h-4 text-orange-500" /> مدير النظام</>}
-                        {currentUser.role === 'seller' && <><Car className="w-4 h-4 text-blue-500" /> بائع / معرض</>}
-                        {currentUser.role === 'buyer' && <><LayoutDashboard className="w-4 h-4 text-green-500" /> مشتري</>}
+                        {currentUser.role === 'admin' && <><ShieldCheck className="w-4 h-4 text-orange-500" /> {t('nav.admin')}</>}
+                        {currentUser.role === 'seller' && <><Car className="w-4 h-4 text-blue-500" /> {t('nav.seller')}</>}
+                        {currentUser.role === 'buyer' && <><LayoutDashboard className="w-4 h-4 text-green-500" /> {t('nav.buyer')}</>}
                       </p>
                     </div>
                     <Link to={dashboardPath} onClick={() => setShowDropdown(false)}
                       className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 border-b border-slate-100 font-bold text-sm transition-colors">
                       <LayoutDashboard className="w-4 h-4 text-orange-500" />
-                      لوحة التحكم
+                      {t('nav.dashboard')}
                     </Link>
                     {currentUser?.role !== 'admin' && (
                       <Link to="/wallet" onClick={() => setShowDropdown(false)}
                         className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 border-b border-slate-100 font-bold text-sm transition-colors">
                         <Wallet className="w-4 h-4 text-green-500" />
-                        محفظتي 💰
+                        {t('nav.myWallet')}
                       </Link>
                     )}
                     <button onClick={handleLogout}
                       className="w-full flex items-center justify-between px-4 py-3 hover:bg-red-50 text-red-600 font-bold text-sm transition-colors">
-                      تسجيل الخروج
+                      {t('nav.logout')}
                       <LogOut className="w-4 h-4" />
                     </button>
                   </div>
@@ -194,13 +210,15 @@ export const Navbar = () => {
                 onClick={() => setIsAuthOpen(true)}
                 className="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2.5 rounded-xl font-black text-sm transition-all shadow-lg shadow-orange-500/20 hover:scale-105 active:scale-95"
               >
-                سجّل الآن
+                {t('nav.registerNow')}
               </button>
             )}
           </div>
 
           {/* ── Mobile Hamburger ── */}
           <button
+            title={mobileOpen ? "إغلاق القائمة" : "فتح القائمة"}
+            aria-label={mobileOpen ? "إغلاق القائمة" : "فتح القائمة"}
             className="md:hidden text-slate-300 hover:text-white p-2 transition-colors"
             onClick={() => setMobileOpen(!mobileOpen)}
           >
@@ -212,7 +230,7 @@ export const Navbar = () => {
         {mobileOpen && (
           <div className="md:hidden bg-slate-900/98 backdrop-blur-xl border-t border-white/10">
             <div className="px-4 pt-3 pb-5 space-y-1">
-              {NAV_LINKS.map(link => (
+              {getNavLinks(t).map(link => (
                 <Link key={link.href} to={link.href} onClick={() => setMobileOpen(false)}
                   className="block px-4 py-3 rounded-xl text-base font-bold text-slate-300 hover:text-white hover:bg-white/10 transition-colors">
                   {link.label}
@@ -223,17 +241,17 @@ export const Navbar = () => {
                 {currentUser ? (
                   <>
                     <div className="px-4 py-2 text-xs font-black text-slate-500 uppercase tracking-widest">
-                      مرحباً، {currentUser.firstName}
+                      {t('nav.welcome')}، {currentUser.role === 'seller' && currentUser.companyName ? currentUser.companyName : (currentUser.firstName || 'مستخدم')}
                     </div>
                     <Link to={dashboardPath} onClick={() => setMobileOpen(false)}
                       className="flex items-center gap-3 px-4 py-3 rounded-xl text-base font-bold text-orange-400 hover:bg-orange-500/10 transition-colors">
                       <LayoutDashboard className="w-5 h-5" />
-                      لوحة التحكم
+                      {t('nav.dashboard')}
                     </Link>
                     <button onClick={handleLogout}
                       className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-base font-bold text-red-400 hover:bg-red-500/10 transition-colors">
                       <LogOut className="w-5 h-5" />
-                      تسجيل الخروج
+                      {t('nav.logout')}
                     </button>
                   </>
                 ) : (
@@ -241,7 +259,7 @@ export const Navbar = () => {
                     onClick={() => { setIsAuthOpen(true); setMobileOpen(false); }}
                     className="w-full bg-orange-500 text-white py-3 rounded-xl font-black text-base hover:bg-orange-600 transition-colors"
                   >
-                    سجّل دخول / إنشاء حساب
+                    {t('nav.loginRegister')}
                   </button>
                 )}
               </div>

@@ -39,12 +39,9 @@ self.addEventListener('activate', event => {
 
 /* ── Fetch Strategy ── */
 self.addEventListener('fetch', event => {
-    const { request } = event;
-    const url = new URL(request.url);
-
-    // Skip non-GET and non-http requests
-    if (request.method !== 'GET') return;
-    if (!url.protocol.startsWith('http')) return;
+    // Phase 14: Emergency bypass to fix POST request crashes
+    return;
+    // ... dead code below
 
     // API routes → Network First, fallback to cache
     if (url.pathname.startsWith('/api/')) {

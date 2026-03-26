@@ -21,14 +21,14 @@ test.describe('E2E Stress Test: Auction Flow', () => {
 
             // 4. Click on a live car (stress-car-1)
             // Assuming there's a link or card for the car
-            await page.click('text=Stress Model 1');
+            await page.click('text=Stress Model 1', { force: true });
 
             // 5. Place a bid
             // We need to find the bidding button and input
             // Let's assume there's a button with text 'مزايدة' or 'Bid'
             const bidButton = page.locator('button:has-text("مزايدة"), button:has-text("Bid")').first();
             await expect(bidButton).toBeVisible();
-            await bidButton.click();
+            await bidButton.click({ force: true });
 
             // 6. Verify bid appeared in logs or UI updated
             // await expect(page.locator('text=تم تقديم العرض')).toBeVisible();

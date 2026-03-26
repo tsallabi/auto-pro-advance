@@ -4,7 +4,7 @@ import {
   LayoutDashboard, User, ShieldCheck, Store, LogOut, Bell, Settings,
   Home, Users, Building2, FileText, Mail, Wallet, Truck, Car, Gavel,
   List, File, History, HelpCircle, ChevronRight, Heart, Database, Calculator,
-  CreditCard
+  CreditCard, Activity, Handshake, DollarSign, MessageSquare, LineChartIcon, PlusCircle
 } from 'lucide-react';
 
 import { useStore } from '../context/StoreContext';
@@ -16,6 +16,7 @@ export const DashboardLayout = () => {
 
   const getRole = () => {
     if (location.pathname.includes('/admin')) return 'admin';
+    if (location.pathname.includes('/seller')) return 'seller';
     return 'user';
   };
 
@@ -104,6 +105,31 @@ export const DashboardLayout = () => {
           { path: '/dashboard/user?view=profile', label: 'الملف الشخصي', icon: User },
         ]
       }
+    ],
+    seller: [
+      {
+        category: 'إدارة المعرض والسيارات',
+        items: [
+          { path: '/dashboard/seller?view=overview', label: 'الرئيسية (Dashboard)', icon: Store },
+          { path: '/dashboard/seller?view=inventory', label: 'مخزون السيارات', icon: Car },
+          { path: '/dashboard/seller?view=add', label: 'إضافة سيارة', icon: PlusCircle },
+        ]
+      },
+      {
+        category: 'المالية واللوجستيات',
+        items: [
+          { path: '/dashboard/seller?view=financials', label: 'الحسابات (Ledger)', icon: DollarSign },
+          { path: '/dashboard/seller?view=logistics', label: 'الشحن والتسليم', icon: Truck },
+        ]
+      },
+      {
+        category: 'التواصل والرؤى',
+        items: [
+          { path: '/dashboard/seller?view=messages', label: 'صندوق البريد', icon: MessageSquare },
+          { path: '/dashboard/seller?view=market_insights', label: 'رؤى السوق', icon: LineChartIcon },
+          { path: '/dashboard/seller?view=profile', label: 'الملف الشخصي (KYC)', icon: CreditCard },
+        ]
+      }
     ]
   };
 
@@ -139,7 +165,7 @@ export const DashboardLayout = () => {
                 {branchConfig.logoText.split(' ')[0]} <span className="text-orange-500 text-sm">{branchConfig.logoText.split(' ').slice(1).join(' ')}</span>
               </h1>
             ) : (
-              <h1 className="font-bold text-lg leading-tight text-white">ليبيا <span className="text-orange-500 text-sm">أوتو برو</span></h1>
+              <h1 className="font-bold text-lg leading-tight text-white">ليبيا <span className="text-orange-500 text-sm">AUTO PRO</span></h1>
             )}
             <span className="text-[10px] text-slate-400 font-black uppercase tracking-widest">
               {(role as string) === 'admin' ? 'الإدارة العامة' : 'حساب العميل'}
@@ -230,7 +256,7 @@ export const DashboardLayout = () => {
           </div>
         </header>
 
-        <div className="flex-grow overflow-y-auto p-6 custom-scrollbar bg-slate-50">
+        <div className="flex-grow overflow-y-auto p-6 pb-20 md:pb-6 custom-scrollbar bg-slate-50">
           <Outlet />
         </div>
       </main>

@@ -1,5 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import {
     ArrowRight, Shield, TrendingUp, Truck,
     MessageSquare, Gavel, CheckCircle2,
@@ -11,9 +12,10 @@ import { useStore } from '../context/StoreContext';
 export const LandingPage = () => {
     const navigate = useNavigate();
     const { branchConfig } = useStore();
+    const { t, i18n } = useTranslation();
 
     return (
-        <div className="bg-white selection:bg-orange-500/30 overflow-x-hidden font-cairo" dir="rtl">
+        <div className="bg-white selection:bg-orange-500/30 overflow-x-hidden font-sans" dir={i18n.language === 'ar' ? 'rtl' : 'ltr'}>
 
             <section className="relative min-h-screen flex items-center bg-[#0F172A] text-white pt-20 overflow-hidden">
                 {/* Background Visual Components */}
@@ -30,17 +32,17 @@ export const LandingPage = () => {
                     <div className="space-y-10 animate-in slide-in-from-right duration-1000">
                         <div className="inline-flex items-center gap-3 bg-white/5 backdrop-blur-2xl px-6 py-2.5 rounded-full border border-white/10 shadow-2xl">
                             <Zap className="w-5 h-5 text-orange-500 fill-orange-500" />
-                            <span className="text-sm font-black uppercase tracking-[0.2em] text-orange-100">المنصة الأقوى للمزادات في ليبيا والخليج</span>
+                            <span className="text-sm font-black uppercase tracking-[0.2em] text-orange-100">{t('landingPage.badgeTop')}</span>
                         </div>
 
                         <h1 className="text-6xl lg:text-8xl font-black leading-[1.05] tracking-tight">
-                            الريادة في <br />
-                            <span className="text-transparent bg-clip-text bg-gradient-to-l from-orange-400 via-orange-500 to-rose-500">مزادات السيارات</span>
-                            <br />بشـفافـية مطلـقة
+                            {t('landingPage.heroTitle1')} <br />
+                            <span className="text-transparent bg-clip-text bg-gradient-to-l from-orange-400 via-orange-500 to-rose-500">{t('landingPage.heroTitleHighlight')}</span>
+                            <br />{t('landingPage.heroTitle2')}
                         </h1>
 
                         <p className="text-xl text-slate-400 max-w-xl font-medium leading-relaxed">
-                            انضم إلى نخبة التجار والمشترين في أكبر سوق إلكتروني للسيارات. نوفر لك وصولاً مباشراً لمزادات <span className="text-white font-bold">Copart</span> و <span className="text-white font-bold">IAAI</span> مع حلول شحن لوجستية متكاملة حتى باب منزلك.
+                            {t('landingPage.heroSubtitle')}
                         </p>
 
                         <div className="flex flex-wrap gap-5 pt-6">
@@ -48,13 +50,13 @@ export const LandingPage = () => {
                                 onClick={() => navigate('/auth?mode=register')}
                                 className="bg-[#FF3D00] text-white px-12 py-6 rounded-[2rem] font-black text-xl shadow-[0_20px_50px_-10px_rgba(255,61,0,0.5)] hover:-translate-y-1 hover:shadow-orange-500/60 transition-all flex items-center gap-4 group"
                             >
-                                سجل الآن وابدأ المزايدة <ArrowRight className="w-7 h-7 rotate-180 group-hover:-translate-x-2 transition-transform" />
+                                {t('landingPage.registerStart')} <ArrowRight className={`w-7 h-7 transform ${i18n.language === 'ar' ? 'rotate-180 group-hover:-translate-x-2' : 'group-hover:translate-x-2'} transition-transform`} />
                             </button>
                             <button
                                 onClick={() => navigate('/marketplace')}
                                 className="bg-white/5 backdrop-blur-xl border border-white/10 text-white px-12 py-6 rounded-[2rem] font-black text-xl hover:bg-white/10 transition-all flex items-center gap-3"
                             >
-                                تصفح السيارات
+                                {t('landingPage.browseCars')}
                             </button>
                         </div>
 
@@ -65,7 +67,7 @@ export const LandingPage = () => {
                                     <p className="text-4xl font-black text-white">40k</p>
                                     <span className="text-orange-500 font-bold text-xl">+</span>
                                 </div>
-                                <p className="text-xs text-slate-500 font-black uppercase tracking-widest mt-1">سيارة أسبوعياً</p>
+                                <p className="text-xs text-slate-500 font-black uppercase tracking-widest mt-1">{t('landingPage.weeklyCars')}</p>
                             </div>
                             <div className="w-px h-12 bg-white/5"></div>
                             <div>
@@ -73,7 +75,7 @@ export const LandingPage = () => {
                                     <p className="text-4xl font-black text-white">100</p>
                                     <span className="text-green-500 font-bold text-xl">%</span>
                                 </div>
-                                <p className="text-xs text-slate-500 font-black uppercase tracking-widest mt-1">ضمان الشفافية</p>
+                                <p className="text-xs text-slate-500 font-black uppercase tracking-widest mt-1">{t('landingPage.transparency')}</p>
                             </div>
                             <div className="w-px h-12 bg-white/5"></div>
                             <div className="hidden sm:block">
@@ -84,7 +86,7 @@ export const LandingPage = () => {
                                     <Star className="w-4 h-4 fill-current" />
                                     <Star className="w-4 h-4 fill-current" />
                                 </div>
-                                <p className="text-xs text-slate-500 font-black uppercase tracking-widest leading-none">تقييم التجار</p>
+                                <p className="text-xs text-slate-500 font-black uppercase tracking-widest leading-none">{t('landingPage.dealerRating')}</p>
                             </div>
                         </div>
                     </div>
@@ -106,7 +108,7 @@ export const LandingPage = () => {
                                         <h3 className="text-2xl font-black text-white mb-1">2024 Porsche 911 GT3</h3>
                                         <div className="flex items-center gap-2 text-orange-400 font-bold text-sm">
                                             <div className="w-2 h-2 bg-orange-500 rounded-full animate-pulse"></div>
-                                            المزايدة المباشرة تبدأ الآن
+                                            {t('landingPage.liveBidStarts')}
                                         </div>
                                     </div>
                                     <div className="text-center">
@@ -130,27 +132,27 @@ export const LandingPage = () => {
                                         <TrendingUp className="w-6 h-6" />
                                     </div>
                                     <div>
-                                        <p className="text-[10px] font-black text-white/40 uppercase tracking-widest">الموافقة الفورية</p>
-                                        <p className="text-white font-black text-xl">جاهز للشحن</p>
+                                        <p className="text-[10px] font-black text-white/40 uppercase tracking-widest">{t('landingPage.instantApproval')}</p>
+                                        <p className="text-white font-black text-xl">{t('landingPage.readyToShip')}</p>
                                     </div>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
-            </section>
+            </section >
 
             {/* 2. SERVICES SECTION */}
-            <section id="services" className="py-32 relative bg-white">
+            < section id="services" className="py-32 relative bg-white" >
 
                 <div className="container mx-auto px-6">
                     <div className="flex flex-col items-center mb-24 text-center">
                         <div className="inline-flex items-center gap-2 bg-orange-100 px-4 py-1.5 rounded-full text-orange-600 font-black text-xs uppercase tracking-widest mb-6 border border-orange-200">
-                            خدماتنا اللوجستية
+                            {t('landingPage.logisticsServices')}
                         </div>
-                        <h2 className="text-5xl lg:text-6xl font-black text-slate-900 mb-6 tracking-tight">حلول شاملة <span className="text-orange-500">لنمو تجارتك</span></h2>
+                        <h2 className="text-5xl lg:text-6xl font-black text-slate-900 mb-6 tracking-tight">{t('landingPage.comprehensiveSolutions')} <span className="text-orange-500">{t('landingPage.growBusiness')}</span></h2>
                         <p className="text-xl text-slate-500 font-medium max-w-2xl leading-relaxed">
-                            نحن لا نبيع السيارات فحسب؛ نحن نبني جسراً يربطك بالأسواق العالمية مع ضمان أمان أموالك ووصول شحناتك.
+                            {t('landingPage.logisticsSubtitle')}
                         </p>
                     </div>
 
@@ -162,9 +164,9 @@ export const LandingPage = () => {
                             </div>
                             <h3 className="text-3xl font-black text-slate-900 mb-6">شـراء (Buy)</h3>
                             <p className="text-slate-500 font-bold leading-relaxed mb-10 flex-grow">
-                                استفد من الوصول الحصري لأكثر من 50,000 سيارة أسبوعياً. نظام مزايدة حي متوافق مع كافة الأجهزة وبشفافية تامة في الرسوم.
+                                استفد من الوصول الحصري لأكثر من 50,000 {t('landingPage.weeklyCars')}. نظام مزايدة حي متوافق مع كافة الأجهزة وبشفافية تامة في الرسوم.
                             </p>
-                            <button onClick={() => navigate('/marketplace')} className="w-full bg-[#FF3D00] text-white py-5 rounded-[1.5rem] font-black hover:shadow-2xl shadow-orange-500/20 active:scale-95 transition-all text-lg">استكشف النظام</button>
+                            <button onClick={() => navigate('/marketplace')} className="w-full bg-[#FF3D00] text-white py-5 rounded-[1.5rem] font-black hover:shadow-2xl shadow-orange-500/20 active:scale-95 transition-all text-lg">{t('landingPage.buySection.btn')}</button>
                         </div>
 
                         {/* SELL */}
@@ -174,9 +176,9 @@ export const LandingPage = () => {
                             </div>
                             <h3 className="text-3xl font-black text-slate-900 mb-6">بـيـع (Sell)</h3>
                             <p className="text-slate-500 font-bold leading-relaxed mb-10 flex-grow">
-                                اعرض مخزونك في سوقنا المفتوح واحصل على عروض شراء فورية من شبكة تضم آلاف التجار المعتمدين في ليبيا والشرق الأوسط.
+                                {t('landingPage.sellSection.desc')}
                             </p>
-                            <button onClick={() => navigate('/marketplace')} className="w-full bg-blue-600 text-white py-5 rounded-[1.5rem] font-black hover:shadow-2xl shadow-blue-500/20 active:scale-95 transition-all text-lg">اعرض سيارتك</button>
+                            <button onClick={() => navigate('/marketplace')} className="w-full bg-blue-600 text-white py-5 rounded-[1.5rem] font-black hover:shadow-2xl shadow-blue-500/20 active:scale-95 transition-all text-lg">{t('landingPage.sellSection.btn')}</button>
                         </div>
 
                         {/* VALUE */}
@@ -186,16 +188,16 @@ export const LandingPage = () => {
                             </div>
                             <h3 className="text-3xl font-black text-slate-900 mb-6">تخـمين (Value)</h3>
                             <p className="text-slate-500 font-bold leading-relaxed mb-10 flex-grow">
-                                استخدم المحرك الذكي لتقدير التكلفة الواصلة ليدك شاملة الشحن والتخليص. لا مفاجآت بعد اليوم، اعرف تكاليفك بدقة البرمجيات الحديثة.
+                                {t('landingPage.valueSection.desc')}
                             </p>
-                            <button onClick={() => navigate('/calculator')} className="w-full bg-emerald-600 text-white py-5 rounded-[1.5rem] font-black hover:shadow-2xl shadow-emerald-500/20 active:scale-95 transition-all text-lg">حاسبة التكلفة 🇱🇾</button>
+                            <button onClick={() => navigate('/calculator')} className="w-full bg-emerald-600 text-white py-5 rounded-[1.5rem] font-black hover:shadow-2xl shadow-emerald-500/20 active:scale-95 transition-all text-lg">{t('landingPage.valueSection.btn')}</button>
                         </div>
                     </div>
                 </div>
-            </section>
+            </section >
 
             {/* 3. TRANSPORT SECTION */}
-            <section id="transport" className="bg-slate-950 py-32 overflow-hidden relative">
+            < section id="transport" className="bg-slate-950 py-32 overflow-hidden relative" >
 
                 <div className="container mx-auto px-6 grid lg:grid-cols-2 gap-24 items-center">
                     <div className="relative animate-in slide-in-from-right duration-1000">
@@ -212,8 +214,8 @@ export const LandingPage = () => {
                                     <Truck className="w-10 h-10" />
                                 </div>
                                 <div>
-                                    <h4 className="text-2xl font-black text-slate-900">تتبع حي للشحنة</h4>
-                                    <p className="text-slate-400 font-bold">وصول متوقع خلال 14 يوم</p>
+                                    <h4 className="text-2xl font-black text-slate-900">{t('landingPage.transport.liveTrack')}</h4>
+                                    <p className="text-slate-400 font-bold">{t('landingPage.transport.eta')}</p>
                                 </div>
                             </div>
                         </div>
@@ -221,16 +223,16 @@ export const LandingPage = () => {
 
                     <div className="space-y-10 text-white">
                         <div className="w-20 h-2 bg-orange-500 rounded-full"></div>
-                        <h2 className="text-5xl lg:text-6xl font-black tracking-tight leading-tight">شحن آمن.. <br /><span className="text-orange-500">من الميناء إلى باب المعرض</span></h2>
+                        <h2 className="text-5xl lg:text-6xl font-black tracking-tight leading-tight">{t('landingPage.transport.safeTransport')} <br /><span className="text-orange-500">{t('landingPage.transport.portToDoor')}</span></h2>
                         <p className="text-xl text-slate-400 font-medium leading-relaxed">
-                            نمتلك شبكة لوجستية تغطي كافة الولايات الأمريكية وساحات المزادات. فريقنا يضمن لك فحص حالة السيارة عند الاستلام وشحنها بأمان تام مع تأمين شامل.
+                            {t('landingPage.transport.desc')}
                         </p>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4">
                             {[
-                                { text: 'تخليص جمركي فوري', icon: Shield },
-                                { text: 'تتبع GPS لحظي', icon: Globe },
-                                { text: 'تأمين شامل ضد الأضرار', icon: CheckCircle2 },
-                                { text: 'فريق دعم لوجستي ليبي', icon: Users }
+                                { text: t('landingPage.transport.feature1'), icon: Shield },
+                                { text: t('landingPage.transport.feature2'), icon: Globe },
+                                { text: t('landingPage.transport.feature3'), icon: CheckCircle2 },
+                                { text: t('landingPage.transport.feature4'), icon: Users }
                             ].map((item, idx) => (
                                 <div key={idx} className="flex items-center gap-4 bg-white/5 border border-white/10 p-5 rounded-[1.5rem] group hover:bg-white/10 transition-colors">
                                     <item.icon className="w-6 h-6 text-orange-500" />
@@ -240,24 +242,24 @@ export const LandingPage = () => {
                         </div>
                     </div>
                 </div>
-            </section>
+            </section >
 
             {/* 4. READY TO SIGN UP (Image 1 CTA Laptop style) */}
-            <section className="bg-orange-600 py-32 relative overflow-hidden">
+            < section className="bg-orange-600 py-32 relative overflow-hidden" >
                 {/* Visual Flair */}
-                <div className="absolute inset-0 opacity-10">
+                < div className="absolute inset-0 opacity-10" >
                     <div className="absolute top-0 right-0 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')]"></div>
-                </div>
+                </div >
 
                 <div className="container mx-auto px-6 relative z-10 grid lg:grid-cols-2 gap-20 items-center">
                     <div className="text-white space-y-10 order-2 lg:order-1">
-                        <h2 className="text-6xl font-black leading-tight">حان وقت الانطلاق.. <br />الربح بانتظارك!</h2>
+                        <h2 className="text-6xl font-black leading-tight">{t('landingPage.cta.title1')} <br />{t('landingPage.cta.title2')}</h2>
 
                         <div className="space-y-8">
                             {[
-                                { title: 'أرباح مضاعفة', desc: 'وفر حتى 30% من قيمة الشراء المحلي عند الشراء مباشرة من المزادات العالمية.', icon: TrendingUp },
-                                { title: 'بيانات دقيقة', desc: 'نقدم لك تقارير فحص كاملة وصوراً عالية الدقة لكل زاوية في السيارة.', icon: Activity },
-                                { title: 'دعم عربي 24/7', desc: 'فريق متخصص لمساعدتك في المزايدة باللغة العربية طوال أيام الأسبوع.', icon: MessageSquare }
+                                { title: t('landingPage.cta.feat1Title'), desc: t('landingPage.cta.feat1Desc'), icon: TrendingUp },
+                                { title: t('landingPage.cta.feat2Title'), desc: t('landingPage.cta.feat2Desc'), icon: Activity },
+                                { title: t('landingPage.cta.feat3Title'), desc: t('landingPage.cta.feat3Desc'), icon: MessageSquare }
                             ].map((feat, i) => (
                                 <div key={i} className="flex items-start gap-6 group">
                                     <div className="w-16 h-16 bg-white/10 rounded-[1.5rem] flex items-center justify-center flex-shrink-0 group-hover:bg-white text-white group-hover:text-orange-600 transition-all shadow-xl">
@@ -271,7 +273,7 @@ export const LandingPage = () => {
                             ))}
                         </div>
 
-                        <button onClick={() => navigate('/auth?mode=register')} className="bg-white text-orange-600 px-14 py-6 rounded-[2.5rem] font-black text-2xl shadow-3xl hover:-translate-y-2 transition-all active:scale-95">سجل مجاناً وانطلق</button>
+                        <button onClick={() => navigate('/auth?mode=register')} className="bg-white text-orange-600 px-14 py-6 rounded-[2.5rem] font-black text-2xl shadow-3xl hover:-translate-y-2 transition-all active:scale-95">{t('landingPage.cta.btn')}</button>
                     </div>
 
                     <div className="relative order-1 lg:order-2 animate-in slide-in-from-bottom duration-1000">
@@ -288,7 +290,7 @@ export const LandingPage = () => {
                                         <Gavel className="w-12 h-12 text-white" />
                                     </div>
                                     <h3 className="text-4xl font-black text-white italic tracking-widest mb-4 uppercase">Live Auction Feed</h3>
-                                    <p className="text-slate-400 font-bold text-lg">بوابة المزايدة المباشرة مفتوحة الآن لجميع المسجلين</p>
+                                    <p className="text-slate-400 font-bold text-lg">{t('landingPage.cta.liveGateway')}</p>
                                 </div>
                             </div>
                         </div>
@@ -296,21 +298,21 @@ export const LandingPage = () => {
                         <div className="absolute -top-10 -left-10 w-40 h-40 bg-white/20 rounded-full blur-3xl animate-pulse"></div>
                     </div>
                 </div>
-            </section>
+            </section >
 
             {/* 5. TESTIMONIALS */}
-            <section id="testimonials" className="py-32 bg-slate-50 relative overflow-hidden">
+            < section id="testimonials" className="py-32 bg-slate-50 relative overflow-hidden" >
 
                 <div className="container mx-auto px-6 text-center mb-20">
-                    <h2 className="text-5xl font-black text-slate-900 mb-4 tracking-tight">شركاء النجاح</h2>
-                    <p className="text-xl text-slate-500 font-bold uppercase tracking-widest">تجار ومستوردون يتحدثون عن تجربتهم</p>
+                    <h2 className="text-5xl font-black text-slate-900 mb-4 tracking-tight">{t('landingPage.testimonials.title')}</h2>
+                    <p className="text-xl text-slate-500 font-bold uppercase tracking-widest">{t('landingPage.testimonials.subtitle')}</p>
                 </div>
 
                 <div className="container mx-auto px-6 grid md:grid-cols-3 gap-10">
                     {[
-                        { name: 'عبد الله الغرياني', role: 'تاجر سيارات - طرابلس', text: 'أوتو برو وفرت عليّ الكثير من الجهد. الآن أقوم بالمزايدة وأنا جالس في مكتبي، والسيارة تصلني كما في الصور تماماً.' },
-                        { name: 'سالم الورفلي', role: 'مستورد مستقل - بنغازي', text: 'الشفافية في الرسوم هي أكثر ما أعجبني. لا توجد تكاليف خفية، وأسعار الشحن منافسة جداً مقارنة بالمكاتب التقليدية.' },
-                        { name: 'عمر القطراني', role: 'صاحب معرض سيارات', text: 'حاسبة التكلفة عندهم دقيقة جداً. تعطيني السعر الواصل ليدي قبل أن أضع المزايدة، وهذا يساعدني في حساب أرباحي مسبقاً.' }
+                        { name: t('landingPage.testimonials.1_name'), role: t('landingPage.testimonials.1_role'), text: t('landingPage.testimonials.1_text') },
+                        { name: t('landingPage.testimonials.2_name'), role: t('landingPage.testimonials.2_role'), text: t('landingPage.testimonials.2_text') },
+                        { name: t('landingPage.testimonials.3_name'), role: t('landingPage.testimonials.3_role'), text: t('landingPage.testimonials.3_text') }
                     ].map((testi, i) => (
                         <div key={i} className="bg-white p-12 rounded-[3.5rem] border border-slate-100 shadow-sm hover:shadow-2xl transition-all group relative">
                             <div className="text-orange-500 mb-8 transform group-hover:scale-110 transition-transform">
@@ -324,23 +326,23 @@ export const LandingPage = () => {
                         </div>
                     ))}
                 </div>
-            </section>
+            </section >
 
             {/* 6. CALL TO ACTION FOOTER (Image 1 Bottom style) */}
-            <section className="pb-32 container mx-auto px-6">
+            < section className="pb-32 container mx-auto px-6" >
                 <div className="bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 rounded-[5rem] p-20 text-center relative overflow-hidden border border-white/5 shadow-3xl">
                     <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/black-linen-2.png')] opacity-30"></div>
                     <div className="relative z-10 max-w-3xl mx-auto space-y-10">
                         <div className="w-20 h-2 bg-orange-600 mx-auto rounded-full"></div>
-                        <h2 className="text-5xl lg:text-7xl font-black text-white leading-tight">جاهز للتحكم في <br /><span className="text-orange-500">مستقبلك التجاري؟</span></h2>
+                        <h2 className="text-5xl lg:text-7xl font-black text-white leading-tight">{t('landingPage.footer.ready')} <br /><span className="text-orange-500">{t('landingPage.footer.future')}</span></h2>
                         <div className="flex flex-col sm:flex-row gap-6 justify-center pt-6">
-                            <button onClick={() => navigate('/auth?mode=register')} className="bg-white text-slate-900 px-16 py-6 rounded-[2rem] font-black text-2xl hover:bg-orange-500 hover:text-white transition-all shadow-2xl">إنشاء حساب مجاني</button>
-                            <button onClick={() => navigate('/marketplace')} className="bg-transparent border-2 border-white/20 text-white px-16 py-6 rounded-[2rem] font-black text-2xl hover:bg-white/10 transition-all">تصفح السيارات</button>
+                            <button onClick={() => navigate('/auth?mode=register')} className="bg-white text-slate-900 px-16 py-6 rounded-[2rem] font-black text-2xl hover:bg-orange-500 hover:text-white transition-all shadow-2xl">{t('landingPage.footer.createAccount')}</button>
+                            <button onClick={() => navigate('/marketplace')} className="bg-transparent border-2 border-white/20 text-white px-16 py-6 rounded-[2rem] font-black text-2xl hover:bg-white/10 transition-all">{t('landingPage.browseCars')}</button>
                         </div>
-                        <p className="text-slate-500 font-bold text-sm tracking-[0.2em] uppercase">لا توجد رسوم خفية • تسجيل فوري • دعم فني مباشر</p>
+                        <p className="text-slate-500 font-bold text-sm tracking-[0.2em] uppercase">{t('landingPage.footer.note')}</p>
                     </div>
                 </div>
-            </section>
-        </div>
+            </section >
+        </div >
     );
 };

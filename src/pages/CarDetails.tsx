@@ -1,24 +1,203 @@
 import React from 'react';
-import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams, Navigate } from 'react-router-dom';
 import {
   ChevronLeft, Calendar, Gauge, MapPin, Shield, Info, FileText,
-  Hash, Calculator as CalcIcon, Gavel, Clock, Tag, AlertTriangle
+  Hash, Calculator as CalcIcon, Gavel, Clock, Tag, AlertTriangle, TrendingUp, X, CheckCircle2
 } from 'lucide-react';
 import { calculateTotalCost, MOCK_LOCATIONS } from '../services/calculatorService';
 import { VehicleType } from '../types/calculator';
 import { LiveAuction } from '../components/LiveAuction';
 import { useStore } from '../context/StoreContext';
 
+// ============================================================
+// Inline Proxy Bid Panel for Upcoming Market cars
+// ============================================================
+const PreBidPanel: React.FC<{ car: any; currentUser: any; socket: any; showAlert: any; exchangeRate: number }> = ({ car, currentUser, socket, showAlert, exchangeRate }) => {
+  const [proxyAmount, setProxyAmount] = React.useState(car.currentBid ? car.currentBid + 100 : (car.startingBid || car.reservePrice * 0.5 || 100));
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
+
+  const handleProxyBid = () => {
+    if (!currentUser) {
+      showAlert('يرجى تسجيل الدخول لتقديم مزايدة آليه (بروكسي)', 'error');
+      return;
+    }
+    if (proxyAmount > currentUser.buyingPower) {
+      showAlert('رصيدك غير كافٍ لهذا السقف من المزايدة الآلية', 'error');
+      return;
+    }
+    if (proxyAmount <= (car.currentBid || 0)) {
+      showAlert('يجب أن يكون سقف المزايدة أعلى من السعر الحالي', 'error');
+      return;
+    }
+
+    setIsSubmitting(true);
+    if (socket) {
+      socket.emit('set_proxy_bid', { carId: car.id, userId: currentUser.id, maxAmount: proxyAmount });
+
+      const handleSet = (data: any) => {
+        if (data.carId === car.id) {
+          showAlert('تم تفعيل مزايدتك المسبقة (البروكسي) بنجاح!', 'success');
+          setIsSubmitting(false);
+          socket.off('proxy_bid_set', handleSet);
+          socket.off('bid_error', handleError);
+        }
+      };
+      const handleError = (data: any) => {
+        showAlert(data.message || 'حدث خطأ أثناء التفعيل', 'error');
+        setIsSubmitting(false);
+        socket.off('proxy_bid_set', handleSet);
+        socket.off('bid_error', handleError);
+      };
+
+      socket.on('proxy_bid_set', handleSet);
+      socket.on('bid_error', handleError);
+
+      setTimeout(() => setIsSubmitting(false), 3000);
+    } else {
+      showAlert('غير متصل بالخادم', 'error');
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleBuyItNow = async () => {
+    if (!currentUser) {
+      showAlert('يرجى تسجيل الدخول للشراء', 'error');
+      return;
+    }
+    // Simulate Buy It Now
+    showAlert('لقد طلبت الشراء الفوري. سيقوم فريق المبيعات بالتواصل معك فوراً!', 'success');
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
+        <div className="text-xs text-slate-400 font-bold mb-2 uppercase tracking-widest flex justify-between">
+          <span>أقصى مزايدة (Proxy Bid)</span>
+          <span className="text-orange-400 font-normal">النظام سيزايد عنك أوتوماتيكياً</span>
+        </div>
+        <div className="flex gap-3">
+          <input
+            aria-label="مبلغ المزايدة" title="مبلغ المزايدة" placeholder="أدخل المبلغ"
+            type="number"
+            value={proxyAmount}
+            onChange={e => setProxyAmount(Number(e.target.value))}
+            min={car.currentBid ? car.currentBid + 100 : 100}
+            step={100}
+            className="flex-1 bg-transparent text-white text-2xl font-black font-mono outline-none border-b border-white/20 pb-1"
+          />
+          <span className="text-slate-400 self-end pb-1 font-bold">USD</span>
+        </div>
+      </div>
+      <button
+        onClick={handleProxyBid}
+        disabled={isSubmitting}
+        className="w-full py-4 bg-orange-600 hover:bg-orange-700 text-white rounded-2xl font-black flex items-center justify-center gap-2 shadow-xl shadow-orange-600/20 active:scale-95 transition-all outline-none disabled:opacity-50"
+      >
+        <Gavel className="w-5 h-5" />
+        {isSubmitting ? 'جاري الإرسال...' : 'تفعيل المزايدة الآلية (Pre-Bid)'}
+      </button>
+
+      {/* Buy It Now Render */}
+      {(car.buyItNow || (car.reservePrice && car.reservePrice * 1.5)) > 0 && ( /* Fallback for Demo if buyItNow not strictly specified */
+        <button
+          onClick={handleBuyItNow}
+          className="w-full py-3 bg-green-500 hover:bg-green-600 text-white rounded-2xl font-black flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all outline-none mt-2"
+        >
+          <div className="flex flex-col items-center">
+            <span className="flex items-center gap-2">
+              <CheckCircle2 className="w-5 h-5" />
+              اشتري الآن بـ ${(car.buyItNow || car.reservePrice * 1.5).toLocaleString('en-US')}
+            </span>
+            <span className="text-xs text-white/80 font-normal mt-1">≈ {Math.round((car.buyItNow || car.reservePrice * 1.5) * (exchangeRate || 7)).toLocaleString('en-US')} د.ل</span>
+          </div>
+        </button>
+      )}
+    </div>
+  );
+};
+
+const CountdownLabel = ({ targetDate }: { targetDate: string | undefined }) => {
+  const [timeLeft, setTimeLeft] = React.useState('يتم الحساب...');
+
+  React.useEffect(() => {
+    if (!targetDate) {
+      setTimeLeft('قريباً (حسب الجدولة)');
+      return;
+    }
+
+    const updateCountdown = () => {
+      const targetTime = new Date(targetDate).getTime();
+      const diff = targetTime - Date.now();
+
+      if (diff <= 0) {
+        setTimeLeft('المزاد يبدأ الآن!');
+        return;
+      }
+
+      const d = Math.floor(diff / (1000 * 60 * 60 * 24));
+      const h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      const s = Math.floor((diff % (1000 * 60)) / 1000);
+
+      let formatted = '';
+      if (d > 0) formatted += `${d} يوم و `;
+      formatted += `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+
+      setTimeLeft(formatted);
+    };
+
+    updateCountdown();
+    const interval = setInterval(updateCountdown, 1000);
+    return () => clearInterval(interval);
+  }, [targetDate]);
+
+  return <span dir="ltr" className="inline-block font-mono tracking-widest">{timeLeft}</span>;
+};
+
 export const CarDetails = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { id } = useParams();
-  const { cars, currentUser } = useStore();
+  const { cars, currentUser, marketEstimates, showAlert, socket, exchangeRate } = useStore();
 
   // Try to get car from location.state first (fast), then from global store
   const carFromState = location.state?.car;
   const carFromStore = cars.find(c => c.id === id);
   const car = carFromState || carFromStore;
+
+  const calculationResult = React.useMemo(() => {
+    if (!car) return null;
+    const locState = car.location || '';
+    const loc = MOCK_LOCATIONS.find(l => locState.includes(l.state)) || MOCK_LOCATIONS[0];
+    const calcBid = car.currentBid || car.reservePrice || car.startingBid || 1000;
+    return calculateTotalCost(calcBid, VehicleType.SEDAN, loc, 'LIBYA', 'KHOMS', 10);
+  }, [car]);
+
+  const [libyanPrices, setLibyanPrices] = React.useState<any[]>([]);
+
+  React.useEffect(() => {
+    fetch('/api/libyan-market')
+      .then(r => r.json())
+      .then(setLibyanPrices)
+      .catch(console.error);
+  }, []);
+
+  const estimate = React.useMemo(() => {
+    if (!car || !libyanPrices?.length) return null;
+    return libyanPrices.find(e => {
+      const carMake = String(car.make || car.Make || '').toLowerCase().trim();
+      const carModel = String(car.model || car['Model Group'] || '').toLowerCase().trim();
+
+      const eMake = String(e.make || '').toLowerCase().trim();
+      const eModel = String(e.model || '').toLowerCase().trim();
+      
+      const makeMatches = carMake.includes(eMake) || eMake.includes(carMake);
+      const modelMatches = carModel.includes(eModel) || eModel.includes(carModel);
+      const yearMatches = e.year === Number(car.year || car.Year);
+
+      return makeMatches && modelMatches && yearMatches;
+    });
+  }, [car, libyanPrices]);
 
   // Extract images from car data (handles arrays from server or strings from CSV)
   const allImages = React.useMemo(() => {
@@ -30,11 +209,41 @@ export const CarDetails = () => {
     return images.slice(0, 20);
   }, [car]);
 
-  const [mainImage, setMainImage] = React.useState(allImages[0] || 'https://picsum.photos/seed/car/800/600');
+  const [currentImageIndex, setCurrentImageIndex] = React.useState(0);
+  const [isHoveringGallery, setIsHoveringGallery] = React.useState(false);
+  const [showLightbox, setShowLightbox] = React.useState(false);
+  const mainImage = allImages[currentImageIndex] || 'https://picsum.photos/seed/car/800/600';
+  const [showPdfModal, setShowPdfModal] = React.useState<string | null>(null);
+
+  const getYoutubeEmbedUrl = (url?: string) => {
+    if (!url) return '';
+    try {
+      let videoId = '';
+      if (url.includes('youtube.com/watch')) {
+        videoId = new URL(url).searchParams.get('v') || '';
+      } else if (url.includes('youtu.be/')) {
+        videoId = url.split('youtu.be/')[1].split('?')[0];
+      } else if (url.includes('youtube.com/shorts/')) {
+        videoId = url.split('youtube.com/shorts/')[1].split('?')[0];
+      }
+      return videoId ? `https://www.youtube.com/embed/${videoId}` : url;
+    } catch (e) {
+      return url;
+    }
+  };
 
   React.useEffect(() => {
-    if (allImages.length > 0) setMainImage(allImages[0]);
+    if (allImages.length > 0) setCurrentImageIndex(0);
   }, [allImages]);
+
+  React.useEffect(() => {
+    if (!isHoveringGallery && !showLightbox && allImages.length > 1) {
+      const timer = setInterval(() => {
+        setCurrentImageIndex((prev) => (prev + 1) % allImages.length);
+      }, 4000);
+      return () => clearInterval(timer);
+    }
+  }, [allImages.length, isHoveringGallery, showLightbox]);
 
   if (!car) {
     return (
@@ -54,21 +263,16 @@ export const CarDetails = () => {
     { label: 'السنة', value: car.year || car.Year, icon: Calendar },
     { label: 'الماركة', value: car.make || car.Make, icon: Shield },
     { label: 'الموديل', value: car.model || car['Model Group'], icon: Info },
-    { label: 'العداد', value: `${(car.odometer || car.Odometer || 0).toLocaleString()} mi`, icon: Gauge },
+    { label: 'العداد', value: `${(car.odometer || car.Odometer || 0).toLocaleString('en-US')} mi`, icon: Gauge },
     { label: 'الموقع', value: car.location || `${car['Location city']}, ${car['Location state']}`, icon: MapPin },
     { label: 'VIN', value: car.vin || car.VIN, icon: Hash },
   ];
 
   // ============================================================
-  // 🔴 IF LIVE / ULTIMO → Show Full Live Auction Widget
+  // 🔴 IF LIVE / ULTIMO → Redirect to Global Live Auction Room
   // ============================================================
   if (isLive) {
-    return (
-      <LiveAuction
-        car={car}
-        onBack={() => navigate(-1)}
-      />
-    );
+    return <Navigate to="/live-auction" replace />;
   }
 
   // ============================================================
@@ -91,8 +295,8 @@ export const CarDetails = () => {
           <Clock className="w-6 h-6 text-blue-500 flex-shrink-0" />
           <div>
             <div className="font-black text-blue-800">المزاد قادم قريباً</div>
-            <div className="text-blue-600 text-sm font-medium">
-              يبدأ في: {car.auctionEndDate ? new Date(car.auctionEndDate).toLocaleString('ar-EG') : 'قريباً'}
+            <div className="text-blue-600 text-sm font-black mt-1">
+              يتبقى لبداية المزاد: <CountdownLabel targetDate={car.auctionStartTime} />
             </div>
           </div>
         </div>
@@ -103,8 +307,8 @@ export const CarDetails = () => {
           <Tag className="w-6 h-6 text-orange-500 flex-shrink-0" />
           <div>
             <div className="font-black text-orange-800">سوق العروض - قدّم عرضك!</div>
-            <div className="text-orange-600 text-sm font-medium">
-              ينتهي في: {car.offerMarketEndTime ? new Date(car.offerMarketEndTime).toLocaleString('ar-EG') : 'قريباً'}
+            <div className="text-orange-600 text-sm font-black mt-1">
+              يتبقى لنهاية العروض: <CountdownLabel targetDate={car.offerMarketEndTime} />
             </div>
           </div>
         </div>
@@ -121,7 +325,7 @@ export const CarDetails = () => {
               {car.winnerId === currentUser?.id ? '🏆 لقد فزت بهذا المزاد!' : 'المزاد منتهٍ'}
             </div>
             <div className="text-sm font-medium text-slate-500">
-              سعر البيع النهائي: ${(car.currentBid || 0).toLocaleString()}
+              سعر البيع النهائي: ${(car.currentBid || 0).toLocaleString('en-US')}
             </div>
           </div>
         </div>
@@ -129,8 +333,15 @@ export const CarDetails = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
         {/* Left: Images */}
-        <div className="space-y-4">
-          <div className="rounded-3xl overflow-hidden shadow-2xl border border-slate-200 bg-white aspect-[4/3]">
+        <div
+          className="space-y-4"
+          onMouseEnter={() => setIsHoveringGallery(true)}
+          onMouseLeave={() => setIsHoveringGallery(false)}
+        >
+          <div
+            className="rounded-3xl overflow-hidden shadow-2xl border border-slate-200 bg-white aspect-[4/3] cursor-pointer relative group"
+            onClick={() => setShowLightbox(true)}
+          >
             <img
               src={mainImage}
               alt={car.make || car.Make}
@@ -145,8 +356,8 @@ export const CarDetails = () => {
             {allImages.map((img: string, i: number) => (
               <div
                 key={i}
-                onClick={() => setMainImage(img)}
-                className={`aspect-square rounded-xl overflow-hidden border-2 transition-all cursor-pointer bg-slate-50 ${mainImage === img ? 'border-orange-500 shadow-md' : 'border-slate-200 opacity-60 hover:opacity-100'}`}
+                onClick={() => setCurrentImageIndex(i)}
+                className={`aspect-square rounded-xl overflow-hidden border-2 transition-all cursor-pointer bg-slate-50 ${currentImageIndex === i ? 'border-orange-500 shadow-md scale-105' : 'border-slate-200 opacity-60 hover:opacity-100'}`}
               >
                 <img
                   src={img}
@@ -160,6 +371,47 @@ export const CarDetails = () => {
               </div>
             ))}
           </div>
+
+          {/* New Media Section */}
+          {(car.youtubeVideoUrl || car.videoUrl || car.engineSoundUrl || car.engineAudioUrl || car.inspectionReportUrl || car.inspectionPdf) && (
+            <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm mt-8 space-y-6">
+              <h3 className="text-xl font-black text-slate-800 flex items-center gap-2 mb-4">
+                <FileText className="w-6 h-6 text-orange-500" /> تفاصيل الفحص والوسائط
+              </h3>
+
+              {(car.youtubeVideoUrl || car.videoUrl) && (
+                <div className="aspect-video rounded-2xl overflow-hidden bg-slate-900 border-2 border-slate-100 flex flex-col">
+                  <iframe
+                    title="فيديو السيارة"
+                    src={getYoutubeEmbedUrl(car.youtubeVideoUrl || car.videoUrl)}
+                    className="w-full flex-1"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                  ></iframe>
+                </div>
+              )}
+
+              {(car.engineSoundUrl || car.engineAudioUrl) && (
+                <div className="bg-slate-50 p-4 rounded-2xl flex items-center gap-4 border border-slate-100">
+                  <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center text-orange-600 flex-shrink-0 shadow-sm">
+                    <Gauge className="w-6 h-6" />
+                  </div>
+                  <div className="flex-1 w-full min-w-0">
+                    <div className="text-sm font-black text-slate-800 mb-2">صوت المحرك</div>
+                    <audio controls className="w-full h-10 outline-none" src={car.engineSoundUrl || car.engineAudioUrl}>
+                      متصفحك لا يدعم تشغيل الصوت.
+                    </audio>
+                  </div>
+                </div>
+              )}
+
+              {(car.inspectionReportUrl || car.inspectionPdf) && (
+                <button onClick={() => setShowPdfModal(car.inspectionReportUrl || car.inspectionPdf)} className="w-full bg-slate-900 hover:bg-orange-500 text-white p-4 rounded-2xl font-black transition-all flex items-center justify-center gap-2 shadow-lg active:scale-95 group">
+                  <FileText className="w-5 h-5 group-hover:scale-110 transition-transform" /> عرض تقرير الفحص (PDF)
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Right: Info */}
@@ -222,30 +474,56 @@ export const CarDetails = () => {
                   {isOfferMarket ? 'أعلى عرض حالي' : 'آخر سعر مزايدة'}
                 </div>
                 <div className="text-5xl font-black font-mono text-green-400">
-                  ${(car.currentBid || car.reservePrice || 0).toLocaleString()}
+                  ${(car.currentBid || car.reservePrice || 0).toLocaleString('en-US')}
+                  <div className="text-xl text-slate-400 font-sans tracking-normal font-medium mt-1">≈ {Math.round((car.currentBid || car.reservePrice || 0) * (exchangeRate || 7)).toLocaleString('en-US')} د.ل</div>
                 </div>
               </div>
-              <div className="text-right">
-                <div className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">السعر الاحتياطي</div>
-                <div className="text-2xl font-black font-mono text-slate-400 line-through decoration-red-500/50">
-                  ${(car.reservePrice || 0).toLocaleString()}
+              <div className="text-right flex flex-col gap-4">
+                <div>
+                  <div className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">السعر الاحتياطي</div>
+                  <div className="text-2xl font-black font-mono text-slate-400 line-through decoration-red-500/50">
+                    ${(car.reservePrice || 0).toLocaleString('en-US')}
+                  </div>
+                  <div className="text-sm font-bold text-slate-500 font-sans tracking-normal">
+                    ≈ {Math.round((car.reservePrice || 0) * (exchangeRate || 7)).toLocaleString('en-US')} د.ل
+                  </div>
                 </div>
+                {car.buyItNow > 0 && (
+                  <div>
+                    <div className="text-amber-400 text-xs font-bold uppercase tracking-widest mb-1">شراء فوري</div>
+                    <div className="text-3xl font-black font-mono text-amber-500">
+                      ${car.buyItNow.toLocaleString('en-US')}
+                    </div>
+                    <div className="text-sm font-bold text-amber-500/70 font-sans tracking-normal mt-1">
+                      ≈ {Math.round(car.buyItNow * (exchangeRate || 7)).toLocaleString('en-US')} د.ل
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
             {/* CTA Button */}
             {car.status === 'upcoming' && (
-              <button
-                disabled
-                className="w-full py-4 bg-blue-500/20 border border-blue-500/30 text-blue-300 rounded-2xl font-black flex items-center justify-center gap-2 cursor-not-allowed"
-              >
-                <Clock className="w-5 h-5" />
-                المزاد لم يبدأ بعد - تابع الصفحة عند البدء
-              </button>
+              <PreBidPanel car={car} currentUser={currentUser} socket={socket} showAlert={showAlert} exchangeRate={exchangeRate} />
             )}
 
             {isOfferMarket && currentUser && (
               <MakeOfferPanel car={car} currentUser={currentUser} />
+            )}
+
+            {car.buyItNow > 0 && car.status !== 'closed' && (
+              <button
+                onClick={() => {
+                  if (!currentUser) {
+                    showAlert('يرجى تسجيل الدخول أولاً', 'error');
+                    return;
+                  }
+                  showAlert('تم تسجيل رغبتك بالشراء الفوري. سيتم التواصل معك لإتمام إرسال الفاتورة.', 'success');
+                }}
+                className="w-full mt-4 py-4 bg-amber-500 hover:bg-amber-600 text-white rounded-2xl font-black flex items-center justify-center gap-2 shadow-xl shadow-amber-500/20 active:scale-95 transition-all text-lg"
+              >
+                شراء السيارة الآن بـ ${car.buyItNow.toLocaleString('en-US')}
+              </button>
             )}
 
             {car.status === 'closed' && (
@@ -255,33 +533,77 @@ export const CarDetails = () => {
             )}
 
             {/* Mini Cost Calculator */}
-            {car.currentBid && car.currentBid > 0 && (
+            {calculationResult && (car.currentBid > 0 || car.reservePrice > 0 || car.startingBid > 0) && (
               <div className="mt-6 pt-6 border-t border-white/10">
                 <div className="flex items-center gap-2 text-slate-400 text-xs font-bold uppercase tracking-widest mb-3">
                   <CalcIcon className="w-4 h-4 text-orange-500" />
                   تقدير التكلفة الكاملة (حتى ليبيا)
                 </div>
-                {(() => {
-                  const locState = car.location || '';
-                  const loc = MOCK_LOCATIONS.find(l => locState.includes(l.state)) || MOCK_LOCATIONS[0];
-                  const result = calculateTotalCost(car.currentBid, VehicleType.SEDAN, loc, 'LIBYA', 'KHOMS', 10);
-                  return (
-                    <div className="space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-slate-500">رسوم المزاد</span>
-                        <span className="font-mono">${result.auctionFee.toLocaleString()}</span>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">رسوم المزاد</span>
+                    <span className="font-mono">${calculationResult.auctionFee.toLocaleString('en-US')}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">الشحن واللوجستيات</span>
+                    <span className="font-mono">${(calculationResult.inlandFreight + calculationResult.oceanFreight).toLocaleString('en-US')}</span>
+                  </div>
+                  <div className="flex justify-between pt-2 border-t border-white/10 font-black">
+                    <span className="text-orange-400">الإجمالي الواصل (الخمس)</span>
+                    <div className="flex flex-col items-end">
+                      <span className="font-mono text-orange-400">${calculationResult.total.toLocaleString('en-US')}</span>
+                      <span className="font-mono text-xs text-orange-400/70">{Math.round(calculationResult.total * (exchangeRate || 7)).toLocaleString('en-US')} د.ل</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Estimated Market Price Widget */}
+            {estimate && (
+              <div className="bg-gradient-to-br from-indigo-50 to-white border border-indigo-100/50 rounded-2xl p-6 mt-6 shadow-sm relative overflow-hidden group">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full blur-3xl -mr-10 -mt-10 transition-transform group-hover:scale-150 duration-700"></div>
+                <div className="relative flex flex-col gap-4">
+                  <div className="flex items-center gap-4">
+                    <div className="flex-shrink-0 w-12 h-12 bg-white rounded-xl shadow-sm border border-indigo-50 flex items-center justify-center">
+                      <TrendingUp className="w-6 h-6 text-indigo-500" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="text-xs font-bold text-indigo-400 mb-1 flex items-center gap-1.5 uppercase tracking-wider">
+                        متوسط السعر بالسوق الموازي (ليبيا)
                       </div>
-                      <div className="flex justify-between">
-                        <span className="text-slate-500">الشحن واللوجستيات</span>
-                        <span className="font-mono">${(result.inlandFreight + result.oceanFreight).toLocaleString()}</span>
-                      </div>
-                      <div className="flex justify-between pt-2 border-t border-white/10 font-black">
-                        <span className="text-orange-400">الإجمالي الواصل (الخمس)</span>
-                        <span className="font-mono text-orange-400">${result.total.toLocaleString()}</span>
+                      <div className="flex items-end gap-3">
+                        <div className="text-2xl font-black text-indigo-900 font-mono tracking-tight">{estimate.priceLYD.toLocaleString('en-US')} د.ل</div>
+                        <div className="text-lg font-bold text-slate-500 font-mono tracking-tight pb-[2px]">
+                          (${Math.round(estimate.priceLYD / (exchangeRate || 7)).toLocaleString('en-US')})
+                        </div>
+                        <div className="text-sm font-bold text-slate-400 mb-1">({estimate.condition})</div>
                       </div>
                     </div>
-                  );
-                })()}
+                    <div className="text-left hidden sm:block">
+                      <div className="text-[10px] font-bold text-slate-400 bg-white px-2 py-1 rounded-md border border-slate-100 shadow-sm inline-block">تحديث: اليوم</div>
+                    </div>
+                  </div>
+                  
+                  {/* Profit Margin Box */}
+                  {calculationResult && (
+                    <div className="mt-2 bg-emerald-50 border border-emerald-100 rounded-xl p-4 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                        </div>
+                        <span className="font-bold text-emerald-800 text-sm">هامش الربح المتوقع</span>
+                      </div>
+                      <div className="text-left font-black text-emerald-600 font-mono text-xl" dir="ltr">
+                        {(() => {
+                          const totalCostLYD = Math.round(calculationResult.total * (exchangeRate || 7));
+                          const profit = estimate.priceLYD - totalCostLYD;
+                          return profit > 0 ? `+${profit.toLocaleString('en-US')} LYD` : `${profit.toLocaleString('en-US')} LYD`;
+                        })()}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -312,6 +634,87 @@ export const CarDetails = () => {
           </div>
         </div>
       </div>
+
+      {/* PDF Modal */}
+      {showPdfModal && (
+        <div className="fixed inset-0 z-[200] bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4 md:p-8">
+          <div className="bg-white rounded-3xl w-full h-full max-w-5xl shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center p-4 border-b border-slate-100 bg-slate-50">
+              <h3 className="text-xl font-black text-slate-800 flex items-center gap-2">
+                <FileText className="w-6 h-6 text-orange-500" /> تقرير فحص السيارة
+              </h3>
+              <div className="flex items-center gap-2">
+                <a
+                  href={showPdfModal}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl transition-colors text-sm"
+                  download
+                >
+                  <FileText className="w-4 h-4 inline-block mr-1" /> تحميل الملف
+                </a>
+                <button
+                  title="إغلاق"
+                  onClick={() => setShowPdfModal(null)}
+                  className="p-2 bg-slate-200 hover:bg-rose-500 hover:text-white rounded-full transition-all text-slate-500"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 bg-slate-100 w-full">
+              <iframe src={showPdfModal} className="w-full h-full border-0" title="PDF Viewer" />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Lightbox Modal */}
+      {showLightbox && (
+        <div className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center animate-in fade-in duration-300">
+          <button
+            onClick={() => setShowLightbox(false)}
+            aria-label="إغلاق"
+            title="إغلاق"
+            className="absolute top-6 left-6 p-4 bg-white/10 hover:bg-rose-500 hover:text-white rounded-full transition-all text-white/70"
+          >
+            <X className="w-8 h-8" />
+          </button>
+
+          {allImages.length > 1 && (
+            <button
+              onClick={(e) => { e.stopPropagation(); setCurrentImageIndex((prev) => (prev === allImages.length - 1 ? 0 : prev + 1)); }}
+              aria-label="التالي"
+              title="التالي"
+              className="absolute left-6 p-4 bg-white/10 hover:bg-orange-500 hover:text-white rounded-full transition-all text-white/70 z-10"
+            >
+              <ChevronLeft className="w-10 h-10 -rotate-180" />
+            </button>
+          )}
+
+          <img
+            src={mainImage}
+            alt="Fullscreen"
+            className="max-w-[90vw] max-h-[90vh] object-contain select-none"
+            referrerPolicy="no-referrer"
+          />
+
+          {allImages.length > 1 && (
+            <button
+              onClick={(e) => { e.stopPropagation(); setCurrentImageIndex((prev) => (prev === 0 ? allImages.length - 1 : prev - 1)); }}
+              aria-label="السابق"
+              title="السابق"
+              className="absolute right-6 p-4 bg-white/10 hover:bg-orange-500 hover:text-white rounded-full transition-all text-white/70 z-10"
+            >
+              <ChevronLeft className="w-10 h-10" />
+            </button>
+          )}
+
+          <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-black/50 text-white px-6 py-2 rounded-full font-bold text-lg tracking-widest backdrop-blur-sm">
+            {currentImageIndex + 1} / {allImages.length}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -328,7 +731,7 @@ const MakeOfferPanel: React.FC<{ car: any; currentUser: any }> = ({ car, current
 
   const handleSubmitOffer = async () => {
     if (offerAmount < minOffer) {
-      showAlert(`الحد الأدنى للعرض هو $${minOffer.toLocaleString()} (90% من السعر الاحتياطي)`, 'error');
+      showAlert(`الحد الأدنى للعرض هو $${minOffer.toLocaleString('en-US')} (90% من السعر الاحتياطي)`, 'error');
       return;
     }
     if (offerAmount > currentUser.buyingPower) {
@@ -359,10 +762,10 @@ const MakeOfferPanel: React.FC<{ car: any; currentUser: any }> = ({ car, current
     <div className="space-y-4">
       <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
         <div className="text-xs text-slate-400 font-bold mb-2 uppercase tracking-widest">
-          مبلغ عرضك (الحد الأدنى: ${minOffer.toLocaleString()})
+          مبلغ عرضك (الحد الأدنى: ${minOffer.toLocaleString('en-US')})
         </div>
         <div className="flex gap-3">
-          <input aria-label="مدخل" title="مدخل" placeholder="تحديد" 
+          <input aria-label="مدخل" title="مدخل" placeholder="تحديد"
             type="number"
             value={offerAmount}
             onChange={e => setOfferAmount(Number(e.target.value))}

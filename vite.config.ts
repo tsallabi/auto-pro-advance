@@ -18,15 +18,15 @@ export default defineConfig(({ mode }) => {
     server: {
       proxy: {
         '/api': {
-          target: 'http://localhost:3000',
+          target: 'http://localhost:3005',
           changeOrigin: true,
         },
         '/uploads': {
-          target: 'http://localhost:3000',
+          target: 'http://localhost:3005',
           changeOrigin: true,
         },
         '/socket.io': {
-          target: 'ws://localhost:3000',
+          target: 'ws://localhost:3005',
           ws: true,
         },
 

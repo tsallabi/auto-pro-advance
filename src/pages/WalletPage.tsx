@@ -149,12 +149,12 @@ export const WalletPage = () => {
                                 </div>
                             </div>
                             <div className="flex items-end gap-3">
-                                <span className="text-6xl font-black text-white">${avail.toLocaleString()}</span>
+                                <span className="text-6xl font-black text-white">${avail.toLocaleString('en-US')}</span>
                                 <span className="text-slate-400 text-sm font-bold mb-2">متاح للمزايدة</span>
                             </div>
                             {rsrvd > 0 && (
                                 <p className="text-yellow-400 text-xs font-bold mt-1 flex items-center gap-1.5">
-                                    <Shield className="w-3.5 h-3.5" /> ${rsrvd.toLocaleString()} محجوز في مزايدات نشطة
+                                    <Shield className="w-3.5 h-3.5" /> ${rsrvd.toLocaleString('en-US')} محجوز في مزايدات نشطة
                                 </p>
                             )}
                         </div>
@@ -166,7 +166,7 @@ export const WalletPage = () => {
                             ].map(s => (
                                 <div key={s.label} className="bg-white/5 border border-white/10 rounded-2xl p-4 text-center min-w-[130px]">
                                     <s.icon className={`w-5 h-5 mx-auto mb-1.5 ${s.color}`} />
-                                    <div className="text-xl font-black text-white">${s.val.toLocaleString()}</div>
+                                    <div className="text-xl font-black text-white">${s.val.toLocaleString('en-US')}</div>
                                     <div className="text-slate-400 text-xs font-bold">{s.label}</div>
                                 </div>
                             ))}
@@ -182,7 +182,7 @@ export const WalletPage = () => {
                         <AlertCircle className="w-5 h-5 text-orange-500 shrink-0" />
                         <p className="text-orange-700 font-bold text-sm flex-1">
                             لديك <strong>{wallet!.unpaidInvoices.length}</strong> فاتورة مستحقة بإجمالي
-                            <strong className="mx-1">${wallet!.unpaidInvoices.reduce((sum, inv) => sum + inv.amount, 0).toLocaleString()}</strong>
+                            <strong className="mx-1">${wallet!.unpaidInvoices.reduce((sum, inv) => sum + inv.amount, 0).toLocaleString('en-US')}</strong>
                         </p>
                         <button onClick={() => setActiveTab('invoices')} className="text-xs font-black bg-orange-500 text-white px-4 py-2 rounded-xl hover:bg-orange-600 transition-colors">
                             ادفع الآن
@@ -239,7 +239,7 @@ export const WalletPage = () => {
                                                 <p className="font-bold text-slate-800 text-sm">{TYPE_LABELS[pr.type] || pr.type}</p>
                                                 <p className="text-xs text-slate-400">{new Date(pr.requestedAt).toLocaleDateString('ar-LY')}</p>
                                             </div>
-                                            <span className="font-black text-slate-900">${Number(pr.amount).toLocaleString()}</span>
+                                            <span className="font-black text-slate-900">${Number(pr.amount).toLocaleString('en-US')}</span>
                                             <span className="text-xs bg-yellow-100 text-yellow-700 font-black px-2.5 py-1 rounded-lg">جاري المراجعة</span>
                                         </div>
                                     ))}
@@ -265,7 +265,7 @@ export const WalletPage = () => {
                                                 <p className="text-xs text-slate-400">{new Date(tx.timestamp).toLocaleDateString('ar-LY')}</p>
                                             </div>
                                             <span className={`font-black ${tx.type === 'credit' ? 'text-green-600' : 'text-red-500'}`}>
-                                                {tx.type === 'credit' ? '+' : '-'}${tx.amount.toLocaleString()}
+                                                {tx.type === 'credit' ? '+' : '-'}${tx.amount.toLocaleString('en-US')}
                                             </span>
                                         </div>
                                     ))}
@@ -317,7 +317,7 @@ export const WalletPage = () => {
                                             {[500, 1000, 5000, 10000].map(v => (
                                                 <button key={v} type="button" onClick={() => setTopupAmount(String(v))}
                                                     className="text-xs font-black border border-slate-200 text-slate-600 hover:border-orange-400 hover:text-orange-500 px-3 py-1.5 rounded-xl transition-colors">
-                                                    ${v.toLocaleString()}
+                                                    ${v.toLocaleString('en-US')}
                                                 </button>
                                             ))}
                                         </div>
@@ -374,7 +374,7 @@ export const WalletPage = () => {
                                                 <p className="font-black text-slate-800">{INV_TYPE[inv.type] || inv.type}</p>
                                                 <p className="text-xs text-slate-400 font-bold">{inv.id} • يُستحق {new Date(inv.dueDate).toLocaleDateString('ar-LY')}</p>
                                             </div>
-                                            <span className="text-lg font-black text-slate-900">${inv.amount.toLocaleString()}</span>
+                                            <span className="text-lg font-black text-slate-900">${inv.amount.toLocaleString('en-US')}</span>
                                             <button
                                                 disabled={payingInvId === inv.id || avail < inv.amount}
                                                 onClick={() => handlePayInvoice(inv.id)}
@@ -402,7 +402,7 @@ export const WalletPage = () => {
                         <div className="max-w-lg">
                             <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6">
                                 <h3 className="font-black text-slate-800 text-lg mb-1">سحب الرصيد</h3>
-                                <p className="text-slate-400 text-sm font-bold mb-6">الرصيد المتاح: <strong className="text-slate-900">${avail.toLocaleString()}</strong></p>
+                                <p className="text-slate-400 text-sm font-bold mb-6">الرصيد المتاح: <strong className="text-slate-900">${avail.toLocaleString('en-US')}</strong></p>
                                 <form onSubmit={handleWithdraw} className="space-y-4">
                                     <div>
                                         <label className="block text-[11px] font-black text-slate-400 uppercase tracking-tighter mb-2">المبلغ ($)</label>
@@ -449,13 +449,13 @@ export const WalletPage = () => {
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <p className="font-bold text-slate-800 text-sm truncate">{tx.description}</p>
-                                        <p className="text-xs text-slate-400">{new Date(tx.timestamp).toLocaleString('ar-LY')}</p>
+                                        <p className="text-xs text-slate-400">{new Date(tx.timestamp).toLocaleString('en-US')}</p>
                                     </div>
                                     <div className="text-left">
                                         <span className={`font-black ${tx.type === 'credit' ? 'text-green-600' : 'text-red-500'}`}>
-                                            {tx.type === 'credit' ? '+' : '-'}${tx.amount.toLocaleString()}
+                                            {tx.type === 'credit' ? '+' : '-'}${tx.amount.toLocaleString('en-US')}
                                         </span>
-                                        <p className="text-xs text-slate-400 font-bold">${tx.balanceAfter.toLocaleString()} رصيد</p>
+                                        <p className="text-xs text-slate-400 font-bold">${tx.balanceAfter.toLocaleString('en-US')} رصيد</p>
                                     </div>
                                 </div>
                             ))}

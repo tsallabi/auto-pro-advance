@@ -76,7 +76,7 @@ export const ShippingPage = () => {
     const faqs = [
         { q: 'هل يمكن تتبع شحنتي؟', a: 'نعم، بعد تأكيد الشحن تتلقى رقم تتبع وتستطيع متابعة السفينة عبر لوحة تحكمك.' },
         { q: 'ما المدة الإجمالية من المزاد حتى الاستلام؟', a: `المدة الإجمالية تتراوح بين ${settings.deliveryDays.domestic + settings.deliveryDays.sea + settings.deliveryDays.customs} إلى 75 يوماً حسب الميناء والجمارك.` },
-        { q: 'هل الرسوم الجمركية شاملة في السعر؟', a: `نعم، نحصي ضريبة الجمارك (${settings.customsDuty}%) + رسوم المعالجة (${settings.agencyFee.toLocaleString()} $) في الحساب الأولي.` },
+        { q: 'هل الرسوم الجمركية شاملة في السعر؟', a: `نعم، نحصي ضريبة الجمارك (${settings.customsDuty}%) + رسوم المعالجة (${settings.agencyFee.toLocaleString('en-US')} $) في الحساب الأولي.` },
         { q: 'هل يمكن شحن أكثر من سيارة معاً؟', a: 'نعم، شحن أكثر من سيارة في نفس الحاوية يوفر 15-20% من تكلفة الشحن. تواصل معنا للحصول على عرض مجمّع.' },
         { q: 'ماذا لو أُتلفت السيارة أثناء الشحن؟', a: 'جميع السيارات مؤمنة خلال رحلة الشحن. في حالة أي تلف، يتم تعويضك وفق قيمة التأمين.' },
     ];
@@ -172,7 +172,7 @@ export const ShippingPage = () => {
                                         </div>
                                     </div>
                                     <div className="text-right">
-                                        <div className="text-2xl font-black text-orange-400">${r.price.toLocaleString()}</div>
+                                        <div className="text-2xl font-black text-orange-400">${r.price.toLocaleString('en-US')}</div>
                                         <div className="text-slate-400 text-xs">{r.days} يوم تقريباً</div>
                                     </div>
                                 </div>
@@ -191,11 +191,11 @@ export const ShippingPage = () => {
                 <p className="text-slate-500 text-sm text-center mb-10">جميع الأسعار بالدولار الأمريكي — يتم تحديثها من لوحة تحكم المدير</p>
                 <div className="bg-white rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden">
                     {[
-                        { label: 'رسوم الشحن البحري (أساسية)', value: `من $${settings.seaFreightBase.toLocaleString()}`, icon: Ship },
+                        { label: 'رسوم الشحن البحري (أساسية)', value: `من $${settings.seaFreightBase.toLocaleString('en-US')}`, icon: Ship },
                         { label: 'النقل الداخلي', value: `$${settings.domesticRate}/كم`, icon: Truck },
-                        { label: 'رسوم الوكالة والتخليص', value: `$${settings.agencyFee.toLocaleString()}`, icon: Package },
+                        { label: 'رسوم الوكالة والتخليص', value: `$${settings.agencyFee.toLocaleString('en-US')}`, icon: Package },
                         { label: 'الرسوم الجمركية', value: `${settings.customsDuty}% من قيمة السيارة`, icon: Globe },
-                        { label: 'رسوم الميناء والمناولة', value: `$${settings.portHandling.toLocaleString()}`, icon: MapPin },
+                        { label: 'رسوم الميناء والمناولة', value: `$${settings.portHandling.toLocaleString('en-US')}`, icon: MapPin },
                         { label: 'عمولة أوتو برو', value: `${settings.commissionRate}%`, icon: DollarSign },
                     ].map((item, i) => (
                         <div key={i} className={`flex items-center gap-4 px-6 py-4 ${i % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>

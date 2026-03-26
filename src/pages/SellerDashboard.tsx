@@ -4,20 +4,115 @@ import {
   Store, Plus, TrendingUp, Package, RefreshCw, Car, DollarSign,
   Activity, Gavel, Handshake, FileText, Truck, MessageSquare,
   CreditCard, UploadCloud, Target, CheckCircle2, Clock, X, Info,
-  LineChart as LineChartIcon, Send
+  LineChart as LineChartIcon, Send, ShieldCheck, Reply, Bell, Mail
 } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useStore } from '../context/StoreContext';
 import { IbanUpdateCard, KycUploadCard } from '../components/SellerKycComponents';
-
+import { UnifiedCarForm } from '../components/UnifiedCarForm';
 export const SellerDashboard = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const view = searchParams.get('view') || 'overview';
-  const { currentUser, showAlert, cars } = useStore();
+  const { showAlert, showConfirm, currentUser, setCurrentUser, cars, messages, markMessageAsRead } = useStore();
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [profileForm, setProfileForm] = useState({
+    companyName: currentUser?.companyName || '',
+    address: currentUser?.address1 || ''
+  });
+
+  const [notificationSettings, setNotificationSettings] = useState({ emailNotifications: true, whatsappNotifications: true });
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
+
+  useEffect(() => {
+    if (currentUser?.id) {
+      fetch(`/api/user/settings/${currentUser.id}`)
+        .then(res => res.json())
+        .then(data => {
+          if (!data.error) {
+            setNotificationSettings({
+              emailNotifications: data.emailNotifications === 1,
+              whatsappNotifications: data.whatsappNotifications === 1
+            });
+          }
+        })
+        .catch(console.error);
+    }
+  }, [currentUser?.id]);
+
+  const toggleNotificationSetting = async (key: 'emailNotifications' | 'whatsappNotifications') => {
+    const newSettings = { ...notificationSettings, [key]: !notificationSettings[key] };
+    setNotificationSettings(newSettings);
+    setIsSavingSettings(true);
+    try {
+      await fetch(`/api/user/settings/${currentUser?.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newSettings)
+      });
+    } catch {
+      showAlert('فشل تحديث الإعدادات', 'error');
+    } finally {
+      setIsSavingSettings(false);
+    }
+  };
+
+  useEffect(() => {
+    if (currentUser) {
+      setProfileForm({
+        companyName: currentUser.companyName || '',
+        address: currentUser.address1 || ''
+      });
+    }
+  }, [currentUser]);
 
   const [offerMarketCars, setOfferMarketCars] = useState<any[]>([]);
   const [sellerCars, setSellerCars] = useState<any[]>([]);
+  const [sellerInvoices, setSellerInvoices] = useState<any[]>([]);
   const [shipments, setShipments] = useState<any[]>([]);
+  const [inventoryTab, setInventoryTab] = useState('all'); // all, pending, live, sold, unsold, offers
+  const [editingCar, setEditingCar] = useState<any>(null);
+  const [showMessageModal, setShowMessageModal] = useState(false);
+  const [messageForm, setMessageForm] = useState({ category: 'general', supportTeam: '', lotNumber: '', content: '' });
+
+  const handleUpdateProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingProfile(true);
+    try {
+      // Ensure all required fields are sent, converting null to empty string to recover from previous bug
+      const payload: any = {
+        ...currentUser,
+        id: currentUser?.id,
+        ...profileForm,
+        companyName: profileForm.companyName || '',
+        address: profileForm.address || '',
+        firstName: currentUser?.firstName || '',
+        lastName: currentUser?.lastName || '',
+        phone: currentUser?.phone || ''
+      };
+
+      console.log('Sending profile payload:', payload);
+
+      const res = await fetch('/api/user/update-profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCurrentUser(data.user);
+        localStorage.setItem('currentUser', JSON.stringify(data.user));
+        showAlert('تم تحديث البيانات بنجاح', 'success');
+        setIsEditingProfile(false);
+      } else {
+        showAlert('فشل التحديث', 'error');
+      }
+    } catch {
+      showAlert('فشل الاتصال بالخادم', 'error');
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
 
   // ✅ PHASE 4: Real Seller Wallet State
   const [wallet, setWallet] = useState<any>(null);
@@ -74,6 +169,20 @@ export const SellerDashboard = () => {
 
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
+  const [refreshOfferMarket, setRefreshOfferMarket] = useState(0);
+  const [invoiceStatuses, setInvoiceStatuses] = useState<Record<string, { isViewed: number, timestamp?: string }>>({});
+
+  // Counter Offer Modal State
+  const [showCounterModal, setShowCounterModal] = useState(false);
+  const [counterCar, setCounterCar] = useState<any | null>(null);
+  const [counterAmount, setCounterAmount] = useState('');
+
+  // Reschedule Modal State
+  const [showRescheduleModal, setShowRescheduleModal] = useState(false);
+  const [rescheduleCar, setRescheduleCar] = useState<any | null>(null);
+  const [rescheduleDate, setRescheduleDate] = useState('');
+  const [rescheduleAcceptOffers, setRescheduleAcceptOffers] = useState(true);
+  const [rescheduleBuyItNow, setRescheduleBuyItNow] = useState('');
 
   const handleImageUpload = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -148,18 +257,28 @@ export const SellerDashboard = () => {
     const filteredCars = cars.filter(c => c.sellerId === currentUser?.id || true); // Default true for demo
     setSellerCars(filteredCars);
 
-    if (view === 'offer_market') {
+    if (inventoryTab === 'offers') {
       fetch(`/api/admin/offer-market-cars?userId=${currentUser?.id}&userRole=${currentUser?.role}`)
         .then(res => res.json())
         .then(data => setOfferMarketCars(Array.isArray(data) ? data : []))
         .catch(err => console.error('Failed to fetch offer market cars:', err));
     }
 
+    // Fetch invoice statuses for sold cars - MOVED TO SEPARATE EFFECT TO PREVENT INFINITE LOOP
+
+
     if (view === 'logistics') {
       fetch(`/api/shipments/seller/${currentUser?.id}`)
         .then(res => res.json())
         .then(setShipments)
         .catch(err => console.error('Failed to fetch seller shipments:', err));
+    }
+
+    if (view === 'invoices') {
+      fetch(`/api/seller/invoices/${currentUser?.id}`)
+        .then(res => res.json())
+        .then(data => setSellerInvoices(Array.isArray(data) ? data : []))
+        .catch(err => console.error('Failed to fetch seller invoices:', err));
     }
 
     // ✅ PHASE 4: Fetch real seller wallet data
@@ -184,7 +303,35 @@ export const SellerDashboard = () => {
         .then(data => setLedger(Array.isArray(data) ? data : []))
         .catch(err => console.error('Failed to fetch ledger:', err));
     }
-  }, [view, currentUser, cars]);
+  }, [view, inventoryTab, currentUser?.id, cars.length, refreshOfferMarket]);
+
+  useEffect(() => {
+    // Separate effect for fetching invoice statuses only when sold cars change
+    const soldCars = sellerCars.filter(c => c.status === 'sold' || c.saleStatus === 'sold');
+    if (soldCars.length === 0) return;
+
+    soldCars.forEach(car => {
+      fetch(`/api/invoices/car/${car.id}`)
+        .then(res => res.json())
+        .then(data => {
+          setInvoiceStatuses(prev => {
+            // Prevent state update if data is same (prevents infinite loop if somehow triggered)
+            if (prev[car.id]?.isViewed === data.isViewed && prev[car.id]?.timestamp === data.timestamp) return prev;
+            return { ...prev, [car.id]: data };
+          });
+        })
+        .catch(err => console.error('Failed to fetch invoice status:', err));
+    });
+  }, [sellerCars]);
+
+  // Handle 'Add Car' navigation from Sidebar
+  useEffect(() => {
+    if (view === 'add') {
+      setShowAddCarModal(true);
+      setEditingCar(null);
+      setSearchParams({ view: 'inventory' }); // Reset view so modal can be closed normally
+    }
+  }, [view, setSearchParams]);
 
   // ✅ PHASE 4: Handle withdrawal request
   const handleWithdraw = async () => {
@@ -327,26 +474,7 @@ export const SellerDashboard = () => {
     }
   };
 
-  const handleRejectOffer = async (carId: string) => {
-    if (!window.confirm('هل أنت متأكد من رفض هذا العرض؟ سيتم حذف العرض الحالي.')) return;
-    try {
-      const res = await fetch(`/api/offers/${carId}/reject`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: currentUser?.id, userRole: currentUser?.role })
-      });
-      if (res.ok) {
-        showAlert('تم رفض العرض بنجاح.', 'info');
-        fetch(`/api/admin/offer-market-cars?userId=${currentUser?.id}&userRole=${currentUser?.role}`)
-          .then(res => res.json())
-          .then(data => setOfferMarketCars(Array.isArray(data) ? data : []));
-      } else {
-        showAlert('فشل رفض العرض.', 'error');
-      }
-    } catch (e) {
-      showAlert('خطأ في الاتصال بالخادم', 'error');
-    }
-  };
+  // Removed handleRejectOffer function as its logic is moved to the onClick handler
 
   const renderContent = () => {
     switch (view) {
@@ -369,57 +497,324 @@ export const SellerDashboard = () => {
 
             <div className="bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden">
               <div className="p-4 border-b border-slate-100 flex gap-2 overflow-x-auto bg-slate-50/50">
-                <button className="px-4 py-2 bg-white text-slate-900 font-bold text-sm rounded-xl border border-slate-200 shadow-sm">الكل</button>
-                <button className="px-4 py-2 text-slate-500 font-bold text-sm rounded-xl hover:bg-slate-100">بانتظار الموافقة</button>
-                <button className="px-4 py-2 text-slate-500 font-bold text-sm rounded-xl hover:bg-slate-100 flex items-center gap-1">
-                  <div className="w-2 h-2 rounded-full bg-green-500"></div> في المزاد
+                <button onClick={() => setInventoryTab('all')} className={`px-4 py-2 font-bold text-sm rounded-xl transition-all ${inventoryTab === 'all' ? 'bg-white text-slate-900 border border-slate-200 shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}>الكل ({sellerCars.length})</button>
+                <button onClick={() => setInventoryTab('pending')} className={`px-4 py-2 font-bold text-sm rounded-xl transition-all ${inventoryTab === 'pending' ? 'bg-white text-slate-900 border border-slate-200 shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}>بانتظار الموافقة ({sellerCars.filter(c => c.status === 'pending_approval').length})</button>
+                <button onClick={() => setInventoryTab('live')} className={`px-4 py-2 font-bold text-sm rounded-xl flex items-center gap-1 transition-all ${inventoryTab === 'live' ? 'bg-white text-slate-900 border border-slate-200 shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}>
+                  {inventoryTab === 'live' && <div className="w-2 h-2 rounded-full bg-green-500"></div>}في المزاد ({sellerCars.filter(c => Boolean(c.auctionEndDate) && new Date(c.auctionEndDate) > new Date() && c.status !== 'sold').length})
                 </button>
-                <button className="px-4 py-2 text-slate-500 font-bold text-sm rounded-xl hover:bg-slate-100">مُباعة</button>
-                <button className="px-4 py-2 text-slate-500 font-bold text-sm rounded-xl hover:bg-slate-100">لم تُباع (Unsold)</button>
+                <button onClick={() => setInventoryTab('sold')} className={`px-4 py-2 font-bold text-sm rounded-xl transition-all ${inventoryTab === 'sold' ? 'bg-white text-slate-900 border border-slate-200 shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}>مُباعة ({sellerCars.filter(c => c.status === 'sold' || c.saleStatus === 'sold').length})</button>
+                <button onClick={() => setInventoryTab('unsold')} className={`px-4 py-2 font-bold text-sm rounded-xl transition-all ${inventoryTab === 'unsold' ? 'bg-white text-slate-900 border border-slate-200 shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}>لم تُباع ({sellerCars.filter(c => c.status === 'unsold' && !c.offerMarketEndTime).length})</button>
+                <button onClick={() => setInventoryTab('offers')} className={`px-4 py-2 font-bold text-sm rounded-xl flex items-center gap-1 transition-all ${inventoryTab === 'offers' ? 'bg-white text-slate-900 border border-slate-200 shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}>
+                  عروض ومفاوضات ({offerMarketCars.length})
+                </button>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-right">
                   <thead className="bg-white text-slate-400 text-xs uppercase tracking-wider border-b border-slate-100">
                     <tr>
-                      <th className="p-6 font-black">السيارة</th>
-                      <th className="p-6 font-black">رقم الحساب (VIN)</th>
-                      <th className="p-6 font-black">السعر المطلوب (Reserve)</th>
-                      <th className="p-6 font-black">الحالة الفنية</th>
-                      <th className="p-6 font-black">الإجراءات</th>
+                      <th className="p-6 font-black text-right min-w-[250px]">السيارة</th>
+                      <th className="p-6 font-black text-right min-w-[150px]">رقم الحساب (VIN)</th>
+                      <th className="p-6 font-black text-right min-w-[200px]">تفاصيل الأسعار والمفاوضات</th>
+                      <th className="p-6 font-black text-right">الزمن / الحالة</th>
+                      <th className="p-6 font-black text-left">الإجراءات</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50">
-                    {sellerCars.slice(0, 5).map((car, idx) => (
-                      <tr key={idx} className="hover:bg-slate-50 transition-colors group">
-                        <td className="p-6">
-                          <div className="flex items-center gap-4">
-                            <div className="w-16 h-12 bg-slate-100 rounded-lg overflow-hidden border border-slate-200">
-                              {car.images?.[0] ? <img src={car.images[0]} alt="صورة" className="w-full h-full object-cover" /> : <Car className="w-full h-full p-3 text-slate-300" />}
-                            </div>
-                            <div>
-                              <div className="font-black text-slate-900">{car.year} {car.make} {car.model}</div>
-                              <div className="text-xs text-slate-400 font-bold flex items-center gap-1 mt-1">
-                                <Target className="w-3 h-3" /> Lot: {car.lotNumber || `LT-${1000 + idx}`}
+                    {inventoryTab === 'offers' ? (
+                      offerMarketCars.map(car => (
+                        <tr key={car.id} className="hover:bg-slate-50 transition-colors group border-l-4 border-l-transparent hover:border-l-orange-500">
+                          <td className="p-6">
+                            <div className="flex items-center gap-4">
+                              <img src={car.images?.[0] || ''} alt="صورة" className="w-16 h-12 rounded-lg object-cover border border-slate-200" />
+                              <div>
+                                <div className="font-black text-slate-900">{car.year} {car.make} {car.model}</div>
+                                <div className="text-xs text-slate-400 font-bold mt-1 shadow-inner bg-slate-100 px-2 py-0.5 rounded-md inline-block">Lot: {car.lotNumber}</div>
                               </div>
                             </div>
-                          </div>
-                        </td>
-                        <td className="p-6 font-mono text-sm font-bold text-slate-500">{car.vin || '1XP4A39X...'}</td>
-                        <td className="p-6 font-black text-emerald-600">${car.buyItNow || car.currentBid || 15000}</td>
-                        <td className="p-6">
-                          {idx === 0 ? (
-                            <span className="bg-orange-100 text-orange-600 px-3 py-1 rounded-full text-xs font-black">بانتظار الموافقة</span>
-                          ) : idx === 1 ? (
-                            <span className="bg-green-100 text-green-600 px-3 py-1 rounded-full text-xs font-black flex items-center w-fit gap-1 animate-pulse"><div className="w-1.5 h-1.5 rounded-full bg-green-500"></div> مزاد حي</span>
-                          ) : (
-                            <span className="bg-blue-100 text-blue-600 px-3 py-1 rounded-full text-xs font-black">متاحة</span>
-                          )}
-                        </td>
-                        <td className="p-6">
-                          <button className="text-sm font-bold text-blue-500 hover:bg-blue-50 px-3 py-1.5 rounded-lg transition-colors">تفاصيل</button>
-                        </td>
+                          </td>
+                          <td className="p-6 font-mono text-xs font-bold text-slate-500">{car.vin || 'غير محدد'}</td>
+                          <td className="p-6">
+                            <div className="flex flex-col gap-2 min-w-[200px]">
+                              <div className="flex justify-between items-center text-sm">
+                                <span className="text-slate-500 font-bold">السعر المطلوب:</span>
+                                <span className="font-black text-slate-400 line-through decoration-red-500/50 decoration-2">${(car.reservePrice || 0).toLocaleString()}</span>
+                              </div>
+                              <div className="flex justify-between items-center text-sm bg-emerald-50 text-emerald-700 px-2 py-1 rounded-lg border border-emerald-100">
+                                <span className="font-bold">أعلى عرض مقدّم:</span>
+                                <span className="font-black text-lg">${(car.currentBid || 0).toLocaleString()}</span>
+                              </div>
+                              {car.sellerCounterPrice && (
+                                <div className="flex justify-between items-center text-sm bg-orange-50 text-orange-700 px-2 py-1 rounded-lg border border-orange-100 mt-1">
+                                  <span className="font-bold">عرض مضاد للعميل:</span>
+                                  <span className="font-black text-lg">${parseInt(car.sellerCounterPrice).toLocaleString()}</span>
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                          <td className="p-6 text-sm text-amber-600 font-bold">
+                            <div className="flex items-center gap-1">
+                              <Clock className="w-4 h-4" />
+                              {car.offerMarketEndTime ? new Date(car.offerMarketEndTime).toLocaleString('ar-EG') : 'تنتهي قريباً'}
+                            </div>
+                          </td>
+                          <td className="p-6">
+                            <div className="flex justify-start gap-2">
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    const res = await fetch(`/api/offers/${car.id}/accept`, {
+                                      method: 'POST',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ userId: currentUser?.id, userRole: currentUser?.role })
+                                    });
+                                    const data = await res.json();
+                                    if (res.ok) {
+                                      showAlert('تم قبول العرض والبيع بنجاح! تم التحكم بالسيارة كمباعة.', 'success');
+                                      setOfferMarketCars(prev => prev.filter(c => c.id !== car.id));
+                                      setSellerCars(prev => prev.map(c => c.id === car.id ? { ...c, status: 'sold' } : c));
+                                      setRefreshOfferMarket(prev => prev + 1);
+                                    } else showAlert(data.error || 'فشل قبول العرض', 'error');
+                                  } catch (e) { showAlert('خطأ في الاتصال بالخادم', 'error'); }
+                                }}
+                                className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-black shadow-lg shadow-slate-900/20 hover:bg-slate-800 transition-all hover:-translate-y-0.5"
+                              >
+                                قبول البيع
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setCounterCar(car);
+                                  setCounterAmount(car.currentBid ? Math.floor(car.currentBid * 1.05).toString() : '');
+                                  setShowCounterModal(true);
+                                }}
+                                className="px-3 py-2 bg-orange-50 text-orange-600 border border-orange-100 rounded-xl text-xs font-black hover:bg-orange-100 transition-colors"
+                              >
+                                عرض مضاد
+                              </button>
+                              <button
+                                onClick={() => {
+                                  showConfirm('هل أنت متأكد من رفض هذا العرض؟ سيتم حذف العرض الحالي وتصبح السيارة (لم تباع).', async () => {
+                                    try {
+                                      const res = await fetch(`/api/offers/${car.id}/reject`, {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ userId: currentUser?.id, userRole: currentUser?.role })
+                                      });
+                                      const data = await res.json();
+                                      if (res.ok) {
+                                        showAlert('تم رفض العرض وانتقلت السيارة لقسم لم تباع.', 'info');
+                                        setRefreshOfferMarket(prev => prev + 1);
+                                        setSellerCars(prev => prev.map(c => c.id === car.id ? { ...c, status: 'unsold', offerMarketEndTime: null } : c));
+                                        setOfferMarketCars(prev => prev.filter(c => c.id !== car.id));
+                                      } else showAlert(data.error || 'فشل رفض العرض.', 'error');
+                                    } catch (e) { showAlert('خطأ في الاتصال بالخادم', 'error'); }
+                                  });
+                                }}
+                                className="px-3 py-2 bg-white text-rose-500 border border-rose-100 rounded-xl text-xs font-black hover:bg-rose-50 transition-colors"
+                              >
+                                رفض
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      sellerCars
+                        .filter(car => {
+                          if (inventoryTab === 'all') return true;
+                          if (inventoryTab === 'pending') return car.status === 'pending_approval';
+                          if (inventoryTab === 'live') return Boolean(car.auctionEndDate) && new Date(car.auctionEndDate) > new Date() && car.status !== 'sold';
+                          if (inventoryTab === 'sold') return car.status === 'sold' || car.saleStatus === 'sold';
+                          if (inventoryTab === 'unsold') return car.status === 'unsold' && !car.offerMarketEndTime;
+                          return true;
+                        })
+                        .map((car, idx) => {
+                          const isLive = Boolean(car.auctionEndDate) && new Date(car.auctionEndDate) > new Date() && car.status !== 'sold';
+                          const isPending = car.status === 'pending_approval';
+                          const isSold = car.status === 'sold' || car.saleStatus === 'sold';
+
+                          return (
+                            <tr key={car.id || idx} className="hover:bg-slate-50 transition-colors group">
+                              <td className="p-6">
+                                <div className="flex items-center gap-4">
+                                  <div className="w-16 h-12 bg-slate-100 rounded-lg overflow-hidden border border-slate-200">
+                                    {car.images?.[0] ? <img src={car.images[0]} alt="صورة" className="w-full h-full object-cover" /> : <Car className="w-full h-full p-3 text-slate-300" />}
+                                  </div>
+                                  <div>
+                                    <div className="font-black text-slate-900">{car.year} {car.make} {car.model}</div>
+                                    <div className="text-xs text-slate-400 font-bold flex items-center gap-1 mt-1">
+                                      <Target className="w-3 h-3" /> Lot: {car.lotNumber || `LT-${1000 + idx}`}
+                                    </div>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="p-6 font-mono text-xs font-bold text-slate-500">{car.vin || 'غير محدد'}</td>
+                              <td className="p-6">
+                                <div className="flex flex-col gap-2 min-w-[200px]">
+                                  <div className="flex justify-between items-center text-sm">
+                                    <span className="text-slate-500 font-bold">السعر المطلوب:</span>
+                                    <span className="font-black text-slate-700">${(car.buyItNow || car.reservePrice || 15000).toLocaleString()}</span>
+                                  </div>
+                                  {car.currentBid > 0 && (
+                                    <div className="flex justify-between items-center text-sm bg-emerald-50 text-emerald-700 px-2 py-1 rounded-lg border border-emerald-100">
+                                      <span className="font-bold">{isSold ? 'بيعت بسعر:' : 'أعلى مزايدة:'}</span>
+                                      <span className="font-black text-lg">${car.currentBid.toLocaleString()}</span>
+                                    </div>
+                                  )}
+                                  {car.sellerCounterPrice && (
+                                    <div className="flex justify-between items-center text-sm bg-orange-50 text-orange-700 px-2 py-1 rounded-lg border border-orange-100 mt-1">
+                                      <span className="font-bold">عرض مضاد مُقدّم:</span>
+                                      <span className="font-black text-lg">${parseInt(car.sellerCounterPrice).toLocaleString()}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="p-6">
+                                {isPending ? (
+                                  <span className="bg-orange-100 text-orange-600 px-3 py-1 rounded-full text-xs font-black">بانتظار الموافقة</span>
+                                ) : isLive ? (
+                                  <span className="bg-green-100 text-green-600 px-3 py-1 rounded-full text-xs font-black flex items-center w-fit gap-1 animate-pulse"><div className="w-1.5 h-1.5 rounded-full bg-green-500"></div> مزاد حي</span>
+                                ) : isSold ? (
+                                  <span className="bg-blue-100 text-blue-600 px-3 py-1 rounded-full text-xs font-black flex items-center w-fit gap-1"><CheckCircle2 className="w-3 h-3" /> مباعة</span>
+                                ) : (
+                                  <span className="bg-slate-100 text-slate-600 px-3 py-1 rounded-full text-xs font-black">متاحة</span>
+                                )}
+                              </td>
+                              <td className="p-6">
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={() => {
+                                      setEditingCar(car);
+                                      setShowAddCarModal(true);
+                                    }}
+                                    className="text-sm font-bold text-blue-500 hover:bg-blue-50 px-3 py-1.5 rounded-lg transition-colors border border-blue-100"
+                                  >
+                                    تفاصيل / تعديل
+                                  </button>
+                                  {(inventoryTab === 'unsold' || car.status === 'unsold') && (
+                                    <button
+                                      onClick={() => {
+                                        setRescheduleCar(car);
+                                        const defaultDate = new Date();
+                                        defaultDate.setDate(defaultDate.getDate() + 7);
+                                        defaultDate.setMinutes(defaultDate.getMinutes() - defaultDate.getTimezoneOffset());
+                                        setRescheduleDate(defaultDate.toISOString().slice(0, 16));
+                                        setRescheduleAcceptOffers(Boolean(car.acceptOffers));
+                                        setRescheduleBuyItNow(car.buyItNow ? car.buyItNow.toString() : '');
+                                        setShowRescheduleModal(true);
+                                      }}
+                                      className="text-sm font-bold text-orange-500 hover:bg-orange-50 px-3 py-1.5 rounded-lg transition-colors border border-orange-100 whitespace-nowrap"
+                                    >
+                                      إعادة للمزاد
+                                    </button>
+                                  )}
+                                  {isSold && (
+                                    <div className="flex flex-col gap-2">
+                                      <button
+                                        onClick={async () => {
+                                          try {
+                                            const res = await fetch(`/api/cars/${car.id}/notify-winner`, { method: 'POST' });
+                                            const data = await res.json();
+                                            if (res.ok) {
+                                              showAlert(data.message, 'success');
+                                            } else {
+                                              showAlert(data.error || 'فشل إرسال التنبيه', 'error');
+                                            }
+                                          } catch (e) {
+                                            showAlert('خطأ في الاتصال بالخادم', 'error');
+                                          }
+                                        }}
+                                        className="text-xs font-black bg-slate-900 text-white hover:bg-slate-800 px-3 py-2 rounded-lg transition-colors flex items-center justify-center gap-1 shadow-md shadow-slate-900/10"
+                                      >
+                                        <Bell className="w-3 h-3" />
+                                        تذكير المشترى بالدفع
+                                      </button>
+                                      <div className="flex justify-center">
+                                        {invoiceStatuses[car.id]?.isViewed ? (
+                                          <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-1 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">
+                                            <CheckCircle2 className="w-3 h-3" />
+                                            شاهد المشتري الفاتورة
+                                          </span>
+                                        ) : (
+                                          <span className="text-[10px] font-bold text-slate-500 flex items-center gap-1 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200 animate-pulse">
+                                            <Clock className="w-3 h-3" />
+                                            في انتظار رؤية المشتري
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )}
+                                  {isPending && (
+                                    <>
+                                      <button
+                                        onClick={async () => {
+                                          try {
+                                            const res = await fetch(`/api/offers/${car.id}/accept`, {
+                                              method: 'POST',
+                                              headers: { 'Content-Type': 'application/json' },
+                                              body: JSON.stringify({ userId: currentUser?.id, userRole: currentUser?.role })
+                                            });
+                                            if (res.ok) {
+                                              showAlert('تم قبول العرض والبيع بنجاح! تم التحكم بالسيارة كمباعة.', 'success');
+                                              setSellerCars(prev => prev.map(c => c.id === car.id ? { ...c, status: 'sold' } : c));
+                                              setOfferMarketCars(prev => prev.filter(c => c.id !== car.id));
+                                              setRefreshOfferMarket(prev => prev + 1);
+                                            } else showAlert('فشل قبول العرض', 'error');
+                                          } catch (e) { showAlert('خطأ', 'error'); }
+                                        }}
+                                        className="text-xs font-black bg-slate-900 text-white hover:bg-slate-800 px-3 py-1.5 rounded-lg transition-colors"
+                                      >
+                                        قبول البيع
+                                      </button>
+                                      <button
+                                        onClick={() => {
+                                          setCounterCar(car);
+                                          setCounterAmount(car.currentBid ? Math.floor(car.currentBid * 1.05).toString() : '');
+                                          setShowCounterModal(true);
+                                        }}
+                                        className="text-xs font-black bg-orange-50 text-orange-600 hover:bg-orange-100 border border-orange-100 px-3 py-1.5 rounded-lg transition-colors"
+                                      >
+                                        عرض مضاد
+                                      </button>
+                                      <button
+                                        onClick={() => {
+                                          showConfirm('هل أنت متأكد من رفض هذا العرض؟ سيتم حذف العرض الحالي وتصبح السيارة (لم تباع).', async () => {
+                                            try {
+                                              const res = await fetch(`/api/offers/${car.id}/reject`, {
+                                                method: 'POST',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify({ userId: currentUser?.id, userRole: currentUser?.role })
+                                              });
+                                              if (res.ok) {
+                                                showAlert('تم رفض العرض وانتقلت السيارة لقسم لم تباع.', 'info');
+                                                setSellerCars(prev => prev.map(c => c.id === car.id ? { ...c, status: 'unsold', offerMarketEndTime: null } : c));
+                                                setOfferMarketCars(prev => prev.filter(c => c.id !== car.id));
+                                              } else showAlert('فشل رفض العرض.', 'error');
+                                            } catch (e) { showAlert('خطأ', 'error'); }
+                                          });
+                                        }}
+                                        className="text-xs font-black bg-white text-rose-500 hover:bg-rose-50 border border-rose-100 px-3 py-1.5 rounded-lg transition-colors"
+                                      >
+                                        رفض
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
+                    )}
+
+                    {inventoryTab === 'offers' && offerMarketCars.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="p-12 text-center text-slate-400 italic font-bold">لا توجد عروض بانتظار الموافقة حالياً</td>
                       </tr>
-                    ))}
+                    )}
+                    {inventoryTab !== 'offers' && sellerCars.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="p-12 text-center text-slate-400 italic font-bold">لا يوجد مركبات في هذا القسم</td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -478,99 +873,6 @@ export const SellerDashboard = () => {
                     <div className="text-xs text-emerald-400 font-bold text-center">تم تجاوز السعر المطلوب - السيارة بيعت! 🎉</div>
                   </div>
                 </div>
-              </div>
-            </div>
-          </div>
-        );
-
-      case 'offer_market':
-        return (
-          <div className="space-y-6 animate-in fade-in duration-500">
-            <div className="flex justify-between items-center mb-8">
-              <div>
-                <h2 className="text-3xl font-black text-slate-800">سوق العروض (Make Offer)</h2>
-                <p className="text-slate-500 text-sm mt-1">راجع العروض المقدمة من المشترين للسيارات التي لم تصل للسعر المطلوب في المزاد.</p>
-              </div>
-              <button
-                onClick={() => {
-                  fetch(`/api/admin/offer-market-cars?userId=${currentUser?.id}&userRole=${currentUser?.role}`)
-                    .then(res => res.json())
-                    .then(data => setOfferMarketCars(Array.isArray(data) ? data : []));
-                }}
-                className="bg-white text-slate-500 border border-slate-200 px-4 py-3 rounded-2xl font-bold hover:bg-slate-50 transition-all flex items-center gap-2"
-              >
-                <RefreshCw className="w-5 h-5" />
-                تحديث
-              </button>
-            </div>
-
-            <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-right">
-                  <thead className="bg-slate-50 text-slate-400 text-xs uppercase tracking-widest border-b border-slate-100">
-                    <tr>
-                      <th className="p-6 font-black">السيارة</th>
-                      <th className="p-6 font-black">تسعيرك (الاحتياطي)</th>
-                      <th className="p-6 font-black">أعلى عرض متوفر</th>
-                      <th className="p-6 font-black">الوقت المتبقي للعرض</th>
-                      <th className="p-6 font-black text-center">الإجراءات (القرار)</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-50">
-                    {offerMarketCars.length > 0 ? offerMarketCars.map(car => (
-                      <tr key={car.id} className="hover:bg-slate-50 transition-colors group">
-                        <td className="p-6">
-                          <div className="flex items-center gap-4">
-                            <img src={car.images?.[0] || ''} alt="صورة" className="w-16 h-12 rounded-lg object-cover border border-slate-200" />
-                            <div>
-                              <div className="font-black text-slate-900">{car.year} {car.make} {car.model}</div>
-                              <div className="text-xs text-slate-400 font-bold mt-1">ID: {car.id}</div>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="p-6 font-black text-slate-400 line-through decoration-red-500/50 decoration-2">${(car.reservePrice || 0).toLocaleString()}</td>
-                        <td className="p-6">
-                          <div className="font-black text-xl text-emerald-600">${(car.currentBid || 0).toLocaleString()}</div>
-                          <div className="text-[10px] text-emerald-500 font-bold bg-emerald-50 px-2 py-0.5 rounded inline-block">أعلى عرض مقدّم</div>
-                        </td>
-                        <td className="p-6 text-sm text-amber-600 font-bold flex items-center gap-2">
-                          <Clock className="w-4 h-4" />
-                          {car.offerMarketEndTime ? new Date(car.offerMarketEndTime).toLocaleString('ar-EG') : 'تنتهي قريباً'}
-                        </td>
-                        <td className="p-6">
-                          <div className="flex justify-center gap-2">
-                            <button
-                              onClick={() => handleAcceptOffer(car.id)}
-                              className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-black shadow-lg shadow-slate-900/20 hover:bg-slate-800 transition-all hover:-translate-y-0.5"
-                            >
-                              قبول البيع
-                            </button>
-                            <button
-                              onClick={() => showAlert('ميزة العرض المضاد ستتوفر قريباً', 'info')}
-                              className="px-3 py-2 bg-orange-50 text-orange-600 border border-orange-100 rounded-xl text-xs font-black hover:bg-orange-100 transition-colors"
-                            >
-                              إرسال عرض مضاد
-                            </button>
-                            <button
-                              onClick={() => handleRejectOffer(car.id)}
-                              className="px-3 py-2 bg-white text-rose-500 border border-rose-100 rounded-xl text-xs font-black hover:bg-rose-50 transition-colors"
-                            >
-                              رفض نهائي
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    )) : (
-                      <tr>
-                        <td colSpan={5} className="py-20 text-center">
-                          <Handshake className="w-16 h-16 text-slate-200 mx-auto mb-4" />
-                          <h3 className="text-xl font-black text-slate-400">سوق العروض فارغ حالياً</h3>
-                          <p className="text-sm text-slate-400 mt-2">السيارات التي لا تباع في المزاد ستظهر هنا لمدة 48 ساعة</p>
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
               </div>
             </div>
           </div>
@@ -798,41 +1100,91 @@ export const SellerDashboard = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
-                  {shipments.map((ship: any) => (
-                    <tr key={ship.id} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          {ship.images?.[0] ? (
-                            <img src={ship.images[0]} className="w-12 h-12 rounded-xl object-cover" alt="صورة" />
-                          ) : (
-                            <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center">
-                              <Car className="w-6 h-6 text-slate-300" />
+                  {shipments.map((ship: any) => {
+                    const steps = [
+                      { key: 'awaiting_payment', label: 'بانتظار الدفع', icon: '💳' },
+                      { key: 'paid', label: 'تم الدفع', icon: '✅' },
+                      { key: 'shipping_requested', label: 'طلب الشحن', icon: '🚚' },
+                      { key: 'in_transport', label: 'قيد النقل', icon: '🚛' },
+                      { key: 'in_warehouse', label: 'في المستودع', icon: '🏭' },
+                      { key: 'in_shipping', label: 'جاري الشحن', icon: '🚢' },
+                      { key: 'customs', label: 'التخليص الجمركي', icon: '📋' },
+                      { key: 'delivered', label: 'تم التوصيل', icon: '🎉' }
+                    ];
+                    const currentIdx = steps.findIndex(s => s.key === ship.status);
+
+                    return (
+                      <React.Fragment key={ship.id}>
+                        <tr className="hover:bg-slate-50/50 transition-colors">
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-3">
+                              {ship.images?.[0] ? (
+                                <img src={ship.images[0]} className="w-12 h-12 rounded-xl object-cover" alt="صورة" />
+                              ) : (
+                                <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center">
+                                  <Car className="w-6 h-6 text-slate-300" />
+                                </div>
+                              )}
+                              <div>
+                                <div className="font-bold text-slate-900">{ship.year} {ship.make} {ship.model}</div>
+                                <div className="text-[10px] font-black text-slate-400">LOT: #{ship.lotNumber}</div>
+                              </div>
                             </div>
-                          )}
-                          <div>
-                            <div className="font-bold text-slate-900">{ship.year} {ship.make} {ship.model}</div>
-                            <div className="text-[10px] font-black text-slate-400">LOT: #{ship.lotNumber}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="text-sm font-bold text-slate-700">{ship.firstName} {ship.lastName}</div>
-                        <div className="text-[10px] text-slate-400">{ship.phone}</div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${ship.status === 'delivered' ? 'bg-green-100 text-green-600' :
-                          ship.status === 'shipping_requested' ? 'bg-orange-100 text-orange-600' : 'bg-blue-100 text-blue-600'
-                          }`}>
-                          {ship.status === 'shipping_requested' ? 'طلب شحن 🚚' : ship.status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <button className="text-blue-600 hover:text-blue-700 font-black text-xs flex items-center gap-1">
-                          <UploadCloud className="w-4 h-4" /> رفع المستندات (Title)
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="text-sm font-bold text-slate-700">{ship.firstName} {ship.lastName}</div>
+                            <div className="text-[10px] text-slate-400">{ship.phone}</div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${ship.status === 'delivered' ? 'bg-green-100 text-green-600' :
+                              ship.status === 'shipping_requested' ? 'bg-orange-100 text-orange-600' : 'bg-blue-100 text-blue-600'
+                              }`}>
+                              {ship.status === 'shipping_requested' ? 'طلب شحن 🚚' : ship.status}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 flex gap-2">
+                            <button className="text-blue-600 hover:text-blue-700 bg-blue-50 px-3 py-2 rounded-lg font-black text-xs flex items-center gap-1">
+                              <UploadCloud className="w-4 h-4" /> رفع Title
+                            </button>
+                            {(ship.status === 'paid' || ship.status === 'shipping_requested') && (
+                              <button className="text-orange-600 hover:text-orange-700 bg-orange-50 px-3 py-2 rounded-lg font-black text-xs flex items-center gap-1">
+                                <Truck className="w-4 h-4" /> تحديث الشحن
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                        {/* Tracker Row */}
+                        <tr>
+                          <td colSpan={4} className="p-0 border-b border-slate-100 bg-slate-50/30">
+                            <div className="p-6">
+                              <div className="relative px-4 pb-2">
+                                <div className="flex items-center justify-between relative z-10">
+                                  {steps.map((s, i) => (
+                                    <div key={s.key} className="flex flex-col items-center flex-1 relative">
+                                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm border-2 transition-all duration-500 ${i < currentIdx ? 'bg-emerald-500 border-emerald-500 text-white shadow-md shadow-emerald-500/20' :
+                                        i === currentIdx ? 'bg-orange-500 border-orange-500 text-white scale-110 shadow-md shadow-orange-500/30' :
+                                          'bg-white border-slate-200 text-slate-400'
+                                        }`}>
+                                        {i < currentIdx ? <CheckCircle2 className="w-4 h-4" /> : s.icon}
+                                      </div>
+                                      <span className={`text-[10px] font-black mt-2 text-center transition-colors duration-500 ${i <= currentIdx ? 'text-slate-900' : 'text-slate-400'
+                                        }`}>{s.label}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                                <div className="absolute top-4 left-8 right-8 h-1 bg-slate-200 rounded-full">
+                                  <div
+                                    className="h-full bg-emerald-500 transition-all duration-1000 ease-out shadow-[0_0_10px_rgba(16,185,129,0.3)]"
+                                    ref={(el) => { if (el) el.style.width = `${(currentIdx / (steps.length - 1)) * 100}%`; }}
+                                  ></div>
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      </React.Fragment>
+                    );
+                  })}
                   {shipments.length === 0 && (
                     <tr>
                       <td colSpan={4} className="px-6 py-20 text-center text-slate-400 italic font-bold">
@@ -854,14 +1206,305 @@ export const SellerDashboard = () => {
                 <h2 className="text-3xl font-black text-slate-800">مركز المراسلات</h2>
                 <p className="text-slate-500 text-sm mt-1">تواصل مباشرة مع إدارة اوتو برو بخصوص الموافقات، المدفوعات واللوجستيات.</p>
               </div>
+              <button
+                onClick={() => setShowMessageModal(true)}
+                className="bg-orange-500 hover:bg-orange-600 text-white px-6 py-3 rounded-2xl font-black text-sm shadow-xl shadow-orange-500/20 transition-all flex items-center gap-2"
+              >
+                <Plus className="w-5 h-5" />
+                رسالة جديدة (تذكرة دعم)
+              </button>
             </div>
-            <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden p-12 text-center">
-              <div className="w-20 h-20 bg-orange-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                <MessageSquare className="w-10 h-10 text-orange-500" />
+
+            <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden">
+              {messages.length === 0 ? (
+                <div className="p-12 text-center">
+                  <div className="w-20 h-20 bg-orange-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <MessageSquare className="w-10 h-10 text-orange-500" />
+                  </div>
+                  <p className="text-lg font-black text-slate-800 mb-2">صندوق الوارد فارغ</p>
+                  <p className="text-sm text-slate-500">سيتم عرض جميع الإشعارات والرسائل المتبادلة مع الإدارة هنا.</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-50">
+                  {messages.map((msg, idx) => (
+                    <div key={idx} className={`p-6 transition-colors ${!msg.isRead ? 'bg-orange-50/50' : 'hover:bg-slate-50'} relative group`}>
+                      {!msg.isRead && (
+                        <div className="absolute top-6 right-6 w-2 h-2 bg-orange-500 rounded-full animate-pulse"></div>
+                      )}
+
+                      <div className="flex gap-4">
+                        <div className="w-12 h-12 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-600 font-bold border border-white shadow-sm shrink-0 overflow-hidden">
+                          {msg.senderId === 'admin' ? (
+                            <div className="text-orange-500 p-2"><ShieldCheck className="w-6 h-6" /></div>
+                          ) : (
+                            <img alt="صورة" src={`https://i.pravatar.cc/150?u=${msg.senderId}`} />
+                          )}
+                        </div>
+
+                        <div className="flex-grow">
+                          <div className="flex justify-between items-start mb-2">
+                            <div>
+                              <h4 className="font-black text-slate-900 group-hover:text-orange-500 transition-colors">
+                                {msg.title || (msg.senderId === 'admin' ? 'الإدارة' : 'أنت')}
+                              </h4>
+                              <div className="flex gap-2 text-[10px] mt-1">
+                                <span className="bg-slate-100 text-slate-500 px-2 py-0.5 rounded font-black">{msg.category || 'عام'}</span>
+                                {msg.supportTeam && (
+                                  <span className="bg-blue-50 text-blue-600 px-2 py-0.5 rounded font-black">موجه إلى: {
+                                    ({
+                                      accounting: 'فريق المحاسبة', clearance: 'التخليص الجمركي', complaints: 'الشكاوي والجودة',
+                                      registration: 'فريق التسجيل', shipping: 'فريق الشحن', transport: 'فريق النقل', purchasing: 'فريق الشراء'
+                                    } as Record<string, string>)[msg.supportTeam] || msg.supportTeam
+                                  }</span>
+                                )}
+                              </div>
+                            </div>
+                            <span className="text-xs text-slate-400 font-bold bg-slate-50 px-3 py-1 rounded-lg">
+                              {new Date(msg.timestamp).toLocaleString('ar-LY')}
+                            </span>
+                          </div>
+
+                          <p className="text-sm text-slate-600 leading-relaxed max-w-2xl font-bold whitespace-pre-wrap">{msg.content || typeof msg.message === 'string' ? msg.message : 'يوجد مرفق.'}</p>
+
+                          {msg.repliedAt && (
+                            <div className="mt-4 p-4 bg-slate-50 border border-slate-100 rounded-2xl">
+                              <div className="flex items-center gap-2 mb-2 text-slate-800 font-black">
+                                <Reply className="w-4 h-4 text-orange-500" />
+                                رد الإدارة
+                              </div>
+                              <p className="text-sm text-slate-600 font-bold whitespace-pre-wrap">{msg.replyContent || 'عذراً لا يمكن عرض الرد.'}</p>
+                            </div>
+                          )}
+
+                          {msg.senderId === 'admin' && !msg.isRead && (
+                            <div className="mt-4 flex gap-2">
+                              <button onClick={() => markMessageAsRead(msg.id)} className="bg-white border border-slate-200 text-slate-600 px-4 py-2 rounded-xl text-xs font-black shadow-sm hover:border-emerald-500 hover:text-emerald-500 transition-all flex gap-1 items-center">
+                                <CheckCircle2 className="w-4 h-4" /> تعليم كمقروء
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {showMessageModal && (
+              <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-[200]">
+                <div className="bg-white rounded-3xl w-full max-w-lg p-8 shadow-2xl animate-in zoom-in duration-300">
+                  <div className="flex justify-between items-center mb-6">
+                    <h3 className="text-2xl font-black text-slate-800">إرسال استفسار / تذكرة للإدارة</h3>
+                    <button title="إغلاق التذكرة" aria-label="إغلاق نافذة التذكرة" onClick={() => setShowMessageModal(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400 hover:text-rose-500">
+                      <X className="w-6 h-6" />
+                    </button>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-black text-slate-700 mb-2">نوع الاستفسار</label>
+                      <select
+                        aria-label="نوع الاستفسار"
+                        title="نوع الاستفسار"
+                        value={messageForm.category}
+                        onChange={(e) => setMessageForm({ ...messageForm, category: e.target.value })}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 transition-all font-bold"
+                      >
+                        <option value="general">استفسار عام</option>
+                        <option value="live_auction">بخصوص مزاد مباشر</option>
+                        <option value="logistics">شحن و لوجستيات</option>
+                        <option value="financial">أمور مالية والمحفظة</option>
+                        <option value="offer">عروض الشراء المباشر</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-black text-slate-700 mb-2">الفريق الموجه إليه (اختياري)</label>
+                      <select
+                        aria-label="الفريق الموجه إليه"
+                        title="الفريق الموجه إليه"
+                        value={messageForm.supportTeam}
+                        onChange={(e) => setMessageForm({ ...messageForm, supportTeam: e.target.value })}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 transition-all font-bold"
+                      >
+                        <option value="">توجيه عام (تلقائي)</option>
+                        <option value="accounting">فريق المحاسبة</option>
+                        <option value="shipping">فريق الشحن</option>
+                        <option value="transport">فريق النقل الداخلي</option>
+                        <option value="purchasing">فريق المشتريات</option>
+                        <option value="clearance">فريق التخليص الجمركي</option>
+                        <option value="complaints">الشكاوي والجودة</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-black text-slate-700 mb-2">رقم السيارة (اذا كان متوفراً)</label>
+                      <input
+                        type="text"
+                        placeholder="أدخل رقم الـ Lot أو VIN السري"
+                        value={messageForm.lotNumber}
+                        onChange={(e) => setMessageForm({ ...messageForm, lotNumber: e.target.value })}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:border-orange-500 font-mono text-sm"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-black text-slate-700 mb-2">الرسالةالتفصيلية</label>
+                      <textarea
+                        rows={4}
+                        placeholder="أكتب رسالتك بوضوح وتفصيل ليتمكن فريقنا من مساعدتك..."
+                        value={messageForm.content}
+                        onChange={(e) => setMessageForm({ ...messageForm, content: e.target.value })}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 transition-all font-bold resize-none"
+                      />
+                    </div>
+
+                    <div className="pt-2">
+                      <button
+                        onClick={async () => {
+                          if (!messageForm.content) return showAlert('يرجى كتابة الرسالة أولاً', 'error');
+                          const res = await fetch('/api/messages/send', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              ...messageForm,
+                              receiverId: 'admin',
+                              title: `استفسار بائع: ${messageForm.category === 'live_auction' ? 'مزاد' :
+                                messageForm.category === 'logistics' ? 'لوجستيات' :
+                                  messageForm.category === 'financial' ? 'مالية' : 'عام'}`
+                            })
+                          });
+                          if (res.ok) {
+                            showAlert('تم إرسال تذكرتك للإدارة بنجاح', 'success');
+                            setShowMessageModal(false);
+                            setMessageForm({ category: 'general', supportTeam: '', lotNumber: '', content: '' });
+                          } else {
+                            showAlert('حدث خطأ أثناء الإرسال', 'error');
+                          }
+                        }}
+                        className="w-full bg-slate-900 text-white py-4 rounded-xl font-black text-lg hover:bg-orange-500 transition-all shadow-xl shadow-slate-900/20 active:scale-[0.98] flex items-center justify-center gap-2"
+                      >
+                        <Send className="w-5 h-5" /> إرسال الرسالة للإدارة
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <p className="text-lg font-black text-slate-800 mb-2">صندوق الوارد فارغ</p>
-              <p className="text-sm text-slate-500">سيتم عرض جميع الإشعارات والرسائل المتبادلة مع الإدارة هنا.</p>
+            )}
+
+          </div>
+        );
+
+      case 'invoices':
+        return (
+          <div className="space-y-6 animate-in fade-in duration-500" dir="rtl">
+            <div className="mb-8">
+              <h2 className="text-3xl font-black text-slate-800">الفواتير والمستندات (Document Cycle)</h2>
+              <p className="text-slate-500 text-sm mt-1">تتبع حالة الدفع، كروت الإفراج، واستلام السيارات لجميع مبيعاتك.</p>
             </div>
+
+            {sellerInvoices.length === 0 ? (
+              <div className="bg-white rounded-[2rem] border border-slate-100 p-12 text-center shadow-sm">
+                <FileText className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+                <h3 className="text-xl font-bold text-slate-800">لا توجد فواتير حالياً</h3>
+                <p className="text-slate-500 mt-2">ستظهر فواتير سياراتك المباعة هنا لمتابعة دورة تحصيلها.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-6">
+                {sellerInvoices.map(inv => (
+                  <div key={inv.id} className="bg-white rounded-[2rem] border border-slate-100 shadow-sm p-6 lg:p-8 flex flex-col md:flex-row gap-8 items-start hover:shadow-md transition-shadow">
+                    <div className="flex-1 space-y-4">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <div className="flex items-center gap-3 mb-2">
+                            <span className="bg-slate-100 text-slate-700 px-3 py-1 rounded-full text-xs font-bold font-mono">
+                              Lot: {inv.lotNumber}
+                            </span>
+                            <span className="bg-slate-100 text-slate-700 px-3 py-1 rounded-full text-xs font-bold font-mono">
+                              VIN: {inv.vin}
+                            </span>
+                          </div>
+                          <h3 className="text-xl font-black text-slate-800">{inv.year} {inv.make} {inv.model}</h3>
+                          <p className="text-slate-500 text-sm mt-1">
+                            المشتري: <span className="font-bold">{inv.buyerFirstName} {inv.buyerLastName}</span>
+                          </p>
+                        </div>
+                        <div className="text-left">
+                          <p className="text-2xl font-black text-emerald-600 font-mono">${inv.amount?.toLocaleString()}</p>
+                          <p className="text-xs text-slate-500 mt-1">تاريخ البيع: {new Date(inv.timestamp).toLocaleDateString('ar-SA')}</p>
+                        </div>
+                      </div>
+
+                      {/* Document Cycle Progress Bar */}
+                      <div className="pt-6 mt-6 border-t border-slate-50">
+                        <div className="flex items-center justify-between relative">
+                          <div className="absolute top-1/2 left-0 right-0 h-1 bg-slate-100 -z-10 -translate-y-1/2 rounded-full"></div>
+
+                          {/* Step 1: Paid by Buyer */}
+                          <div className="flex flex-col items-center gap-2 relative bg-white px-2">
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm transition-all
+                              ${inv.status !== 'unpaid' && inv.status !== 'pending' ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20' : 'bg-slate-100 text-slate-400'}`}>
+                              1
+                            </div>
+                            <span className={`text-[10px] sm:text-xs font-bold whitespace-nowrap ${inv.status !== 'unpaid' && inv.status !== 'pending' ? 'text-emerald-700' : 'text-slate-400'}`}>الدفع من المشتري</span>
+                          </div>
+
+                          {/* Step 2: Release Card Issued */}
+                          <div className="flex flex-col items-center gap-2 relative bg-white px-2">
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm transition-all
+                              ${['release_issued', 'delivered_to_buyer', 'seller_paid_by_admin'].includes(inv.status) ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/20' : 'bg-slate-100 text-slate-400'}`}>
+                              2
+                            </div>
+                            <span className={`text-[10px] sm:text-xs font-bold whitespace-nowrap ${['release_issued', 'delivered_to_buyer', 'seller_paid_by_admin'].includes(inv.status) ? 'text-blue-700' : 'text-slate-400'}`}>كرت الإفراج</span>
+                          </div>
+
+                          {/* Step 3: Delivered */}
+                          <div className="flex flex-col items-center gap-2 relative bg-white px-2">
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm transition-all
+                              ${['delivered_to_buyer', 'seller_paid_by_admin'].includes(inv.status) ? 'bg-purple-500 text-white shadow-lg shadow-purple-500/20' : 'bg-slate-100 text-slate-400'}`}>
+                              3
+                            </div>
+                            <span className={`text-[10px] sm:text-xs font-bold whitespace-nowrap ${['delivered_to_buyer', 'seller_paid_by_admin'].includes(inv.status) ? 'text-purple-700' : 'text-slate-400'}`}>استلام السيارة</span>
+                          </div>
+
+                          {/* Step 4: Seller Paid */}
+                          <div className="flex flex-col items-center gap-2 relative bg-white px-2">
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm transition-all
+                              ${inv.status === 'seller_paid_by_admin' ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20' : 'bg-slate-100 text-slate-400'}`}>
+                              <CheckCircle2 className="w-4 h-4" />
+                            </div>
+                            <span className={`text-[10px] sm:text-xs font-bold whitespace-nowrap ${inv.status === 'seller_paid_by_admin' ? 'text-orange-700' : 'text-slate-400'}`}>تحصيل القيمة</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="w-full md:w-64 border-t md:border-t-0 md:border-r border-slate-100 pt-6 md:pt-0 md:pr-6 flex flex-col justify-center gap-3">
+                      {inv.status === 'unpaid' && (
+                        <div className="bg-rose-50 text-rose-600 rounded-xl p-4 text-center">
+                          <p className="font-bold text-sm mb-1">بانتظار دفع المشتري</p>
+                          <p className="text-xs opacity-80">يرجى متابعة المشتري عبر الرسائل</p>
+                        </div>
+                      )}
+
+                      {inv.releaseCardUrl && (
+                        <a href={inv.releaseCardUrl} target="_blank" rel="noopener noreferrer" className="bg-slate-900 text-white py-3 px-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-slate-800 transition-all shadow-md">
+                          <FileText className="w-4 h-4" /> عرض كرت الإفراج
+                        </a>
+                      )}
+
+                      {inv.status === 'seller_paid_by_admin' && (
+                        <div className="bg-emerald-50 text-emerald-600 rounded-xl p-4 flex items-center justify-center gap-2">
+                          <CheckCircle2 className="w-5 h-5" />
+                          <span className="font-bold text-sm">تم تسوية الحساب</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         );
 
@@ -902,38 +1545,98 @@ export const SellerDashboard = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Seller Info Card */}
               <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm p-8">
-                <h3 className="font-black text-lg text-slate-800 mb-6 flex items-center gap-2">
-                  <div className="w-2 h-6 bg-orange-500 rounded-full"></div>
-                  بيانات البائع
-                </h3>
-                <div className="space-y-4">
-                  <div className="flex justify-between py-3 border-b border-slate-50">
-                    <span className="text-slate-500 text-sm font-bold">الاسم</span>
-                    <span className="font-black text-slate-800">{currentUser?.firstName} {currentUser?.lastName}</span>
-                  </div>
-                  <div className="flex justify-between py-3 border-b border-slate-50">
-                    <span className="text-slate-500 text-sm font-bold">البريد الإلكتروني</span>
-                    <span className="font-mono text-slate-700 text-sm">{currentUser?.email}</span>
-                  </div>
-                  <div className="flex justify-between py-3 border-b border-slate-50">
-                    <span className="text-slate-500 text-sm font-bold">الهاتف</span>
-                    <span className="font-mono text-slate-700 text-sm">{currentUser?.phone || '—'}</span>
-                  </div>
-                  <div className="flex justify-between py-3 border-b border-slate-50">
-                    <span className="text-slate-500 text-sm font-bold">نسبة العمولة</span>
-                    <span className="font-black text-orange-500">{currentUser?.commission || 2}%</span>
-                  </div>
-                  <div className="flex justify-between py-3">
-                    <span className="text-slate-500 text-sm font-bold">حالة التوثيق</span>
-                    <span className={`px-3 py-1 rounded-full text-xs font-black ${currentUser?.kycStatus === 'approved' ? 'bg-emerald-100 text-emerald-700' :
-                      currentUser?.kycStatus === 'rejected' ? 'bg-rose-100 text-rose-700' :
-                        'bg-amber-100 text-amber-700'
-                      }`}>
-                      {currentUser?.kycStatus === 'approved' ? '✅ موثّق' :
-                        currentUser?.kycStatus === 'rejected' ? '❌ مرفوض' : '⏳ قيد المراجعة'}
-                    </span>
-                  </div>
+                <div className="flex justify-between items-center mb-6 border-b-2 border-slate-100 pb-4">
+                  <h3 className="font-black text-lg text-slate-800 flex items-center gap-2">
+                    <div className="w-2 h-6 bg-orange-500 rounded-full"></div>
+                    بيانات البائع
+                  </h3>
+                  {!isEditingProfile && (
+                    <button
+                      onClick={() => setIsEditingProfile(true)}
+                      className="text-orange-500 font-bold text-sm bg-orange-50 hover:bg-orange-100 px-4 py-2 rounded-xl transition-colors flex items-center gap-2"
+                    >
+                      <Plus className="w-4 h-4" /> {/* Reuse Plus or any other icon, Edit isn't imported here typically but Plus is */}
+                      تعديل البيانات
+                    </button>
+                  )}
                 </div>
+
+                {isEditingProfile ? (
+                  <form onSubmit={handleUpdateProfile} className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase">اسم المعرض / الشركة</label>
+                        <input aria-label="مدخل" title="مدخل" placeholder="مدخل" className="w-full p-3 bg-slate-50 rounded-xl font-bold text-slate-900 border border-slate-200 focus:border-orange-500 outline-none transition-all"
+                          value={profileForm.companyName} onChange={e => setProfileForm({ ...profileForm, companyName: e.target.value })} />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase">العنوان</label>
+                        <input aria-label="مدخل" title="مدخل" placeholder="مدخل" className="w-full p-3 bg-slate-50 rounded-xl font-bold text-slate-900 border border-slate-200 focus:border-orange-500 outline-none transition-all"
+                          value={profileForm.address} onChange={e => setProfileForm({ ...profileForm, address: e.target.value })} />
+                      </div>
+                      <div className="space-y-2 opacity-50">
+                        <label className="text-[10px] font-black text-slate-400 uppercase">البريد الإلكتروني (مغلق)</label>
+                        <input aria-label="مدخل" title="مدخل" placeholder="مدخل" className="w-full p-3 bg-slate-100 rounded-xl font-bold text-slate-600 border border-slate-200 outline-none cursor-not-allowed"
+                          value={currentUser?.email} disabled />
+                      </div>
+                      <div className="space-y-2 opacity-50">
+                        <label className="text-[10px] font-black text-slate-400 uppercase">الاسم (مغلق)</label>
+                        <input aria-label="مدخل" title="مدخل" placeholder="مدخل" className="w-full p-3 bg-slate-100 rounded-xl font-bold text-slate-600 border border-slate-200 outline-none cursor-not-allowed"
+                          value={currentUser?.firstName + ' ' + currentUser?.lastName} disabled />
+                      </div>
+                      <div className="space-y-2 opacity-50">
+                        <label className="text-[10px] font-black text-slate-400 uppercase">رقم الهاتف (مغلق)</label>
+                        <input aria-label="مدخل" title="مدخل" placeholder="مدخل" className="w-full p-3 bg-slate-100 rounded-xl font-bold text-slate-600 border border-slate-200 outline-none cursor-not-allowed"
+                          value={currentUser?.phone} disabled />
+                      </div>
+                    </div>
+                    <div className="flex gap-3 pt-4 border-t border-slate-50">
+                      <button type="submit" disabled={isSavingProfile} className="flex-1 bg-orange-500 text-white py-3 rounded-xl font-black hover:bg-orange-600 transition-all disabled:opacity-50">
+                        {isSavingProfile ? 'يتم الحفظ...' : 'حفظ'}
+                      </button>
+                      <button type="button" onClick={() => setIsEditingProfile(false)} className="flex-1 bg-slate-100 text-slate-600 py-3 rounded-xl font-black hover:bg-slate-200 transition-all">
+                        إلغاء
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="flex justify-between py-3 border-b border-slate-50">
+                      <span className="text-slate-500 text-sm font-bold">الاسم</span>
+                      <span className="font-black text-slate-800">{currentUser?.firstName} {currentUser?.lastName}</span>
+                    </div>
+                    <div className="flex justify-between py-3 border-b border-slate-50">
+                      <span className="text-slate-500 text-sm font-bold">المعرض / الشركة</span>
+                      <span className="font-black text-slate-800">{currentUser?.companyName || 'لا يوجد'}</span>
+                    </div>
+                    <div className="flex justify-between py-3 border-b border-slate-50">
+                      <span className="text-slate-500 text-sm font-bold">العنوان</span>
+                      <span className="font-black text-slate-800">{currentUser?.address1 || 'لا يوجد'}</span>
+                    </div>
+                    <div className="flex justify-between py-3 border-b border-slate-50">
+                      <span className="text-slate-500 text-sm font-bold">البريد الإلكتروني</span>
+                      <span className="font-mono text-slate-700 text-sm">{currentUser?.email}</span>
+                    </div>
+                    <div className="flex justify-between py-3 border-b border-slate-50">
+                      <span className="text-slate-500 text-sm font-bold">الهاتف</span>
+                      <span className="font-mono text-slate-700 text-sm">{currentUser?.phone || '—'}</span>
+                    </div>
+                    <div className="flex justify-between py-3 border-b border-slate-50">
+                      <span className="text-slate-500 text-sm font-bold">نسبة العمولة</span>
+                      <span className="font-black text-orange-500">{currentUser?.commission || 2}%</span>
+                    </div>
+                    <div className="flex justify-between py-3">
+                      <span className="text-slate-500 text-sm font-bold">حالة التوثيق</span>
+                      <span className={`px-3 py-1 rounded-full text-xs font-black ${currentUser?.kycStatus === 'approved' ? 'bg-emerald-100 text-emerald-700' :
+                        currentUser?.kycStatus === 'rejected' ? 'bg-rose-100 text-rose-700' :
+                          'bg-amber-100 text-amber-700'
+                        }`}>
+                        {currentUser?.kycStatus === 'approved' ? '✅ موثّق' :
+                          currentUser?.kycStatus === 'rejected' ? '❌ مرفوض' : '⏳ قيد المراجعة'}
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* IBAN Update Card */}
@@ -942,6 +1645,54 @@ export const SellerDashboard = () => {
 
             {/* KYC Document Upload */}
             <KycUploadCard currentUser={currentUser} showAlert={showAlert} />
+
+            {/* Notification Preferences Section */}
+            <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm mt-8">
+              <h3 className="text-lg font-black text-slate-900 mb-6 flex items-center gap-2">
+                <Bell className="w-5 h-5 text-orange-500" />
+                إعدادات الإشعارات (Omnichannel)
+              </h3>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="flex items-center justify-between p-4 bg-slate-50 border border-slate-100 rounded-2xl">
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center">
+                      <Mail className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="font-black text-slate-900 text-sm">تنبيهات البريد الإلكتروني</div>
+                      <div className="text-[10px] font-bold text-slate-500 mt-1">المبيعات وتحديثات الشحن</div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => toggleNotificationSetting('emailNotifications')}
+                    disabled={isSavingSettings}
+                    className={`relative w-12 h-6 rounded-full transition-colors ${notificationSettings.emailNotifications ? 'bg-orange-500' : 'bg-slate-300'}`}
+                  >
+                    <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${notificationSettings.emailNotifications ? 'right-1' : 'left-1 rtl:right-auto rtl:left-7'}`}></span>
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-between p-4 bg-slate-50 border border-slate-100 rounded-2xl">
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center">
+                      <MessageSquare className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="font-black text-slate-900 text-sm">رسائل الواتساب (WhatsApp)</div>
+                      <div className="text-[10px] font-bold text-slate-500 mt-1">تنبيهات المزايدات الفورية</div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => toggleNotificationSetting('whatsappNotifications')}
+                    disabled={isSavingSettings}
+                    className={`relative w-12 h-6 rounded-full transition-colors ${notificationSettings.whatsappNotifications ? 'bg-orange-500' : 'bg-slate-300'}`}
+                  >
+                    <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${notificationSettings.whatsappNotifications ? 'right-1' : 'left-1 rtl:right-auto rtl:left-7'}`}></span>
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         );
 
@@ -1063,14 +1814,13 @@ export const SellerDashboard = () => {
         {[
           { id: 'overview', icon: Store, label: 'الرئيسية' },
           { id: 'inventory', icon: Car, label: 'مخزون السيارات' },
+          { id: 'invoices', icon: FileText, label: 'الفواتير والمستندات' },
           { id: 'live_auctions', icon: Activity, label: 'شاشة المزادات الحية' },
-          { id: 'offer_market', icon: Handshake, label: 'سوق العروض' },
           { id: 'financials', icon: DollarSign, label: 'الحسابات (Ledger)' },
           { id: 'logistics', icon: Truck, label: 'الشحن والتسليم' },
           { id: 'messages', icon: MessageSquare, label: 'صندوق البريد' },
           { id: 'market_insights', icon: LineChartIcon, label: 'رؤى السوق' },
           { id: 'profile', icon: CreditCard, label: 'الملف الشخصي / KYC' }
-
         ].map(tab => (
           <button
             key={tab.id}
@@ -1095,391 +1845,307 @@ export const SellerDashboard = () => {
 
       {/* Add Car Wizard Modal */}
       {showAddCarModal && (
-        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-start justify-center z-[100] p-4 overflow-y-auto">
-          <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-3xl p-10 animate-in zoom-in-95 duration-200 my-8">
-            <div className="flex justify-between items-center mb-8 border-b border-slate-100 pb-6">
-              <h3 className="text-2xl font-black text-slate-900 flex items-center gap-3">
-                <div className="w-10 h-10 bg-orange-100 text-orange-600 rounded-xl flex items-center justify-center">
-                  <Car className="w-5 h-5" />
-                </div>
-                إدراج سيارة جديدة للمزاد
-              </h3>
-              <button aria-label="زر" title="زر" onClick={() => setShowAddCarModal(false)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-full transition-colors">
-                <X className="w-6 h-6" />
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center z-[100] overflow-y-auto">
+          <div className="w-full h-full relative p-4 md:p-8">
+            <button
+              title="إغلاق النافذة"
+              aria-label="إغلاق النافذة"
+              onClick={() => {
+                setShowAddCarModal(false);
+                setEditingCar(null);
+              }}
+              className="absolute top-6 left-6 z-50 p-3 bg-slate-900/50 hover:bg-rose-500 text-white rounded-full transition-all shadow-xl"
+            >
+              <X className="w-6 h-6" />
+            </button>
+            <UnifiedCarForm
+              initialData={editingCar || undefined}
+              isSubmitting={false}
+              onCancel={() => {
+                setShowAddCarModal(false);
+                setEditingCar(null);
+              }}
+              onSubmit={async (data, images, engineSound, inspectionReport) => {
+                try {
+                  const uploadedImages = [];
+                  if (images && images.length > 0) {
+                    const formData = new FormData();
+                    images.forEach(img => formData.append('images', img));
+                    const imgRes = await fetch('/api/upload/images', { method: 'POST', body: formData });
+                    if (imgRes.ok) {
+                      const imgData = await imgRes.json();
+                      if (imgData.urls) uploadedImages.push(...imgData.urls);
+                    } else {
+                      const errData = await imgRes.json();
+                      throw new Error(errData.error || 'Failed to upload images');
+                    }
+                  }
+
+                  let engineAudioUrl = '';
+                  let inspectionPdf = '';
+
+                  if (engineSound) {
+                    const mediaData = new FormData();
+                    mediaData.append('media', engineSound);
+                    const mediaRes = await fetch('/api/upload/media', { method: 'POST', body: mediaData });
+                    if (mediaRes.ok) {
+                      const mediaJson = await mediaRes.json();
+                      engineAudioUrl = mediaJson.url;
+                    }
+                  }
+
+                  if (inspectionReport) {
+                    const pData = new FormData();
+                    pData.append('media', inspectionReport);
+                    const pRes = await fetch('/api/upload/media', { method: 'POST', body: pData });
+                    if (pRes.ok) {
+                      const pJson = await pRes.json();
+                      inspectionPdf = pJson.url;
+                    }
+                  }
+
+                  const car = {
+                    id: Date.now().toString(),
+                    lotNumber: `LT-${Math.floor(100000 + Math.random() * 900000)}`,
+                    vin: data.vin || ('1G1' + Math.random().toString(36).substring(7).toUpperCase()),
+                    make: data.make,
+                    model: data.model,
+                    year: data.year,
+                    odometer: data.odometer,
+                    actualOdometer: data.actualOdometer,
+                    engine: data.engine,
+                    cylinders: data.cylinders,
+                    transmission: data.transmission,
+                    drive: data.drive,
+                    fuelType: data.fuelType,
+                    auctionLane: data.auctionLane,
+                    showroomName: data.showroomName,
+                    startingBid: data.startingBid,
+                    reservePrice: data.reservePrice,
+                    saleStatus: data.saleStatus,
+                    locationDetails: data.locationDetails,
+                    exchangeRate: data.exchangeRate,
+                    minPrice: data.minPrice,
+                    specialNote: data.specialNote,
+                    buyNowPrice: data.buyNowPrice || 0,
+                    acceptedOfferPercentage: data.acceptedOfferPercentage || '',
+                    images: uploadedImages.length > 0 ? uploadedImages : ['https://images.unsplash.com/photo-1583121274602-3e2820c69888?auto=format&fit=crop&q=80&w=800'],
+                    youtubeVideoUrl: data.youtubeVideoUrl || '',
+                    engineSoundUrl: engineAudioUrl,
+                    inspectionReportUrl: inspectionPdf,
+                    status: 'pending_approval',
+                    acceptOffers: true,
+                    currency: 'USD',
+                    sellerId: currentUser?.id
+                  };
+
+                  const res = await fetch('/api/cars', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(car)
+                  });
+
+                  if (!res.ok) throw new Error('فشل الحفظ');
+
+                  setShowAddCarModal(false);
+                  showAlert('تم إضافة السيارة بنجاح، بانتظار موافقة الإدارة!', 'success');
+                } catch (err) {
+                  showAlert('حدث خطأ أثناء الرفع أو الحفظ', 'error');
+                }
+              }}
+            />
+          </div>
+        </div>
+      )}
+      {/* Counter Offer Modal */}
+      {showCounterModal && counterCar && (
+        <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl relative animate-in zoom-in-95">
+            <h3 className="text-2xl font-black text-slate-800 mb-2">إرسال عرض مضاد</h3>
+            <p className="text-slate-500 mb-6 text-sm">سيتم إرسال هذا السعر كعرض نهائي للمشتري صاحب أعلى مزايدة الحالية.</p>
+
+            <div className="bg-slate-50 p-4 rounded-2xl mb-6">
+              <div className="flex justify-between mb-2">
+                <span className="text-slate-500 font-bold text-sm">أعلى عرض حالي:</span>
+                <span className="text-emerald-600 font-black">${(counterCar.currentBid || 0).toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500 font-bold text-sm">سعرك الاحتياطي:</span>
+                <span className="text-slate-400 font-bold line-through">${(counterCar.reservePrice || 0).toLocaleString()}</span>
+              </div>
+            </div>
+
+            <div className="mb-6">
+              <label className="block text-sm font-bold text-slate-700 mb-2">السعر المضاد (USD دولار)</label>
+              <div className="relative">
+                <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
+                <input
+                  type="number"
+                  placeholder="أدخل سعرك النهائي..."
+                  value={counterAmount}
+                  onChange={(e) => setCounterAmount(e.target.value)}
+                  className="w-full bg-white border border-slate-200 rounded-xl py-3 pl-12 pr-4 text-left font-mono font-bold text-slate-900 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 transition-all"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={async () => {
+                  const val = Number(counterAmount);
+                  if (!val || isNaN(val)) {
+                    showAlert('يرجى إدخال سعر صحيح', 'error');
+                    return;
+                  }
+                  try {
+                    const res = await fetch(`/api/offers/${counterCar.id}/counter`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ userId: currentUser?.id, userRole: currentUser?.role, counterPrice: val })
+                    });
+                    const data = await res.json();
+                    if (res.ok) {
+                      showAlert('تم إرسال العرض المضاد للمشتري بنجاح.', 'success');
+                      setOfferMarketCars(prev => prev.filter(c => c.id !== counterCar.id));
+                      setSellerCars(prev => prev.map(c => c.id === counterCar.id ? { ...c, sellerCounterPrice: val, status: 'pending_approval' } : c));
+                      setRefreshOfferMarket(prev => prev + 1);
+                      setShowCounterModal(false);
+                      setCounterCar(null);
+                    } else {
+                      showAlert(data.error || 'فشل إرسال العرض', 'error');
+                    }
+                  } catch (e) {
+                    showAlert('خطأ في الاتصال بالخادم', 'error');
+                  }
+                }}
+                className="flex-1 bg-orange-500 text-white font-bold py-3 rounded-xl hover:bg-orange-600 transition-colors shadow-lg shadow-orange-500/20"
+              >
+                تأكيد وإرسال
+              </button>
+              <button
+                onClick={() => {
+                  setShowCounterModal(false);
+                  setCounterCar(null);
+                }}
+                className="flex-1 bg-white text-slate-500 border border-slate-200 font-bold py-3 rounded-xl hover:bg-slate-50 transition-colors"
+              >
+                إلغاء
               </button>
             </div>
+          </div>
+        </div>
+      )}
 
-            {/* Stepper */}
-            <div className="flex gap-2 mb-2">
-              {[
-                { step: 1, label: 'البيانات الأساسية' },
-                { step: 2, label: 'الصور والحالة' },
-                { step: 3, label: 'التسعير والموقع' }
-              ].map(s => (
-                <div key={s.step} className="flex-1 text-center">
-                  <div className={`h-2 rounded-full transition-colors mb-1 ${newCarStep >= s.step ? 'bg-orange-500' : 'bg-slate-100'}`}></div>
-                  <span className={`text-[10px] font-bold ${newCarStep >= s.step ? 'text-orange-600' : 'text-slate-300'}`}>{s.label}</span>
-                </div>
-              ))}
+      {/* Reschedule Modal */}
+      {showRescheduleModal && rescheduleCar && (
+        <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl relative animate-in zoom-in-95">
+            <h3 className="text-2xl font-black text-slate-800 mb-2">إعادة السيارة للمزاد</h3>
+            <p className="text-slate-500 mb-6 text-sm">قم بتحديد موعد المزاد القادم وباقي الخيارات.</p>
+
+            <div className="bg-orange-50 p-4 rounded-2xl mb-6 flex justify-between items-center border border-orange-100">
+              <span className="text-orange-700 font-bold text-sm">الفرص المتبقية لدخول المزاد:</span>
+              <span className="bg-orange-500 text-white font-black px-3 py-1 rounded-lg">
+                {5 - (rescheduleCar.auctionSessionCount || 0)} من 5
+              </span>
             </div>
 
-            {/* ============ STEP 1: Basic Info ============ */}
-            {newCarStep === 1 && (
-              <div className="space-y-6 animate-in slide-in-from-right-4 mt-6">
-                <div className="bg-blue-50 text-blue-800 p-4 rounded-xl text-sm font-bold flex items-start gap-3">
-                  <Info className="w-5 h-5 mt-0.5 flex-shrink-0" />
-                  <p>أدخل رقم الشاصي (VIN) والبيانات الأساسية للسيارة: الشركة، الموديل، السنة، المسافة المقطوعة، والمحرك.</p>
-                </div>
-
-                {/* VIN */}
-                <div>
-                  <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">رقم الشاصي (VIN) *</label>
-                  <input type="text" value={newCar.vin} onChange={e => updateNewCar('vin', e.target.value.toUpperCase())} maxLength={17} placeholder="مثال: 1HGBH41JXMN109186" className="w-full bg-slate-50 border border-slate-200 p-4 rounded-xl font-mono uppercase focus:border-orange-500 outline-none text-lg tracking-wider" />
-                </div>
-
-                {/* Make / Model / Year / Trim */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">الشركة (Make) *</label>
-                    <input type="text" value={newCar.make} onChange={e => updateNewCar('make', e.target.value)} placeholder="Toyota" className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl focus:border-orange-500 outline-none" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">الموديل (Model) *</label>
-                    <input type="text" value={newCar.model} onChange={e => updateNewCar('model', e.target.value)} placeholder="Camry" className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl focus:border-orange-500 outline-none" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">السنة (Year) *</label>
-                    <input aria-label="مدخل" title="مدخل" placeholder="تحديد" type="number" value={newCar.year} onChange={e => updateNewCar('year', parseInt(e.target.value))} min={1990} max={2027} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl focus:border-orange-500 outline-none" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">الفئة (Trim)</label>
-                    <input type="text" value={newCar.trim} onChange={e => updateNewCar('trim', e.target.value)} placeholder="SE, Limited, Sport..." className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl focus:border-orange-500 outline-none" />
-                  </div>
-                </div>
-
-                {/* Mileage */}
-                <div>
-                  <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">المسافة المقطوعة (Odometer) *</label>
-                  <div className="flex gap-2">
-                    <input type="number" value={newCar.mileage} onChange={e => updateNewCar('mileage', e.target.value)} placeholder="45000" className="flex-1 bg-slate-50 border border-slate-200 p-3 rounded-xl focus:border-orange-500 outline-none font-mono text-lg" />
-                    <select aria-label="تحديد" title="تحديد" value={newCar.mileageUnit} onChange={e => updateNewCar('mileageUnit', e.target.value)} className="bg-slate-50 border border-slate-200 px-4 rounded-xl font-bold text-sm focus:border-orange-500 outline-none">
-                      <option value="mi">ميل (MI)</option>
-                      <option value="km">كيلومتر (KM)</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Engine / HP / Transmission / Drivetrain / Fuel */}
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">سعة المحرك (Engine)</label>
-                    <input type="text" value={newCar.engineSize} onChange={e => updateNewCar('engineSize', e.target.value)} placeholder="2.5L, 3.5L V6..." className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl focus:border-orange-500 outline-none" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">قوة المحرك (HP)</label>
-                    <input type="number" value={newCar.horsepower} onChange={e => updateNewCar('horsepower', e.target.value)} placeholder="203" className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl focus:border-orange-500 outline-none" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">ناقل الحركة</label>
-                    <select aria-label="تحديد" title="تحديد" value={newCar.transmission} onChange={e => updateNewCar('transmission', e.target.value)} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl focus:border-orange-500 outline-none font-bold">
-                      <option value="automatic">أوتوماتيك (Automatic)</option>
-                      <option value="manual">عادي (Manual)</option>
-                      <option value="cvt">CVT</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">نظام الدفع (Drivetrain)</label>
-                    <select aria-label="تحديد" title="تحديد" value={newCar.drivetrain} onChange={e => updateNewCar('drivetrain', e.target.value)} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl focus:border-orange-500 outline-none font-bold">
-                      <option value="FWD">أمامي (FWD)</option>
-                      <option value="RWD">خلفي (RWD)</option>
-                      <option value="AWD">رباعي (AWD)</option>
-                      <option value="4WD">دفع رباعي (4WD)</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">نوع الوقود (Fuel)</label>
-                    <select aria-label="تحديد" title="تحديد" value={newCar.fuelType} onChange={e => updateNewCar('fuelType', e.target.value)} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl focus:border-orange-500 outline-none font-bold">
-                      <option value="gasoline">بنزين (Gasoline)</option>
-                      <option value="diesel">ديزل (Diesel)</option>
-                      <option value="electric">كهربائي (Electric)</option>
-                      <option value="hybrid">هايبرد (Hybrid)</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="flex justify-end pt-6 mt-4 border-t border-slate-50">
-                  <button onClick={() => setNewCarStep(2)} className="bg-slate-900 text-white px-8 py-3 rounded-xl font-black hover:bg-slate-800 transition-colors">التالي: صور وحالة السيارة ←</button>
-                </div>
-              </div>
-            )}
-
-            {/* ============ STEP 2: Photos & Condition ============ */}
-            {newCarStep === 2 && (
-              <div className="space-y-6 animate-in slide-in-from-right-4 mt-6">
-                {/* Photo Upload */}
-                <input aria-label="مدخل" title="مدخل" placeholder="تحديد"
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  multiple
-                  className="hidden"
-                  onChange={e => handleImageUpload(e.target.files)}
+            <div className="space-y-4 mb-8">
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-2">موعد المزاد القادم</label>
+                <input
+                  type="datetime-local"
+                  value={rescheduleDate}
+                  onChange={(e) => setRescheduleDate(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 transition-all text-left"
+                  dir="ltr"
                 />
-                <div
-                  onClick={() => fileInputRef.current?.click()}
-                  onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add('border-orange-400', 'bg-orange-50'); }}
-                  onDragLeave={e => { e.preventDefault(); e.currentTarget.classList.remove('border-orange-400', 'bg-orange-50'); }}
-                  onDrop={e => { e.preventDefault(); e.currentTarget.classList.remove('border-orange-400', 'bg-orange-50'); handleImageUpload(e.dataTransfer.files); }}
-                  className="border-2 border-dashed border-slate-200 rounded-2xl p-8 flex flex-col items-center justify-center text-center hover:bg-slate-50 hover:border-orange-300 transition-colors cursor-pointer group"
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-2">سعر "اشتري الآن" (اختياري)</label>
+                <div className="relative">
+                  <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
+                  <input
+                    type="number"
+                    placeholder="سيتم عرضه للمشترين"
+                    value={rescheduleBuyItNow}
+                    onChange={(e) => setRescheduleBuyItNow(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 pl-12 pr-4 text-left font-mono font-bold text-slate-900 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 transition-all"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between bg-slate-50 p-4 rounded-xl border border-slate-100">
+                <div>
+                  <div className="font-bold text-slate-800 text-sm">قبول العروض (Make Offer)</div>
+                  <div className="text-xs text-slate-400 mt-1">السماح للمشترين بتقديم عروض قبل المزاد</div>
+                </div>
+                <button
+                  onClick={() => setRescheduleAcceptOffers(!rescheduleAcceptOffers)}
+                  className={`w-12 h-6 rounded-full transition-colors relative ${rescheduleAcceptOffers ? 'bg-emerald-500' : 'bg-slate-300'}`}
                 >
-                  <div className="w-16 h-16 bg-orange-50 text-orange-500 rounded-full flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                    <UploadCloud className="w-8 h-8" />
-                  </div>
-                  <h4 className="font-black text-slate-800 text-lg mb-1">رفع صور السيارة</h4>
-                  <p className="text-sm text-slate-400">اسحب الصور وأفلتها هنا، أو اضغط للاستعراض</p>
-                  <div className="mt-4 text-xs font-bold text-slate-300 bg-slate-50 px-3 py-1 rounded-full">تم رفع {carImages.length} / 20 صورة • JPG, PNG, WebP</div>
-                </div>
-
-                {/* Upload Progress Bar */}
-                {isUploading && (
-                  <div className="bg-orange-50 border border-orange-100 rounded-xl p-4 flex items-center gap-3">
-                    <div className="flex-1">
-                      <div className="flex justify-between text-xs font-bold text-orange-700 mb-1">
-                        <span>جاري رفع الصور على الخادم...</span>
-                        <span>{uploadProgress}%</span>
-                      </div>
-                      <div className="w-full h-2 bg-orange-100 rounded-full overflow-hidden">
-                        <div
-                          className="h-2 bg-orange-500 rounded-full transition-all duration-300"
-                          ref={(el) => { if (el) el.style.width = `${uploadProgress || 60}%`; }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Image Preview Grid */}
-                {carImages.length > 0 && (
-                  <div className="grid grid-cols-5 gap-3">
-                    {carImages.map((img, idx) => (
-                      <div key={idx} className="relative group/img aspect-square rounded-xl overflow-hidden border border-slate-200 shadow-sm">
-                        <img src={img.preview} alt={`صورة ${idx + 1}`} className="w-full h-full object-cover" />
-                        {/* Upload status overlay */}
-                        {!img.serverUrl && (
-                          <div className="absolute inset-0 bg-orange-500/40 flex items-center justify-center">
-                            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                          </div>
-                        )}
-                        {img.serverUrl && (
-                          <div className="absolute top-1 left-1 w-5 h-5 bg-green-500 rounded-full flex items-center justify-center">
-                            <span className="text-white text-[10px] font-black">✓</span>
-                          </div>
-                        )}
-                        <button
-                          onClick={() => removeImage(idx)}
-                          className="absolute top-1 right-1 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover/img:opacity-100 transition-opacity text-xs font-bold shadow-lg hover:bg-red-600"
-                        >
-                          ✕
-                        </button>
-                        {idx === 0 && (
-                          <div className="absolute bottom-0 inset-x-0 bg-orange-500 text-white text-[9px] font-bold text-center py-0.5">الصورة الرئيسية</div>
-                        )}
-                      </div>
-                    ))}
-                    {carImages.length < 20 && (
-                      <div
-                        onClick={() => fileInputRef.current?.click()}
-                        className="aspect-square rounded-xl border-2 border-dashed border-slate-200 flex flex-col items-center justify-center cursor-pointer hover:border-orange-300 hover:bg-orange-50 transition-colors"
-                      >
-                        <Plus className="w-6 h-6 text-slate-300" />
-                        <span className="text-[10px] text-slate-300 font-bold mt-1">إضافة</span>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-
-                {/* Condition Fields */}
-                <h4 className="font-black text-slate-700 text-sm border-b border-slate-100 pb-2">حالة السيارة والضرر</h4>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">الضرر الأساسي (Primary Damage)</label>
-                    <select aria-label="تحديد" title="تحديد" value={newCar.primaryDamage} onChange={e => updateNewCar('primaryDamage', e.target.value)} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl focus:border-orange-500 outline-none font-bold">
-                      <option value="">-- اختر --</option>
-                      <option value="Front End">أمامي (Front End)</option>
-                      <option value="Rear End">خلفي (Rear End)</option>
-                      <option value="Side">جانبي (Side)</option>
-                      <option value="Rollover">انقلاب (Rollover)</option>
-                      <option value="Hail">بَرَد (Hail)</option>
-                      <option value="Flood">غمر مياه (Flood)</option>
-                      <option value="Mechanical">ميكانيكي (Mechanical)</option>
-                      <option value="Minor Dents">خدوش طفيفة (Minor Dents)</option>
-                      <option value="None">لا يوجد ضرر (None)</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">ضرر ثانوي (Secondary)</label>
-                    <select aria-label="تحديد" title="تحديد" value={newCar.secondaryDamage} onChange={e => updateNewCar('secondaryDamage', e.target.value)} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl focus:border-orange-500 outline-none font-bold">
-                      <option value="">-- لا يوجد --</option>
-                      <option value="Front End">أمامي</option>
-                      <option value="Rear End">خلفي</option>
-                      <option value="Side">جانبي</option>
-                      <option value="Undercarriage">أسفل السيارة</option>
-                      <option value="Minor Dents">خدوش طفيفة</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">نوع اللقب (Title Type)</label>
-                    <select aria-label="تحديد" title="تحديد" value={newCar.titleType} onChange={e => updateNewCar('titleType', e.target.value)} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl focus:border-orange-500 outline-none font-bold">
-                      <option value="Clean">نظيف (Clean Title)</option>
-                      <option value="Salvage">سالفج (Salvage)</option>
-                      <option value="Rebuilt">معاد البناء (Rebuilt)</option>
-                      <option value="Certificate of Destruction">شهادة إتلاف</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">المفاتيح (Keys)</label>
-                    <select aria-label="تحديد" title="تحديد" value={newCar.keys} onChange={e => updateNewCar('keys', e.target.value)} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl focus:border-orange-500 outline-none font-bold">
-                      <option value="yes">✅ نعم - متوفرة</option>
-                      <option value="no">❌ لا - غير متوفرة</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">تعمل وتسير؟</label>
-                    <select aria-label="تحديد" title="تحديد" value={newCar.runsDrives} onChange={e => updateNewCar('runsDrives', e.target.value)} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl focus:border-orange-500 outline-none font-bold">
-                      <option value="yes">✅ نعم</option>
-                      <option value="no">❌ لا</option>
-                      <option value="unknown">❓ غير معروف</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">اللون الخارجي</label>
-                    <input type="text" value={newCar.exteriorColor} onChange={e => updateNewCar('exteriorColor', e.target.value)} placeholder="أسود، أبيض، فضي..." className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl focus:border-orange-500 outline-none" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">اللون الداخلي</label>
-                    <input type="text" value={newCar.interiorColor} onChange={e => updateNewCar('interiorColor', e.target.value)} placeholder="جلد بيج، قماش رمادي..." className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl focus:border-orange-500 outline-none" />
-                  </div>
-                </div>
-
-                <div className="flex justify-between pt-6 mt-4 border-t border-slate-50">
-                  <button onClick={() => setNewCarStep(1)} className="bg-slate-100 text-slate-600 px-8 py-3 rounded-xl font-black hover:bg-slate-200 transition-colors">→ العودة</button>
-                  <button onClick={() => setNewCarStep(3)} className="bg-slate-900 text-white px-8 py-3 rounded-xl font-black hover:bg-slate-800 transition-colors">التالي: التسعير ←</button>
-                </div>
+                  <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${rescheduleAcceptOffers ? 'left-1' : 'right-1'}`} />
+                </button>
               </div>
-            )}
+            </div>
 
-            {/* ============ STEP 3: Pricing & Location ============ */}
-            {newCarStep === 3 && (
-              <div className="space-y-6 animate-in slide-in-from-right-4 mt-6">
-                <div className="bg-amber-50 rounded-2xl p-6 border border-amber-100">
-                  <h4 className="font-black text-amber-800 mb-2">💡 استراتيجية التسعير</h4>
-                  <p className="text-sm text-amber-700/80">تحديد سعر احتياطي واقعي يزيد من فرص بيع سيارتك من أول مزاد بنسبة 70%. السعر الاحتياطي مخفي عن المشترين.</p>
-                </div>
-
-                {/* Row 1: Starting Price + Reserve Price */}
-                <div className="grid grid-cols-2 gap-6">
-                  <div>
-                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">سعر بداية المزاد (Starting Price) *</label>
-                    <div className="relative">
-                      <input type="number" value={newCar.startingPrice || ''} onChange={e => updateNewCar('startingPrice', parseInt(e.target.value) || 0)} placeholder="السعر الذي يبدأ منه المزاد..." className="w-full bg-slate-50 border border-slate-200 p-4 pl-12 rounded-xl text-lg font-black text-slate-900 focus:border-orange-500 outline-none" />
-                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-black text-xl">$</span>
-                    </div>
-                    <p className="text-xs text-slate-400 font-bold mt-2">السعر الذي سيبدأ منه المزايدون. يُفضل أن يكون أقل من السعر الاحتياطي.</p>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">السعر الاحتياطي (Reserve Price) *</label>
-                    <div className="relative">
-                      <input type="number" value={newCar.reservePrice || ''} onChange={e => updateNewCar('reservePrice', parseInt(e.target.value) || 0)} placeholder="أقل سعر تقبل البيع به..." className="w-full bg-slate-50 border border-slate-200 p-4 pl-12 rounded-xl text-lg font-black text-slate-900 focus:border-orange-500 outline-none" />
-                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-black text-xl">$</span>
-                    </div>
-                    <p className="text-xs text-slate-400 font-bold mt-2">* مخفي عن المشترين، إذا لم يصله المزاد ستنتقل السيارة لسوق العروض.</p>
-                  </div>
-                </div>
-
-                {/* Row 2: Min Offer % + Buy-It-Now */}
-                <div className="grid grid-cols-2 gap-6">
-                  <div>
-                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">أقل نسبة عرض مقبول من الاحتياطي</label>
-                    <select aria-label="تحديد" title="تحديد" value={newCar.minOfferPercent} onChange={e => updateNewCar('minOfferPercent', parseInt(e.target.value))} className="w-full bg-slate-50 border border-slate-200 p-4 rounded-xl font-bold text-slate-900 focus:border-orange-500 outline-none">
-                      <option value={100}>100% - لا يُقبل أقل من السعر الاحتياطي</option>
-                      <option value={95}>95% - خصم 5% كحد أقصى</option>
-                      <option value={90}>90% - خصم 10% كحد أقصى</option>
-                      <option value={85}>85% - خصم 15% كحد أقصى (موصى به)</option>
-                      <option value={80}>80% - خصم 20% كحد أقصى</option>
-                      <option value={75}>75% - خصم 25% كحد أقصى</option>
-                    </select>
-                    {newCar.reservePrice > 0 && (
-                      <div className="mt-2 bg-blue-50 text-blue-800 p-3 rounded-xl text-sm font-bold flex items-start gap-2">
-                        <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                        <span>الحد الأدنى للعرض: <strong className="text-blue-900">${Math.ceil(newCar.reservePrice * newCar.minOfferPercent / 100).toLocaleString()}</strong> — لن يستطيع المشتري تقديم عرض أقل من هذا المبلغ.</span>
-                      </div>
-                    )}
-                  </div>
-                  <div>
-                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">سعر الشراء الفوري (Buy-It-Now)</label>
-                    <div className="relative">
-                      <input type="number" value={newCar.buyItNowPrice || ''} onChange={e => updateNewCar('buyItNowPrice', parseInt(e.target.value) || 0)} placeholder="اختياري..." className="w-full bg-slate-50 border border-slate-200 p-4 pl-12 rounded-xl text-lg font-black text-slate-900 focus:border-orange-500 outline-none" />
-                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-black text-xl">$</span>
-                    </div>
-                    <p className="text-xs text-slate-400 font-bold mt-2">إذا عرض المشتري هذا المبلغ تُباع فوراً بدون انتظار المزاد.</p>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">الموقع (Location) *</label>
-                  <input type="text" value={newCar.location} onChange={e => updateNewCar('location', e.target.value)} placeholder="طرابلس، ليبيا أو Houston, TX..." className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl focus:border-orange-500 outline-none" />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">ملاحظات إضافية (Notes)</label>
-                  <textarea value={newCar.notes} onChange={e => updateNewCar('notes', e.target.value)} rows={3} placeholder="أي معلومات إضافية عن السيارة تساعد المشتري..." className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl focus:border-orange-500 outline-none resize-none"></textarea>
-                </div>
-
-                {/* Summary */}
-                <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200">
-                  <h4 className="font-black text-slate-700 text-sm mb-3">📋 ملخص السيارة</h4>
-                  <div className="grid grid-cols-2 gap-2 text-sm">
-                    <span className="text-slate-400">السيارة:</span>
-                    <span className="font-bold text-slate-800">{newCar.year} {newCar.make} {newCar.model} {newCar.trim}</span>
-                    <span className="text-slate-400">VIN:</span>
-                    <span className="font-mono font-bold text-slate-800">{newCar.vin || '---'}</span>
-                    <span className="text-slate-400">المسافة:</span>
-                    <span className="font-bold text-slate-800">{newCar.mileage ? `${Number(newCar.mileage).toLocaleString()} ${newCar.mileageUnit === 'mi' ? 'ميل' : 'كم'}` : '---'}</span>
-                    <span className="text-slate-400">المحرك:</span>
-                    <span className="font-bold text-slate-800">{newCar.engineSize || '---'} {newCar.horsepower ? `• ${newCar.horsepower}HP` : ''}</span>
-                    <span className="text-slate-400">ناقل الحركة:</span>
-                    <span className="font-bold text-slate-800">{newCar.transmission === 'automatic' ? 'أوتوماتيك' : newCar.transmission === 'manual' ? 'عادي' : 'CVT'}</span>
-                    <span className="text-slate-400">بداية المزاد:</span>
-                    <span className="font-bold text-blue-600">{newCar.startingPrice ? `$${newCar.startingPrice.toLocaleString()}` : '---'}</span>
-                    <span className="text-slate-400">السعر الاحتياطي:</span>
-                    <span className="font-bold text-emerald-600">{newCar.reservePrice ? `$${newCar.reservePrice.toLocaleString()}` : '---'}</span>
-                    <span className="text-slate-400">أقل عرض مقبول:</span>
-                    <span className="font-bold text-orange-600">{newCar.reservePrice ? `$${Math.ceil(newCar.reservePrice * newCar.minOfferPercent / 100).toLocaleString()} (${newCar.minOfferPercent}%)` : '---'}</span>
-                  </div>
-                </div>
-
-                <div className="flex justify-between pt-6 mt-4 border-t border-slate-50">
-                  <button onClick={() => setNewCarStep(2)} className="bg-slate-100 text-slate-600 px-8 py-3 rounded-xl font-black hover:bg-slate-200 transition-colors">→ العودة</button>
-                  <button onClick={handleCreateCar} className="bg-emerald-500 text-white px-8 py-3 rounded-xl font-black shadow-lg shadow-emerald-500/20 hover:bg-emerald-600 transition-colors flex items-center gap-2">
-                    <CheckCircle2 className="w-5 h-5" />
-                    اعتماد وإدراج السيارة
-                  </button>
-                </div>
-              </div>
-            )}
+            <div className="flex gap-3">
+              <button
+                onClick={async () => {
+                  try {
+                    const res = await fetch(`/api/cars/${rescheduleCar.id}/reschedule`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        auctionStartTime: rescheduleDate,
+                        acceptOffers: rescheduleAcceptOffers,
+                        buyItNow: Number(rescheduleBuyItNow) || null
+                      })
+                    });
+                    const data = await res.json();
+                    if (res.ok) {
+                      showAlert(data.message, data.status === 'pending_approval' ? 'info' : 'success');
+                      setSellerCars(prev => prev.map(c =>
+                        c.id === rescheduleCar.id ? {
+                          ...c,
+                          status: data.status,
+                          auctionStartTime: rescheduleDate,
+                          acceptOffers: rescheduleAcceptOffers ? 1 : 0,
+                          buyItNow: Number(rescheduleBuyItNow) || null,
+                          auctionSessionCount: data.auctionSessionCount,
+                          offerMarketEndTime: null
+                        } : c
+                      ));
+                      setShowRescheduleModal(false);
+                      setRescheduleCar(null);
+                    } else {
+                      showAlert(data.error || 'فشل إعادة الجدولة', 'error');
+                    }
+                  } catch (e) {
+                    showAlert('خطأ في الاتصال بالخادم', 'error');
+                  }
+                }}
+                className="flex-1 bg-slate-900 text-white font-bold py-3 rounded-xl hover:bg-slate-800 transition-colors shadow-lg shadow-slate-900/20"
+              >
+                تأكيد الجدولة
+              </button>
+              <button
+                onClick={() => {
+                  setShowRescheduleModal(false);
+                  setRescheduleCar(null);
+                }}
+                className="flex-1 bg-white text-slate-500 border border-slate-200 font-bold py-3 rounded-xl hover:bg-slate-50 transition-colors"
+              >
+                إلغاء
+              </button>
+            </div>
           </div>
         </div>
       )}
     </div>
   );
 };
+
+export default SellerDashboard;
+

@@ -1,10 +1,10 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { Car, FeeEstimate, User, BranchConfig, Message, Notification } from '../types';
+import { Car, FeeEstimate, User, BranchConfig, Message, Notification, MarketEstimate } from '../types';
 import { mockCars } from '../data';
 import { io, Socket } from 'socket.io-client';
 import { AlertModal } from '../components/AlertModal';
+import { ConfirmModal } from '../components/ConfirmModal';
 import { ToastContainer, useToast } from '../components/ToastNotification';
-
 
 interface StoreContextType {
   cars: Car[];
@@ -26,6 +26,7 @@ interface StoreContextType {
   setCsvData: (data: any[]) => void;
   socket: Socket | null;
   showAlert: (message: string, type?: 'error' | 'success' | 'info') => void;
+  showConfirm: (message: string, onConfirm: () => void, title?: string) => void;
   toggleWatchlist: (carId: string) => void;
   watchlist: any[];
   branchConfig: BranchConfig | null;
@@ -38,6 +39,13 @@ interface StoreContextType {
   markAllNotificationsAsRead: () => void;
   markMessageAsRead: (id: string) => void;
   sendMessage: (data: { receiverId: string; subject: string; content: string; category: string }) => Promise<void>;
+  marketEstimates: MarketEstimate[];
+  fetchMarketEstimates: () => Promise<void>;
+  addMarketEstimate: (estimate: Omit<MarketEstimate, 'id'>) => Promise<boolean>;
+  updateMarketEstimate: (id: number, estimate: Partial<MarketEstimate>) => Promise<boolean>;
+  deleteMarketEstimate: (id: number) => Promise<boolean>;
+  exchangeRate: number;
+  updateExchangeRate: (rate: number) => Promise<boolean>;
 }
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
@@ -56,14 +64,27 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     message: '',
     type: 'error'
   });
+
+  const [confirmConfig, setConfirmConfig] = useState<{ isOpen: boolean; message: string; title?: string; onConfirm: () => void }>({
+    isOpen: false,
+    message: '',
+    onConfirm: () => { }
+  });
+
   const [watchlist, setWatchlist] = useState<any[]>([]);
   const [branchConfig, setBranchConfig] = useState<BranchConfig | null>(null);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [unreadCounts, setUnreadCounts] = useState({ messages: 0, notifications: 0 });
+  const [marketEstimates, setMarketEstimates] = useState<MarketEstimate[]>([]);
+  const [exchangeRate, setExchangeRate] = useState<number>(7.0);
 
   const showAlert = (message: string, type: 'error' | 'success' | 'info' = 'error') => {
     setAlertConfig({ isOpen: true, message, type });
+  };
+
+  const showConfirm = (message: string, onConfirm: () => void, title?: string) => {
+    setConfirmConfig({ isOpen: true, message, title, onConfirm });
   };
 
   const { toasts, removeToast, toast } = useToast();
@@ -84,6 +105,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     newSocket.on('auction_started', ({ carId }) => {
       setCars(prev => prev.map(car => car.id === carId ? { ...car, status: 'live' } : car));
+    });
+
+    newSocket.on('car_updated', (updates) => {
+      if (!updates.id) return;
+      setCars(prev => prev.map(car => car.id === updates.id ? { ...car, ...updates } : car));
     });
 
     newSocket.on('auction_closed', ({ carId, winnerId }) => {
@@ -108,6 +134,14 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     newSocket.on('new_notification', (notif: Notification) => {
       setNotifications(prev => [notif, ...prev]);
       setUnreadCounts(prev => ({ ...prev, notifications: prev.notifications + 1 }));
+
+      // Play a short notification sound (like a phone text tone)
+      try {
+        const tone = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+        tone.volume = 0.5;
+        tone.play().catch(e => console.log('Audio autoplay blocked', e));
+      } catch (e) { }
+
       // Show elegant toast instead of blocking modal
       const toastType = notif.type === 'success' ? 'success'
         : notif.type === 'alert' ? 'error'
@@ -126,6 +160,17 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
         return prev;
       });
+    });
+
+    // Handle live auction audio
+    newSocket.on('play_audio', (data) => {
+      if ('speechSynthesis' in window) {
+        const msg = new SpeechSynthesisUtterance(data.text);
+        msg.lang = 'ar-SA';
+        msg.rate = 1.1; // Slightly faster for auction energy
+        msg.pitch = 1.2; // Higher pitch for excitement
+        window.speechSynthesis.speak(msg);
+      }
     });
 
     return () => {
@@ -169,10 +214,86 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       } catch (e) {
         console.error("Failed to fetch branch config", e);
       }
+
+      try {
+        const res = await fetch('/api/settings');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.usd_lyd_rate) setExchangeRate(Number(data.usd_lyd_rate));
+        }
+      } catch (e) {
+        console.error("Failed to fetch settings", e);
+      }
     };
 
     fetchData();
+    fetchMarketEstimates();
   }, []);
+
+  const fetchMarketEstimates = async () => {
+    try {
+      const res = await fetch('/api/admin/market-estimates');
+      if (res.ok) setMarketEstimates(await res.json());
+    } catch (e) { console.error('Failed to fetch market estimates', e); }
+  };
+
+  const addMarketEstimate = async (estimate: Omit<MarketEstimate, 'id'>) => {
+    try {
+      const res = await fetch('/api/admin/market-estimates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(estimate)
+      });
+      if (res.ok) {
+        await fetchMarketEstimates();
+        return true;
+      }
+    } catch (e) { console.error(e); }
+    return false;
+  };
+
+  const updateExchangeRate = async (rate: number) => {
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ usd_lyd_rate: rate })
+      });
+      if (res.ok) {
+        setExchangeRate(rate);
+        return true;
+      }
+    } catch (e) { console.error("Failed to update exchange rate", e); }
+    return false;
+  };
+
+  const updateMarketEstimate = async (id: number, estimate: Partial<MarketEstimate>) => {
+    try {
+      const res = await fetch(`/api/admin/market-estimates/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(estimate)
+      });
+      if (res.ok) {
+        await fetchMarketEstimates();
+        return true;
+      }
+    } catch (e) { console.error(e); }
+    return false;
+  };
+
+  const deleteMarketEstimate = async (id: number) => {
+    try {
+      const res = await fetch(`/api/admin/market-estimates/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setMarketEstimates(prev => prev.filter(e => e.id !== id));
+        return true;
+      }
+    } catch (e) { console.error(e); }
+    return false;
+  };
+
+  // Removed buggy useEffect that synced currentUser with stale users array
 
   useEffect(() => {
     if (branchConfig) {
@@ -313,10 +434,15 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(car)
       });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to add car');
+      }
       const savedCar = await res.json();
       setCars(prev => [savedCar, ...prev]);
     } catch (e) {
-      setCars(prev => [car, ...prev]);
+      console.error('Failed to add car:', e);
+      throw e;
     }
     setStats(prev => ({ ...prev, activeAuctions: prev.activeAuctions + 1 }));
   };
@@ -414,6 +540,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       csvData, setCsvData,
       socket,
       showAlert,
+      showConfirm,
       watchlist,
       toggleWatchlist,
       branchConfig,
@@ -425,7 +552,14 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       markNotificationAsRead,
       markAllNotificationsAsRead,
       markMessageAsRead,
-      sendMessage
+      sendMessage,
+      marketEstimates,
+      fetchMarketEstimates,
+      addMarketEstimate,
+      updateMarketEstimate,
+      deleteMarketEstimate,
+      exchangeRate,
+      updateExchangeRate
     }}>
       {children}
       <AlertModal
@@ -433,6 +567,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         message={alertConfig.message}
         type={alertConfig.type}
         onClose={closeAlert}
+      />
+      <ConfirmModal
+        isOpen={confirmConfig.isOpen}
+        title={confirmConfig.title}
+        message={confirmConfig.message}
+        onConfirm={confirmConfig.onConfirm}
+        onCancel={() => setConfirmConfig(prev => ({ ...prev, isOpen: false }))}
       />
       <ToastContainer toasts={toasts} onRemove={removeToast} />
     </StoreContext.Provider>

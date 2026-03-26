@@ -54,11 +54,11 @@ export const CopartAuctionSystem = () => {
 
   const filteredData = useMemo(() => {
     return csvData.filter(item => {
-      const matchesSearch = !searchTerm || 
-        Object.values(item).some(val => 
+      const matchesSearch = !searchTerm ||
+        Object.values(item).some(val =>
           String(val).toLowerCase().includes(searchTerm.toLowerCase())
         );
-      
+
       const matchesFilters = Object.entries(filters).every(([key, value]) => {
         if (!value) return true;
         return item[key] === value;
@@ -71,7 +71,7 @@ export const CopartAuctionSystem = () => {
   // Infinite scroll logic
   useEffect(() => {
     if (observer.current) observer.current.disconnect();
-    
+
     observer.current = new IntersectionObserver(entries => {
       if (entries[0].isIntersecting && visibleCount < filteredData.length) {
         setVisibleCount(prev => prev + 20);
@@ -97,7 +97,7 @@ export const CopartAuctionSystem = () => {
           <label className="cursor-pointer bg-orange-500 hover:bg-orange-600 text-white px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-orange-500/20 transition-all">
             <RefreshCw className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
             {isLoading ? 'جاري المزامنة...' : 'مزامنة البيانات (Sync)'}
-            <input type="file" className="hidden" accept=".csv" onChange={handleFileUpload} disabled={isLoading} />
+            <input aria-label="رفع ملف CSV" title="رفع ملف CSV" type="file" className="hidden" accept=".csv" onChange={handleFileUpload} disabled={isLoading} />
           </label>
         </div>
       </div>
@@ -106,7 +106,7 @@ export const CopartAuctionSystem = () => {
       <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
         <div className="relative">
           <Search className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
-          <input 
+          <input aria-label="البحث عن سيارة" title="بحث"
             type="text"
             placeholder="البحث عن سيارة (ماركة، موديل، VIN...)"
             className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 pr-12 pl-4 outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 transition-all"
@@ -119,7 +119,7 @@ export const CopartAuctionSystem = () => {
           {headers.map(header => (
             <div key={header} className="space-y-1">
               <label className="text-[10px] font-bold text-slate-400 uppercase mr-1">{header}</label>
-              <select aria-label="تحديد" title="تحديد"  
+              <select aria-label="تحديد" title="تحديد"
                 className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs outline-none focus:border-orange-500 transition-all"
                 value={filters[header] || ''}
                 onChange={e => setFilters(prev => ({ ...prev, [header]: e.target.value }))}
@@ -137,15 +137,15 @@ export const CopartAuctionSystem = () => {
       {/* Car List */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {displayedData.map((car, index) => (
-          <div 
+          <div
             key={index}
             ref={index === displayedData.length - 1 ? lastElementRef : null}
             onClick={() => navigate(`/car-details/${index}`, { state: { car } })}
             className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer group"
           >
             <div className="relative h-48 overflow-hidden">
-              <img 
-                src={car['Image Thumbnail'] || (car['Image URL'] ? String(car['Image URL']).split(/[,;\s\n]/).filter(Boolean)[0] : '') || 'https://picsum.photos/seed/car/400/300'} 
+              <img
+                src={car['Image Thumbnail'] || (car['Image URL'] ? String(car['Image URL']).split(/[,;\s\n]/).filter(Boolean)[0] : '') || 'https://picsum.photos/seed/car/400/300'}
                 alt={car.Make}
                 className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                 referrerPolicy="no-referrer"
@@ -157,7 +157,7 @@ export const CopartAuctionSystem = () => {
                 {car['Sale Title State'] || 'AVAILABLE'}
               </div>
             </div>
-            
+
             <div className="p-4 space-y-3">
               <div className="flex justify-between items-start">
                 <h3 className="font-bold text-slate-800 line-clamp-1">
@@ -178,10 +178,10 @@ export const CopartAuctionSystem = () => {
 
               <div className="pt-3 border-t border-slate-100 flex justify-between items-center">
                 <div className="text-xs font-bold text-slate-400">Est. Retail Value</div>
-                <div className="text-lg font-black text-orange-600">${Number(car['Est. Retail Value'] || 0).toLocaleString()}</div>
+                <div className="text-lg font-black text-orange-600">${Number(car['Est. Retail Value'] || 0).toLocaleString('en-US')}</div>
               </div>
 
-              <button className="w-full bg-slate-900 text-white py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 group-hover:bg-orange-500 transition-colors">
+              <button aria-label="عرض التفاصيل" title="عرض التفاصيل" className="w-full bg-slate-900 text-white py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 group-hover:bg-orange-500 transition-colors">
                 عرض التفاصيل
                 <ChevronRight className="w-4 h-4" />
               </button>

@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { Search, Filter, Calculator as CalcIcon } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 
 export const Hero = () => {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [searchTerm, setSearchTerm] = useState('');
   const [brand, setBrand] = useState('all');
 
@@ -28,10 +30,10 @@ export const Hero = () => {
 
       <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
         <h1 className="text-4xl md:text-6xl font-bold text-white mb-6 leading-tight animate-float">
-          المستقبل في شراء <span className="text-gradient font-extrabold italic">السيارات المصدومة</span>
+          {t('hero.titlePart1')} <span className="text-gradient font-extrabold italic">{t('hero.titlePart2')}</span>
         </h1>
         <p className="text-lg md:text-xl text-slate-300 mb-8 max-w-2xl mx-auto">
-          وداعاً للرسوم المخفية والتعقيدات. نوفر لك وصولاً مباشراً لمزادات كوبارت و IAAI بشفافية تامة، وتجربة مستخدم لا مثيل لها.
+          {t('hero.subtitle')}
         </p>
 
         <div className="flex flex-col sm:flex-row justify-center gap-4 mb-12">
@@ -40,13 +42,13 @@ export const Hero = () => {
             className="bg-orange-500 hover:bg-orange-600 text-white px-10 py-4 rounded-2xl font-black text-xl transition-all shadow-xl shadow-orange-500/30 transform hover:scale-105 active:scale-95 flex items-center justify-center gap-3"
           >
             <CalcIcon className="w-6 h-6" />
-            الآلة الحاسبة
+            {t('hero.calculator')}
           </Link>
           <button
             onClick={() => navigate('/marketplace')}
             className="bg-white/10 hover:bg-white/20 text-white px-10 py-4 rounded-2xl font-black text-xl transition-all backdrop-blur-md border border-white/10"
           >
-            ابدأ المزايدة
+            {t('hero.startBidding')}
           </button>
         </div>
 
@@ -56,7 +58,7 @@ export const Hero = () => {
             <Search className="w-5 h-5 text-slate-400 ml-3" />
             <input
               type="text"
-              placeholder="ابحث برقم اللوت، رقم الشاصي (VIN)، أو نوع السيارة..."
+              placeholder={t('hero.searchPlaceholder')}
               className="w-full bg-transparent border-none outline-none text-white placeholder-slate-400 focus:ring-0"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -71,11 +73,11 @@ export const Hero = () => {
               value={brand}
               onChange={(e) => setBrand(e.target.value)}
             >
-              <option value="all">كل الماركات</option>
-              <option value="toyota">تويوتا</option>
-              <option value="lexus">لكزس</option>
-              <option value="mercedes">مرسيدس</option>
-              <option value="bmw">بي ام دبليو</option>
+              <option value="all">{t('hero.allBrands')}</option>
+              <option value="toyota">{t('hero.brands.toyota')}</option>
+              <option value="lexus">{t('hero.brands.lexus')}</option>
+              <option value="mercedes">{t('hero.brands.mercedes')}</option>
+              <option value="bmw">{t('hero.brands.bmw')}</option>
             </select>
 
             <button
@@ -90,25 +92,24 @@ export const Hero = () => {
               onClick={handleSearch}
               className="bg-orange-500 hover:bg-orange-600 text-white px-8 py-3 rounded-xl font-bold transition-colors shadow-lg shadow-orange-500/30"
             >
-              بحث
+              {t('hero.search')}
             </button>
           </div>
         </div>
         ...
 
-        {/* Trust Indicators */}
         <div className="mt-12 flex flex-wrap justify-center gap-8 text-slate-400 text-sm font-medium">
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-green-500"></div>
-            <span>+300,000 سيارة متاحة</span>
+            <span>{t('hero.trust.carsAvailable')}</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-blue-500"></div>
-            <span>رسوم شفافة 100%</span>
+            <span>{t('hero.trust.transparentFees')}</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-purple-500"></div>
-            <span>شحن دولي متكامل</span>
+            <span>{t('hero.trust.globalShipping')}</span>
           </div>
         </div>
       </div>

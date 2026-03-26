@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Users, Clock, Wallet, Shield, MapPin, Search, Filter,
   Menu, X, Bell, LogOut, LayoutDashboard, History,
@@ -8,16 +8,18 @@ import {
   FileText, Mail, ShieldCheck, Store, List, File, HelpCircle, Settings,
   MoreVertical, UploadCloud, Globe, ShoppingCart, Check, Reply,
   Link as LinkIcon, Calculator, Info, BookOpen, TrendingUp, Handshake, Map, Camera,
-  AlertCircle, Wallet as WalletIcon, FileCheck, User, BarChart3, ChevronRight, ChevronDown, Car, Home
+  AlertCircle, Wallet as WalletIcon, FileCheck, User, BarChart3, ChevronRight, ChevronDown, Car, Home, DollarSign
 } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { NotificationDropdown } from '../components/NotificationDropdown';
 import { MessageDropdown } from '../components/MessageDropdown';
 import { SHIPMENT_STATUS_LABELS } from '../types';
 import { KycPanel } from '../components/KycPanel';
+import { useTranslation } from 'react-i18next';
 
 
 export const UserDashboard = () => {
+  const { t, i18n } = useTranslation();
   const { currentUser, setCurrentUser, socket, showAlert, cars, watchlist, branchConfig, unreadCounts, markMessageAsRead, markNotificationAsRead } = useStore();
   const [searchParams, setSearchParams] = useSearchParams();
   const view = searchParams.get('view') || 'overview';
@@ -57,10 +59,13 @@ export const UserDashboard = () => {
   const [showDepositModal, setShowDepositModal] = useState(false);
   const [showNewMessageModal, setShowNewMessageModal] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
+  const [showDetailedReport, setShowDetailedReport] = useState(false);
   const [showInspectionModal, setShowInspectionModal] = useState(false);
   const [selectedReport, setSelectedReport] = useState<any>(null);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showMessages, setShowMessages] = useState(false);
+  const [marketData, setMarketData] = useState<any>(null);
+  const [loadingMarketData, setLoadingMarketData] = useState(false);
   const [newMessageData, setNewMessageData] = useState({ subject: '', content: '', category: 'general' });
   const [inspectionForm, setInspectionForm] = useState({ carDetails: '', location: '', urgency: 'normal' });
   const [depositAmount, setDepositAmount] = useState('1000');
@@ -74,22 +79,58 @@ export const UserDashboard = () => {
     phone: '',
     address: ''
   });
+  const [activeTab, setActiveTab] = useState<'winning' | 'pending' | 'counter' | 'active' | 'lost'>('winning');
   const [isChangingPass, setIsChangingPass] = useState(false);
   const [passForm, setPassForm] = useState({ current: '', new: '', confirm: '' });
   const [isSavingProfile, setIsSavingProfile] = useState(false);
 
+  const [notificationSettings, setNotificationSettings] = useState({ emailNotifications: true, whatsappNotifications: true });
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
+
+  const navigate = useNavigate();
+
+  const effectiveUser = currentUser || {} as any;
+
+  useEffect(() => {
+    if (effectiveUser.id) {
+      fetch(`/api/user/settings/${effectiveUser.id}`)
+        .then(res => res.json())
+        .then(data => {
+          if (!data.error) {
+            setNotificationSettings({
+              emailNotifications: data.emailNotifications === 1,
+              whatsappNotifications: data.whatsappNotifications === 1
+            });
+          }
+        })
+        .catch(console.error);
+    }
+  }, [effectiveUser.id]);
+
+  const toggleNotificationSetting = async (key: 'emailNotifications' | 'whatsappNotifications') => {
+    const newSettings = { ...notificationSettings, [key]: !notificationSettings[key] };
+    setNotificationSettings(newSettings);
+    setIsSavingSettings(true);
+    try {
+      await fetch(`/api/user/settings/${effectiveUser.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newSettings)
+      });
+    } catch {
+      showAlert('فشل تحديث الإعدادات', 'error');
+    } finally {
+      setIsSavingSettings(false);
+    }
+  };
+
   const glassCardClasses = "bg-white/70 backdrop-blur-xl border border-white/40 shadow-[0_8px_32px_0_rgba(31,38,135,0.07)] rounded-[2rem] transition-all duration-500 hover:shadow-[0_8px_32px_0_rgba(31,38,135,0.15)]";
 
-  const effectiveUser = currentUser || {
-    id: 'user-1',
-    firstName: 'محمد',
-    lastName: 'العربي',
-    email: 'user@autopro.com',
-    role: 'admin', // Default to admin for development
-    buyingPower: 50000,
-    deposit: 5000,
-    commission: 5
-  } as any;
+  useEffect(() => {
+    if (!currentUser) {
+      navigate('/auth');
+    }
+  }, [currentUser, navigate]);
 
   const favoriteCars = cars.filter(car => watchlist.some(w => w.carId === car.id));
   const wonCars = cars.filter(car => car.status === 'closed' && car.winnerId === (effectiveUser.id));
@@ -198,6 +239,77 @@ export const UserDashboard = () => {
     }
   }, [cars, userBids, effectiveUser?.id]);
 
+  // Mark all unviewed invoices as viewed when navigating to the invoices view
+  useEffect(() => {
+    if (view === 'invoices' && invoices.length > 0) {
+      const unviewedInvoices = invoices.filter(inv => inv.isViewed === 0);
+
+      unviewedInvoices.forEach(async (inv) => {
+        try {
+          const res = await fetch(`/api/invoices/${inv.id}/view`, { method: 'PUT' });
+          if (res.ok) {
+            setInvoices(prev => prev.map(i => i.id === inv.id ? { ...i, isViewed: 1 } : i));
+          }
+        } catch (e) {
+          console.error("Failed to mark invoice as viewed", e);
+        }
+      });
+    }
+  }, [view, invoices]);
+
+  // Listen for real-time shipment updates
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleShipmentUpdated = (data: any) => {
+      setShipments(prev => {
+        const exists = prev.some(s => s.id === data.id);
+        if (exists) {
+          return prev.map(s => s.id === data.id ? { ...s, ...data } : s);
+        }
+        return [data, ...prev];
+      });
+      // Optionally show alert if user is online
+
+    };
+
+    socket.on('shipment_updated', handleShipmentUpdated);
+    return () => {
+      socket.off('shipment_updated', handleShipmentUpdated);
+    };
+  }, [socket]);
+
+  const handleRejectCounterOffer = async (bidId: string) => {
+    try {
+      const res = await fetch(`/api/bids/${bidId}/reject-counter`, { method: 'POST' });
+      if (res.ok) {
+        // Assuming toast and fetchActiveBids are defined elsewhere
+        // toast.success("تم رفض عرض البائع المضاد.", { icon: '🤝' });
+        // fetchActiveBids();
+      }
+    } catch (e) {
+      // toast.error("حدث خطأ أثناء رفض العرض");
+    }
+  };
+
+  const handleCancelTransport = async (invoiceId: string) => {
+    if (!window.confirm("تحذير: اختيارك لهذا الخيار يعني أنك تتكفل بنقل السيارة وشحنها شخصياً وستُلغى فواتير النقل التابعة لنا. هل أنت متأكد؟")) return;
+    try {
+      const res = await fetch(`/api/invoices/${invoiceId}/cancel-transport`, { method: 'POST' });
+      if (res.ok) {
+        showAlert("تم اختيار النقل الشخصي بنجاح 🚚", 'success'); // Using showAlert as toast is not defined in this snippet
+        // Assuming fetchInvoices and fetchShipments are available in this scope
+        // fetchInvoices();
+        // fetchShipments();
+      } else {
+        const d = await res.json();
+        showAlert(d.error || "حدث خطأ أثناء الطلب", 'error');
+      }
+    } catch (e) {
+      showAlert("فشل الاتصال بالخادم", 'error');
+    }
+  };
+
   const handlePayInvoice = async (id: string) => {
     try {
       const res = await fetch(`/api/invoices/${id}/pay`, { method: 'POST' });
@@ -211,6 +323,21 @@ export const UserDashboard = () => {
     }
   };
 
+  const handleConfirmDelivery = async (id: string) => {
+    if (!window.confirm('هل أنت متأكد أنك استلمت السيارة وقمت بمعاينتها؟ لا يمكن التراجع عن هذا الإجراء وسيتم تحويل قيمة السداد للبائع المستحق.')) return;
+    try {
+      const res = await fetch(`/api/user/invoices/${id}/confirm-delivery`, { method: 'POST' });
+      if (res.ok) {
+        setInvoices(prev => prev.map(inv => inv.id === id ? { ...inv, status: 'delivered_to_buyer' } : inv));
+        showAlert('تم تأكيد الاستلام بنجاح. مبروك سيارتك الجديدة!', 'success');
+      } else {
+        showAlert('فشل تأكيد الاستلام', 'error');
+      }
+    } catch (e) {
+      showAlert('خطأ في الاتصال بالشبكة', 'error');
+    }
+  };
+
   const handleRequestShipping = async (carId: string) => {
     try {
       const res = await fetch(`/api/shipments/${carId}/request`, {
@@ -219,11 +346,14 @@ export const UserDashboard = () => {
         body: JSON.stringify({ userId: effectiveUser.id })
       });
       if (res.ok) {
-        showAlert('تم إرسال طلب الشحن بنجاح! سيتم موافاتك بالتحديثات قريباً.', 'success');
-        // Refresh shipments to show the new status
-        fetch(`/api/shipments/user/${effectiveUser.id}`).then(r => r.json()).then(setShipments);
-        // Switch to logistics view
-        navigateTo('logistics');
+        showAlert('تم إرسال طلب الشحن بنجاح! جاري تحويلك للتتبع...', 'success');
+
+        // Refresh shipments to show the new status then navigate to tracking
+        const updatedShipments = await fetch(`/api/shipments/user/${effectiveUser.id}`).then(r => r.json());
+        setShipments(updatedShipments);
+
+        // Slight delay to ensure state update completes before switching view
+        setTimeout(() => navigateTo('logistics'), 300);
       } else {
         showAlert('فشل إرسال طلب الشحن', 'error');
       }
@@ -307,12 +437,12 @@ export const UserDashboard = () => {
       <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
           {[
-            { label: 'القوة الشرائية المتاحة', value: `$${availableBuyingPower.toLocaleString()}`, icon: Wallet, color: 'text-orange-500', bg: 'bg-orange-50', title: 'القوة الشرائية المتاحة في حسابك' },
-            { label: 'إجمالي المزايدات الملتزم بها', value: `$${totalExposure.toLocaleString()}`, icon: Gavel, color: 'text-slate-900', bg: 'bg-slate-100', title: 'إجمالي المبلغ الملتزم به في المزايدات النشطة' },
-            { label: 'السيارات المربوحة', value: wonCars.length, icon: Trophy, color: 'text-yellow-600', bg: 'bg-yellow-50', title: 'عدد السيارات التي فزت بها' },
-            { label: 'فواتير غير مدفوعة', value: invoices.filter(i => i.status === 'unpaid').length, icon: Clock, color: 'text-blue-500', bg: 'bg-blue-50', title: 'عدد الفواتير المستحقة للدفع' },
+            { label: t('userDashboard.overview.availablePower'), value: `$${availableBuyingPower.toLocaleString()}`, icon: Wallet, color: 'text-orange-500', bg: 'bg-orange-50', title: t('userDashboard.overview.availablePowerDesc'), link: 'wallet' },
+            { label: t('userDashboard.overview.committedBids'), value: `$${totalExposure.toLocaleString()}`, icon: Gavel, color: 'text-slate-900', bg: 'bg-slate-100', title: t('userDashboard.overview.committedBidsDesc'), link: 'bids' },
+            { label: t('userDashboard.overview.wonCars'), value: wonCars.length, icon: Trophy, color: 'text-yellow-600', bg: 'bg-yellow-50', title: t('userDashboard.overview.wonCarsDesc'), link: 'bids' },
+            { label: t('userDashboard.overview.unpaidInvoices'), value: invoices.filter(i => i.status === 'unpaid' || i.status === 'pending').length, icon: Clock, color: 'text-blue-500', bg: 'bg-blue-50', title: t('userDashboard.overview.unpaidInvoicesDesc'), link: 'invoices' },
           ].map((stat, i) => (
-            <div key={i} className={`${glassCardClasses} p-6 flex flex-col items-center text-center group`} title={stat.title}>
+            <div key={i} onClick={() => navigateTo(stat.link)} className={`${glassCardClasses} p-6 flex flex-col items-center text-center group cursor-pointer hover:border-orange-500/20 transition-all`} title={stat.title}>
               <div className={`${stat.bg} ${stat.color} p-4 rounded-2xl mb-4 shadow-sm group-hover:scale-110 transition-transform`}>
                 <stat.icon className="w-6 h-6" aria-hidden="true" />
               </div>
@@ -326,14 +456,14 @@ export const UserDashboard = () => {
           <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-xl">
             <h3 className="text-xl font-black text-slate-900 mb-6 flex items-center gap-2">
               <TrendingUp className="w-5 h-5 text-green-500" aria-hidden="true" />
-              نشاط المزايدة الحالي
+              {t('userDashboard.overview.biddingActivity')}
             </h3>
             <div className="space-y-4">
               {activeBids.map(car => (
                 <div key={car.id} onClick={() => navigateTo('bids')} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100 cursor-pointer hover:bg-slate-100 transition-all group">
                   <div className="flex items-center gap-3">
                     {car.images?.[0] ? (
-                      <img src={car.images[0]} className="w-12 h-12 rounded-xl object-cover shadow-sm group-hover:scale-110 transition-transform" alt="صورة" />
+                      <img src={car.images[0]} className="w-12 h-12 rounded-xl object-cover shadow-sm group-hover:scale-110 transition-transform" alt={`صورة السيارة ${car.make} ${car.model}`} />
                     ) : (
                       <div className="w-12 h-12 bg-slate-900 rounded-xl flex items-center justify-center text-white font-black">{car.make[0]}</div>
                     )}
@@ -345,31 +475,70 @@ export const UserDashboard = () => {
                   <div className="text-left">
                     <div className="text-sm font-black text-slate-900">${car.currentBid?.toLocaleString()}</div>
                     <div className="text-[10px] font-bold text-green-500 uppercase tracking-tighter flex items-center gap-1">
-                      الفائز حالياً
+                      {t('userDashboard.overview.winningCurrently')}
                       <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
                     </div>
                   </div>
                 </div>
               ))}
-              {activeBids.length === 0 && <div className="text-center py-8 text-slate-400 text-sm italic font-bold">لا توجد مزايدات نشطة (تكتات) حالياً</div>}
+              {activeBids.length === 0 && <div className="text-center py-8 text-slate-400 text-sm italic font-bold">{t('userDashboard.overview.noActiveBids')}</div>}
             </div>
           </div>
 
-          <div className="bg-slate-900 p-8 rounded-[2.5rem] text-white shadow-2xl relative overflow-hidden">
-            <div className="relative z-10 h-full flex flex-col justify-between">
-              <div>
-                <h3 className="text-2xl font-black mb-2">بع سيارتك في ثوانٍ 🚀</h3>
-                <p className="text-slate-400 text-sm font-medium mb-8">عملية سهلة، شفافة، وبأعلى سعر في السوق.</p>
+          <div className="space-y-6">
+            <h3 className="text-xl font-black text-slate-900 flex items-center gap-2 mb-6">
+              <Bell className="w-5 h-5 text-orange-500" />
+              {t('userDashboard.overview.recentActivities')}
+            </h3>
+
+            {/* Unpaid Invoices Link */}
+            {invoices.filter(i => i.status === 'unpaid' || i.status === 'pending').length > 0 && (
+              <div onClick={() => navigateTo('invoices')} className="bg-orange-50 p-6 rounded-3xl border border-orange-100 cursor-pointer hover:bg-orange-100 transition-all group flex items-center justify-between shadow-sm hover:shadow-md">
+                <div className="flex items-center gap-4">
+                  <div className="bg-orange-500 text-white p-3 rounded-xl shadow-sm group-hover:scale-110 transition-transform"><FileText className="w-5 h-5" /></div>
+                  <div>
+                    <div className="font-black text-slate-900">{t('userDashboard.overview.unpaidPendingInvoices', { count: invoices.filter(i => i.status === 'unpaid' || i.status === 'pending').length })}</div>
+                    <div className="text-xs font-bold text-slate-500 mt-1">{t('userDashboard.overview.payToAvoidFees')}</div>
+                  </div>
+                </div>
+                <ChevronRight className="w-5 h-5 text-orange-400 rtl:rotate-180" />
               </div>
-              <button
-                onClick={() => navigateTo('sell')}
-                className="bg-orange-500 hover:bg-orange-600 text-white py-4 rounded-2xl font-black transition-all shadow-xl shadow-orange-500/20 active:scale-95 text-center"
-                title="ابدأ عملية بيع سيارتك الآن"
-              >
-                ابدأ المزايدة على سيارتك الآن
-              </button>
+            )}
+
+            {/* Shipments Link */}
+            {shipments.length > 0 && (
+              <div onClick={() => navigateTo('logistics')} className="bg-blue-50 p-6 rounded-3xl border border-blue-100 cursor-pointer hover:bg-blue-100 transition-all group flex items-center justify-between shadow-sm hover:shadow-md">
+                <div className="flex items-center gap-4">
+                  <div className="bg-blue-600 text-white p-3 rounded-xl shadow-sm group-hover:scale-110 transition-transform"><Truck className="w-5 h-5" /></div>
+                  <div>
+                    <div className="font-black text-slate-900">{t('userDashboard.overview.activeShipments', { count: shipments.length })}</div>
+                    <div className="text-xs font-bold text-slate-500 mt-1">{t('userDashboard.overview.trackShipment')}</div>
+                  </div>
+                </div>
+                <ChevronRight className="w-5 h-5 text-blue-400 rtl:rotate-180" />
+              </div>
+            )}
+
+            {/* Messages Link */}
+            <div onClick={() => navigateTo('messages')} className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm cursor-pointer hover:bg-slate-50 transition-all group flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="bg-slate-900 text-white p-3 rounded-xl shadow-sm group-hover:scale-110 transition-transform"><MessageSquare className="w-5 h-5" /></div>
+                <div>
+                  <div className="font-black text-slate-900">{t('userDashboard.overview.messagesSupport')}</div>
+                  <div className="text-xs font-bold text-slate-500 mt-1">{t('userDashboard.overview.contactSupport')}</div>
+                </div>
+              </div>
+              <ChevronRight className="w-5 h-5 text-slate-400 rtl:rotate-180" />
             </div>
-            <AlertCircle className="absolute -bottom-10 -right-10 w-48 h-48 text-white/5 -rotate-12" aria-hidden="true" />
+
+            {/* Fallback Empty Activities */}
+            {invoices.filter(i => i.status === 'unpaid' || i.status === 'pending').length === 0 && shipments.length === 0 && (
+              <div className="bg-slate-50 p-8 rounded-3xl border border-dashed border-slate-200 text-center">
+                <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto mb-3" />
+                <div className="font-black text-slate-700">{t('userDashboard.overview.noPendingTasks')}</div>
+                <div className="text-xs text-slate-400 mt-1 font-bold">{t('userDashboard.overview.everythingLooksGreat')}</div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -379,13 +548,13 @@ export const UserDashboard = () => {
   const renderWallet = () => (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
       <div className="flex justify-between items-center">
-        <h2 className="text-3xl font-black text-slate-900 tracking-tight">المحفظة والتمويل 🏦</h2>
+        <h2 className="text-3xl font-black text-slate-900 tracking-tight">{t('userDashboard.wallet.title')}</h2>
         <button
           onClick={() => setShowDepositModal(true)}
           className="bg-slate-900 text-white px-8 py-3 rounded-2xl font-black shadow-xl hover:bg-orange-500 transition-all flex items-center gap-2"
         >
           <CreditCard className="w-5 h-5" />
-          شحن الرصيد / إيداع عربون
+          {t('userDashboard.wallet.depositBtn')}
         </button>
       </div>
 
@@ -393,37 +562,37 @@ export const UserDashboard = () => {
         <div className="bg-gradient-to-br from-slate-900 to-slate-800 p-8 rounded-[2.5rem] text-white shadow-2xl relative overflow-hidden group">
           <WalletIcon className="absolute -top-6 -right-6 w-32 h-32 text-white/5 transition-transform group-hover:scale-110" />
           <div className="relative z-10">
-            <div className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-1">رصيد المحفظة (نقداً)</div>
+            <div className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-1">{t('userDashboard.wallet.walletBalance')}</div>
             <div className="text-5xl font-black mb-8 text-orange-500">${(effectiveUser.deposit || 0).toLocaleString()}</div>
             <div className="bg-white/10 backdrop-blur-md px-4 py-2 rounded-xl inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-widest">
               <Shield className="w-4 h-4 text-emerald-400" />
-              حساب مؤمن ومحمي
+              {t('userDashboard.wallet.protectedAccount')}
             </div>
           </div>
         </div>
 
         <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-xl group hover:border-orange-200 transition-all">
-          <div className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-1">القوة الشرائية (Limit)</div>
+          <div className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-1">{t('userDashboard.wallet.buyingPower')}</div>
           <div className="text-4xl font-black text-slate-900 mb-8 tracking-tight">${(effectiveUser.buyingPower || 0).toLocaleString()}</div>
           <div className="flex items-center gap-2 text-xs text-orange-500 font-black">
             <Gavel className="w-4 h-4" />
-            سقف المزايدة الحالي ({branchConfig?.default_buying_power_multiplier || 10}x الإيداع)
+            {t('userDashboard.wallet.currentBidLimit', { multiplier: branchConfig?.default_buying_power_multiplier || 10 })}
           </div>
         </div>
 
         <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-xl group hover:border-blue-200 transition-all">
-          <div className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-1">إجمالي العمليات</div>
+          <div className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-1">{t('userDashboard.wallet.totalTransactions')}</div>
           <div className="text-4xl font-black text-slate-900 mb-8 tracking-tight">{transactions.length}</div>
           <div className="flex items-center gap-2 text-xs text-blue-500 font-black">
             <History className="w-4 h-4" />
-            سجل النشاط المالي الكامل
+            {t('userDashboard.wallet.fullActivityLog')}
           </div>
         </div>
       </div>
 
       <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-xl overflow-hidden">
         <div className="px-8 py-6 border-b border-slate-50 flex justify-between items-center bg-slate-50/50">
-          <h3 className="font-black text-slate-900">سجل المعاملات المالية</h3>
+          <h3 className="font-black text-slate-900">{t('userDashboard.wallet.financialLogTitle')}</h3>
           <Filter className="w-5 h-5 text-slate-400 cursor-pointer" />
         </div>
         <div className="divide-y divide-slate-50">
@@ -434,8 +603,8 @@ export const UserDashboard = () => {
                   {tx.type === 'deposit' ? <ArrowUpRight className="w-6 h-6" /> : <TrendingUp className="rotate-180 w-6 h-6" />}
                 </div>
                 <div>
-                  <div className="font-bold text-slate-900">{tx.type === 'deposit' ? 'إيداع رصيد' : 'مزايدة / دفع'}</div>
-                  <div className="text-xs text-slate-400">{new Date(tx.timestamp).toLocaleString('ar-EG')}</div>
+                  <div className="font-bold text-slate-900">{tx.type === 'deposit' ? t('userDashboard.wallet.deposit') : t('userDashboard.wallet.bidPayment')}</div>
+                  <div className="text-xs text-slate-400">{new Date(tx.timestamp).toLocaleString(i18n.language === 'ar' ? 'ar-EG' : 'en-US')}</div>
                 </div>
               </div>
               <div className={`text-xl font-black ${tx.type === 'deposit' ? 'text-green-600' : 'text-slate-900'}`}>
@@ -443,112 +612,412 @@ export const UserDashboard = () => {
               </div>
             </div>
           ))}
-          {transactions.length === 0 && <div className="p-12 text-center text-slate-400 italic font-bold">لا توجد سجلات مالية بعد</div>}
+          {transactions.length === 0 && <div className="p-12 text-center text-slate-400 italic font-bold">{t('userDashboard.wallet.noFinancialLogs')}</div>}
         </div>
       </div>
     </div>
   );
 
-  const renderInvoices = () => (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-      <h2 className="text-3xl font-black text-slate-900">الفواتير وإيضاحات الاستلام 📄</h2>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        {invoices.map(inv => (
-          <div key={inv.id} className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-xl hover:shadow-2xl transition-all relative overflow-hidden group">
-            <div className={`absolute top-0 right-0 w-2 h-full ${inv.status === 'paid' ? 'bg-green-500' : 'bg-orange-500'}`}></div>
-            <div className="flex justify-between items-start mb-6">
-              <div>
-                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Invoice ID: INV-{inv.id}</div>
-                <h3 className="text-2xl font-black text-slate-900">{inv.year} {inv.make} {inv.model}</h3>
-              </div>
-              <div className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-tighter ${inv.status === 'paid' ? 'bg-green-100 text-green-600' : 'bg-orange-100 text-orange-600'}`}>
-                {inv.status === 'paid' ? 'مدفوعة ✅' : 'بانتظار الدفع'}
-              </div>
-            </div>
+  const renderInvoices = () => {
+    // Group invoices by carId
+    const groupedInvoices = invoices.reduce((acc: Record<string, any[]>, inv: any) => {
+      if (!acc[inv.carId]) acc[inv.carId] = [];
+      acc[inv.carId].push(inv);
+      return acc;
+    }, {} as Record<string, typeof invoices>);
 
-            <div className="text-4xl font-black text-slate-900 mb-8">${inv.amount.toLocaleString()} <span className="text-sm font-bold text-slate-400 ml-1">USD</span></div>
+    return (
+      <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+        <h2 className="text-3xl font-black text-slate-900">{t('userDashboard.invoices.title')}</h2>
 
-            {/* Storage Timer Alert */}
-            {inv.status === 'paid' && (
-              <div className="mb-6 p-4 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Clock className="w-5 h-5 text-orange-500" />
-                  <div className="text-xs font-bold text-slate-600">التخزين المجاني ينتهي في:</div>
-                </div>
-                <div className="text-sm font-black text-orange-600">
-                  {(() => {
-                    const days = Math.ceil((new Date(inv.dueDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-                    return days > 0 ? `${days} أيام متبقية` : 'بدأت رسوم التخزين ⚠️';
-                  })()}
-                </div>
-              </div>
-            )}
-
-            {inv.status === 'paid' ? (
-              <div className="bg-green-50 p-6 rounded-3xl border border-green-100 relative group-hover:bg-green-100/50 transition-colors">
-                <div className="text-[10px] font-black text-green-600 mb-3 uppercase tracking-[0.2em] flex items-center gap-2">
-                  <Shield className="w-4 h-4" /> إذن استلام السيارة (Pickup Auth)
-                </div>
-                <div className="text-3xl font-mono font-black text-green-700 tracking-[0.3em] text-center bg-white py-4 rounded-xl shadow-inner border border-green-200">
-                  {inv.pickupAuthCode}
-                </div>
-                <p className="mt-4 text-[11px] text-green-600 font-bold leading-relaxed">
-                  * أبرز هذا الكود وإثبات الشخصية عند زيارة المعرض لاستكمال الاستلام.
-                </p>
-                {(() => {
-                  const ship = shipments.find(s => s.carId === inv.carId);
-                  if (!ship || ship.status === 'paid' || ship.status === 'awaiting_payment') {
-                    return (
-                      <button
-                        onClick={() => handleRequestShipping(inv.carId)}
-                        className="mt-6 w-full flex items-center justify-center gap-2 bg-slate-900 text-white py-3 rounded-2xl font-bold hover:bg-slate-800 transition-all border border-slate-700 shadow-lg shadow-slate-900/10"
-                      >
-                        <Truck className="w-5 h-5 text-accent-500" />
-                        طلب شحن السيارة للعنوان
-                      </button>
-                    );
-                  } else {
-                    return (
-                      <div className="mt-6 p-3 bg-orange-100/50 rounded-2xl text-orange-700 text-xs font-black flex items-center justify-center gap-2 border border-orange-200">
-                        <Package className="w-4 h-4" />
-                        تم طلب الشحن - تابع حالة السيارة في قسم التتبع
-                      </div>
-                    );
-                  }
-                })()}
-              </div>
-            ) : (
-              <button
-                onClick={() => handlePayInvoice(inv.id)}
-                className="w-full bg-slate-900 hover:bg-slate-800 text-white py-4 rounded-2xl font-black transition-all shadow-xl active:scale-95"
-              >
-                دفع قيمة السيارة الآن
-              </button>
-            )}
+        {Object.keys(groupedInvoices).length === 0 ? (
+          <div className="bg-white p-20 rounded-[3rem] border border-slate-100 shadow-xl text-center">
+            <FileText className="w-16 h-16 text-slate-200 mx-auto mb-6" />
+            <h3 className="text-xl font-black text-slate-400">{t('userDashboard.invoices.noInvoices')}</h3>
           </div>
-        ))}
-        {invoices.length === 0 && (
-          <div className="col-span-full py-20 text-center glass rounded-[3rem] border border-dashed border-slate-200">
-            <FileText className="w-16 h-16 mx-auto mb-4 text-slate-200" />
-            <p className="text-slate-400 font-bold">لا توجد فواتير حالياً</p>
+        ) : (
+          <div className="space-y-8">
+            {Object.entries(groupedInvoices).map(([carId, carInvoices]) => {
+              const primaryInv = carInvoices.find((i: any) => i.type === 'purchase') || carInvoices[0];
+              const sortedInvoices = [...carInvoices].sort((a: any, b: any) => {
+                const t = { 'purchase': 1, 'transport': 2, 'shipping': 3 };
+                return (t[a.type as keyof typeof t] || 9) - (t[b.type as keyof typeof t] || 9);
+              });
+
+              return (
+                <div key={carId} className="bg-white p-8 md:p-10 rounded-[2.5rem] border border-slate-200 shadow-xl relative overflow-hidden group">
+                  {/* Car Header */}
+                  <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-100 pb-6 mb-8 gap-4">
+                    <div>
+                      <h3 className="text-3xl font-black text-slate-900">{primaryInv.year} {primaryInv.make} {primaryInv.model}</h3>
+                      <div className="flex flex-wrap items-center gap-3 mt-3">
+                        <span className="text-xs font-mono font-bold text-slate-500 bg-slate-50 px-3 py-1 rounded-lg border border-slate-100">
+                          LOT: {primaryInv.lotNumber || 'N/A'}
+                        </span>
+                        <span className="text-xs font-mono font-bold text-slate-500 bg-slate-50 px-3 py-1 rounded-lg border border-slate-100 flex items-center gap-1">
+                          <span className="text-slate-400">VIN:</span> {primaryInv.vin || 'N/A'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 3 Sequential Invoices */}
+                  <div className="grid grid-cols-1 gap-5 relative z-10">
+                    <div className="absolute top-0 right-7 md:right-8 w-1 h-full bg-slate-100 rounded-full z-0 hidden md:block"></div>
+
+                    {sortedInvoices.map((inv: any, idx) => (
+                      <div key={inv.id} className={`relative z-10 bg-white border ${inv.status === 'unpaid' ? 'border-orange-300 shadow-lg shadow-orange-100' : 'border-slate-200 shadow-sm'} p-6 rounded-3xl flex flex-col md:flex-row justify-between items-center md:items-start gap-6 transition-all`}>
+                        <div className="flex items-center gap-5 w-full md:w-auto">
+                          <div className={`w-14 h-14 shrink-0 rounded-2xl flex items-center justify-center text-xl font-black shadow-inner border ${['paid', 'release_issued', 'delivered_to_buyer', 'seller_paid_by_admin'].includes(inv.status) ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : inv.status === 'pending' ? 'bg-slate-50 text-slate-400 border-slate-200' : inv.status === 'cancelled_self_pickup' ? 'bg-slate-100 text-slate-400 border-slate-200' : 'bg-orange-50 text-orange-600 border-orange-200'}`}>
+                            {idx + 1}
+                          </div>
+                          <div>
+                            <div className="font-black text-xl text-slate-900 flex items-center gap-2">
+                              {(!inv.type || inv.type === 'purchase') ? t('userDashboard.invoices.carPriceComplete') :
+                                inv.type === 'transport' ? t('userDashboard.invoices.inlandTransport') :
+                                  inv.type === 'shipping' ? t('userDashboard.invoices.oceanShipping') : t('userDashboard.invoices.otherInvoice')}
+                            </div>
+                            <div className="text-xs text-slate-400 font-bold mt-1 tracking-wider">INV-{inv.id.toUpperCase().substring(0, 8)}</div>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col items-center md:items-end gap-3 w-full md:w-auto border-t md:border-t-0 border-slate-100 pt-4 md:pt-0">
+                          <div className={`text-3xl font-black px-5 py-2 rounded-2xl border ${inv.status === 'cancelled_self_pickup' ? 'bg-slate-100 border-slate-200 text-slate-400 line-through' : 'bg-slate-50 border-slate-100 text-slate-800'}`}>
+                            ${inv.amount.toLocaleString()}
+                          </div>
+
+                          <div className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest w-full text-center md:w-auto ${['paid', 'release_issued', 'delivered_to_buyer', 'seller_paid_by_admin'].includes(inv.status) ? 'bg-emerald-100 text-emerald-700' : inv.status === 'pending' ? 'bg-slate-100 text-slate-500' : inv.status === 'cancelled_self_pickup' ? 'bg-slate-200 text-slate-600' : 'bg-orange-100 text-orange-700'}`}>
+                            {['paid', 'release_issued', 'delivered_to_buyer', 'seller_paid_by_admin'].includes(inv.status) ? t('userDashboard.invoices.paidSuccess') :
+                              inv.status === 'pending' ? t('userDashboard.invoices.pendingWaitingPrevious') :
+                                inv.status === 'cancelled_self_pickup' ? t('userDashboard.invoices.cancelledSelfPickup') : t('userDashboard.invoices.waitingPayment')}
+                          </div>
+
+                          {inv.status === 'unpaid' && (
+                            <div className="w-full flex flex-col gap-2 mt-1">
+                              <button
+                                onClick={() => handlePayInvoice(inv.id)}
+                                className="w-full md:w-auto bg-slate-900 hover:bg-slate-800 text-white px-8 py-3 rounded-xl font-black transition-all shadow-xl active:scale-95 flex items-center justify-center gap-2 text-sm"
+                              >
+                                {t('userDashboard.invoices.payInvoice')}
+                              </button>
+
+                              {/* New Self-Transport Action available only on Transport Stage */}
+                              {inv.type === 'transport' && (
+                                <button
+                                  onClick={() => handleCancelTransport(inv.id)}
+                                  className="w-full md:w-auto bg-orange-50 hover:bg-orange-100 border border-orange-200 text-orange-700 px-8 py-2.5 rounded-xl font-black transition-all shadow-sm active:scale-95 flex items-center justify-center gap-2 text-xs"
+                                  title={t('userDashboard.invoices.selfTransportTitle')}
+                                >
+                                  {t('userDashboard.invoices.selfTransportBtn')}
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Auth Code & Delivery block (Tied to primary car purchase invoice or successful delivery) */}
+                  {['paid', 'release_issued', 'delivered_to_buyer', 'seller_paid_by_admin'].includes(primaryInv.status) && (
+                    <div className="bg-emerald-50/50 p-6 md:p-8 rounded-3xl border border-emerald-100 relative mt-8">
+                      <div className="text-[11px] font-black text-emerald-700 mb-4 uppercase tracking-[0.2em] flex items-center gap-2">
+                        <Shield className="w-5 h-5" /> {t('userDashboard.invoices.authPickup')}
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="bg-white p-5 rounded-2xl shadow-sm border border-emerald-100">
+                          <div className="text-xs font-bold text-slate-400 mb-2">{t('userDashboard.invoices.authCode')}</div>
+                          <div className="text-2xl font-mono font-black text-emerald-700 tracking-[0.2em]">
+                            {primaryInv.pickupAuthCode || `AUTH-${primaryInv.id.substring(0, 8).toUpperCase()}`}
+                          </div>
+                        </div>
+
+                        {/* Storage Timer Alert */}
+                        <div className="bg-white p-5 rounded-2xl shadow-sm border border-emerald-100 flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center">
+                              <Clock className="w-5 h-5 text-orange-500" />
+                            </div>
+                            <div className="text-xs font-bold text-slate-600">{t('userDashboard.invoices.freeStorage')}</div>
+                          </div>
+                          <div className="text-sm font-black text-orange-600 bg-orange-50 px-3 py-1.5 rounded-lg border border-orange-100">
+                            {(() => {
+                              const days = Math.ceil((new Date(primaryInv.dueDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                              return days > 0 ? t('userDashboard.invoices.daysLeft', { days }) : t('userDashboard.invoices.storageFeesStarted');
+                            })()}
+                          </div>
+                        </div>
+                      </div>
+
+                      {primaryInv.status === 'release_issued' && (
+                        <button
+                          onClick={() => handleConfirmDelivery(primaryInv.id)}
+                          className="mt-6 w-full flex items-center justify-center gap-3 bg-purple-600 text-white py-4 rounded-2xl font-black hover:bg-purple-700 transition-all border border-purple-800 shadow-xl cursor-pointer"
+                        >
+                          <CheckCircle2 className="w-6 h-6" />
+                          {t('userDashboard.invoices.confirmDeliveryFinal')}
+                        </button>
+                      )}
+
+                      {(primaryInv.status === 'delivered_to_buyer' || primaryInv.status === 'seller_paid_by_admin') && (
+                        <div className="mt-6 p-4 bg-emerald-100/50 rounded-2xl text-emerald-800 text-sm font-black flex items-center justify-center gap-2 border border-emerald-200">
+                          <CheckCircle2 className="w-5 h-5" />
+                          {t('userDashboard.invoices.deliveryCompleted')}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
-    </div>
-  );
+    );
+  };
+
+  const renderBids = () => {
+    // Categorize Bids
+    const winningCars = activeBids.filter(b => b.winnerId === currentUser?.id && (b.status === 'live' || b.status === 'upcoming'));
+    const pendingCarsList = activeBids.filter(b => b.status === 'pending_approval' && b.winnerId === currentUser?.id && !b.sellerCounterPrice);
+    const counterOfferedCars = activeBids.filter(b => b.status === 'pending_approval' && b.winnerId === currentUser?.id && b.sellerCounterPrice);
+    const activeBidsList = activeBids.filter(b => b.winnerId !== currentUser?.id && (b.status === 'live' || b.status === 'upcoming'));
+    const lostList = lostAuctions;
+
+    return (
+      <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+        <div className="flex flex-col md:flex-row md:items-center justify-between bg-slate-50 p-6 md:p-8 rounded-[3rem] border border-slate-100 shadow-sm gap-6">
+          <div>
+            <h2 className="text-3xl font-black text-slate-900 flex items-center gap-3">{t('userDashboard.bids.title')} <Gavel className="w-8 h-8 text-orange-500" /></h2>
+            <p className="text-slate-500 font-bold mt-2 tracking-wide text-sm max-w-lg">{t('userDashboard.bids.subtitle')}</p>
+          </div>
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+            {[
+              { id: 'winning', label: t('userDashboard.bids.tabWinning'), count: winningCars.length, icon: Trophy, activeColor: 'bg-emerald-500 text-white', defaultColor: 'bg-white text-emerald-600 hover:bg-emerald-50 border-emerald-100' },
+              { id: 'pending', label: t('userDashboard.bids.tabPending'), count: pendingCarsList.length, icon: Clock, activeColor: 'bg-orange-500 text-white', defaultColor: 'bg-white text-orange-600 hover:bg-orange-50 border-orange-100' },
+              { id: 'counter', label: t('userDashboard.bids.tabCounter'), count: counterOfferedCars.length, icon: TrendingUp, activeColor: 'bg-purple-600 text-white', defaultColor: 'bg-white text-purple-600 hover:bg-purple-50 border-purple-100' },
+              { id: 'active', label: t('userDashboard.bids.tabActive'), count: activeBidsList.length, icon: Gavel, activeColor: 'bg-blue-600 text-white', defaultColor: 'bg-white text-blue-600 hover:bg-blue-50 border-blue-100' },
+              { id: 'lost', label: t('userDashboard.bids.tabLost'), count: lostList.length, icon: AlertCircle, activeColor: 'bg-red-500 text-white', defaultColor: 'bg-white text-red-600 hover:bg-red-50 border-red-100' }
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as any)}
+                className={`flex flex-col items-center justify-center p-3 rounded-2xl border transition-all ${activeTab === tab.id ? tab.activeColor : tab.defaultColor} ${activeTab === tab.id ? 'shadow-lg scale-105' : 'shadow-sm'}`}
+              >
+                <div className="flex items-center gap-1 mb-1">
+                  <tab.icon className="w-4 h-4" />
+                  <span className="font-black text-xl font-mono">{tab.count}</span>
+                </div>
+                <div className="text-[10px] uppercase font-black tracking-widest leading-tight text-center">{tab.label}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Dynamic Content based on activeTab */}
+        <div className="bg-white rounded-[3rem] border border-slate-100 shadow-xl p-8 min-h-[400px]">
+
+          {/* WINNING TAB */}
+          {activeTab === 'winning' && (
+            <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
+              <h3 className="text-xl font-black text-emerald-700 flex items-center gap-2 border-b border-slate-50 pb-4">
+                <Trophy className="w-6 h-6" /> {t('userDashboard.bids.winningTitle')}
+              </h3>
+              {winningCars.length === 0 ? (
+                <div className="text-center py-20 bg-slate-50 rounded-3xl border border-slate-100 italic text-slate-400 font-bold">{t('userDashboard.bids.noWinningBids')}</div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {winningCars.map(car => (
+                    <div key={car.id} onClick={() => window.location.href = `/car-details/${car.id}`} className="bg-white rounded-3xl shadow-sm border border-emerald-100 p-6 cursor-pointer hover:border-emerald-300 hover:shadow-lg transition-all group">
+                      <div className="text-[10px] font-black w-fit px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full mb-4">Lot: {car.lotNumber}</div>
+                      <img src={car.images?.[0] || ''} alt={`${car.make} ${car.model}`} className="w-full h-40 object-cover rounded-2xl mb-4 group-hover:scale-105 transition-transform" />
+                      <h4 className="font-black text-slate-900 text-lg mb-1">{car.year} {car.make} {car.model}</h4>
+                      <div className="flex justify-between items-center mt-4">
+                        <span className="text-xs font-bold text-slate-400">{t('userDashboard.bids.yourBidPrice')}</span>
+                        <span className="font-mono font-black text-lg text-emerald-600">${(car.currentBid || 0).toLocaleString()}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* PENDING TAB */}
+          {activeTab === 'pending' && (
+            <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
+              <h3 className="text-xl font-black text-orange-600 flex items-center gap-2 border-b border-slate-50 pb-4">
+                <Clock className="w-6 h-6" /> {t('userDashboard.bids.pendingTitle')}
+              </h3>
+              {pendingCarsList.length === 0 ? (
+                <div className="text-center py-20 bg-slate-50 rounded-3xl border border-slate-100 italic text-slate-400 font-bold">{t('userDashboard.bids.noPendingCars')}</div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {pendingCarsList.map(car => (
+                    <div key={car.id} onClick={() => window.location.href = `/car-details/${car.id}`} className="bg-white rounded-3xl shadow-sm border-2 border-orange-100 p-6 cursor-pointer hover:border-orange-300 hover:shadow-lg transition-all group relative overflow-hidden">
+                      <div className="absolute top-0 right-0 w-24 h-24 bg-orange-50 rounded-full blur-2xl -mr-10 -mt-10"></div>
+                      <div className="relative z-10">
+                        <div className="text-[10px] font-black w-fit px-3 py-1 bg-orange-100 text-orange-700 rounded-full mb-4">Lot: {car.lotNumber}</div>
+                        <img src={car.images?.[0] || ''} alt={`${car.make} ${car.model}`} className="w-full h-40 object-cover rounded-2xl mb-4 group-hover:scale-105 transition-transform" />
+                        <h4 className="font-black text-slate-900 text-lg mb-1">{car.year} {car.make} {car.model}</h4>
+                        <div className="font-mono font-black text-2xl text-slate-900 mb-4">${(car.currentBid || 0).toLocaleString()} <span className="text-xs font-bold text-slate-400 inline-block">{t('userDashboard.bids.highestOffer')}</span></div>
+                        <div className="text-sm font-bold text-orange-600 bg-orange-50 p-3 rounded-2xl text-center">
+                          {t('userDashboard.bids.underReview')}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* COUNTER OFFER TAB */}
+          {activeTab === 'counter' && (
+            <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
+              <h3 className="text-xl font-black text-purple-600 flex items-center gap-2 border-b border-slate-50 pb-4">
+                <TrendingUp className="w-6 h-6" /> {t('userDashboard.bids.counterTitle')}
+              </h3>
+              {counterOfferedCars.length === 0 ? (
+                <div className="text-center py-20 bg-slate-50 rounded-3xl border border-slate-100 italic text-slate-400 font-bold">{t('userDashboard.bids.noCounterOffers')}</div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {counterOfferedCars.map(car => (
+                    <div key={car.id} className="bg-white rounded-3xl shadow-sm border-2 border-purple-200 p-6 flex flex-col md:flex-row gap-6">
+                      <div className="w-full md:w-1/3">
+                        <img src={car.images?.[0] || ''} alt={`${car.make} ${car.model}`} className="w-full h-full min-h-[120px] object-cover rounded-2xl" />
+                      </div>
+                      <div className="w-full md:w-2/3 flex flex-col justify-between">
+                        <div>
+                          <div className="text-[10px] font-black w-fit px-3 py-1 bg-purple-100 text-purple-700 rounded-full mb-2">Lot: {car.lotNumber}</div>
+                          <h4 className="font-black text-slate-900 text-lg mb-1">{car.year} {car.make} {car.model}</h4>
+                          <div className="flex gap-4 mt-2">
+                            <div>
+                              <div className="text-[10px] font-bold text-slate-400">{t('userDashboard.bids.originalOffer')}</div>
+                              <div className="font-mono font-black text-slate-900 line-through decoration-red-500">${(car.currentBid || 0).toLocaleString()}</div>
+                            </div>
+                            <div>
+                              <div className="text-[10px] font-bold text-purple-600">{t('userDashboard.bids.newCounterOffer')}</div>
+                              <div className="font-mono font-black text-2xl text-purple-700">${car.sellerCounterPrice?.toLocaleString()}</div>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex gap-2 mt-6">
+                          <button
+                            onClick={async () => {
+                              try {
+                                const res = await fetch(`/api/offers/${car.id}/respond`, {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ userId: currentUser?.id, action: 'accept' })
+                                });
+                                if (res.ok) showAlert(t('userDashboard.bids.offerApproved'), 'success');
+                              } catch (e) { showAlert(t('userDashboard.bids.error'), 'error'); }
+                            }}
+                            className="flex-1 bg-slate-900 text-white py-3 rounded-xl text-xs font-black hover:bg-slate-800 transition-colors shadow-lg"
+                          >
+                            {t('userDashboard.bids.approveAndBuy')}
+                          </button>
+                          <button
+                            onClick={async () => {
+                              if (window.confirm(t('userDashboard.bids.rejectCounterWarn'))) {
+                                try {
+                                  const res = await fetch(`/api/offers/${car.id}/respond`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ userId: currentUser?.id, action: 'reject' })
+                                  });
+                                  if (res.ok) showAlert(t('userDashboard.bids.offerRefused'), 'info');
+                                } catch (e) { showAlert(t('userDashboard.bids.error'), 'error'); }
+                              }
+                            }}
+                            className="flex-1 bg-white border border-slate-200 text-slate-500 py-3 rounded-xl text-xs font-black hover:bg-slate-50 transition-colors"
+                          >
+                            {t('userDashboard.bids.finalRejection')}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ACTIVE (NON-WINNING) TAB */}
+          {activeTab === 'active' && (
+            <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
+              <h3 className="text-xl font-black text-blue-600 flex items-center gap-2 border-b border-slate-50 pb-4">
+                <Gavel className="w-6 h-6" /> {t('userDashboard.bids.activeParticipatingTitle')}
+              </h3>
+              {activeBidsList.length === 0 ? (
+                <div className="text-center py-20 bg-slate-50 rounded-3xl border border-slate-100 italic text-slate-400 font-bold">{t('userDashboard.bids.noActiveParticipating')}</div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {activeBidsList.map(car => (
+                    <div key={car.id} onClick={() => window.location.href = `/car-details/${car.id}`} className="bg-white rounded-3xl shadow-sm border border-blue-100 p-6 cursor-pointer hover:border-blue-300 hover:shadow-lg transition-all group relative">
+                      <div className="text-[10px] font-black w-fit px-3 py-1 bg-blue-100 text-blue-700 rounded-full mb-4">Lot: {car.lotNumber}</div>
+                      <img src={car.images?.[0] || ''} alt={`${car.make} ${car.model}`} className="w-full h-40 object-cover rounded-2xl mb-4 group-hover:scale-105 transition-transform" />
+                      <h4 className="font-black text-slate-900 text-lg mb-1">{car.year} {car.make} {car.model}</h4>
+                      <div className="flex justify-between items-center mt-4 border-t border-slate-50 pt-4">
+                        <span className="text-xs font-bold text-slate-400">{t('userDashboard.bids.currentPrice')}</span>
+                        <span className="font-mono font-black text-lg text-slate-900">${(car.currentBid || 0).toLocaleString()}</span>
+                      </div>
+                      <button className="w-full mt-4 bg-blue-600 text-white py-2 rounded-xl text-xs font-black shadow-lg shadow-blue-500/20 group-hover:bg-blue-700 transition-colors">
+                        {t('userDashboard.bids.increaseBid')}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* LOST TAB */}
+          {activeTab === 'lost' && (
+            <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
+              <h3 className="text-xl font-black text-red-600 flex items-center gap-2 border-b border-slate-50 pb-4">
+                <AlertCircle className="w-6 h-6" /> {t('userDashboard.bids.lostTitle')}
+              </h3>
+              {lostList.length === 0 ? (
+                <div className="text-center py-20 bg-slate-50 rounded-3xl border border-slate-100 italic text-slate-400 font-bold">{t('userDashboard.bids.noLostBids')}</div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {lostList.map(car => (
+                    <div key={car.id} onClick={() => window.location.href = `/car-details/${car.id}`} className="bg-white rounded-3xl shadow-sm border border-slate-100 p-6 cursor-pointer hover:border-red-100 hover:shadow-lg transition-all group opacity-80 hover:opacity-100">
+                      <div className="text-[10px] font-black w-fit px-3 py-1 bg-slate-100 text-slate-500 rounded-full mb-4">Lot: {car.lotNumber}</div>
+                      <img src={car.images?.[0] || ''} alt={`${car.make} ${car.model}`} className="w-full h-40 object-cover rounded-2xl mb-4 grayscale group-hover:grayscale-0 transition-all" />
+                      <h4 className="font-black text-slate-900 text-lg mb-1">{car.year} {car.make} {car.model}</h4>
+                      <div className="flex justify-between items-center mt-4">
+                        <span className="text-xs font-bold text-slate-500">{t('userDashboard.bids.soldPrice')}</span>
+                        <span className="font-mono font-black text-lg text-slate-900">${(car.currentBid || 0).toLocaleString()}</span>
+                      </div>
+                      <div className="mt-4 text-xs font-black text-red-700 bg-red-50 p-2 rounded-xl text-center">{t('userDashboard.bids.lostReason')}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+        </div>
+      </div >
+    );
+  };
 
   const renderSellCar = () => (
     <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
       <div className="text-center">
-        <h2 className="text-4xl font-black text-slate-900 tracking-tight mb-3">اعرض سيارتك للبيع 🏷️</h2>
-        <p className="text-slate-500 font-medium">خطوات بسيطة لعرض سيارتك أمام آلاف المزايدين المحترفين.</p>
+        <h2 className="text-4xl font-black text-slate-900 tracking-tight mb-3">{t('userDashboard.sell.title')}</h2>
+        <p className="text-slate-500 font-medium">{t('userDashboard.sell.subtitle')}</p>
       </div>
 
       <form onSubmit={handleSellSubmit} className="bg-white p-10 rounded-[3rem] border border-slate-100 shadow-2xl space-y-8">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-2">
-            <label className="text-xs font-black text-slate-400 uppercase tracking-widest px-2">رقم الشاسيه (VIN Lock) 🔒</label>
-            <input aria-label="مدخل" title="مدخل" placeholder="مدخل" 
+            <label className="text-xs font-black text-slate-400 uppercase tracking-widest px-2">{t('userDashboard.sell.vinLock')}</label>
+            <input aria-label="مدخل" title="مدخل" placeholder="مدخل"
               required
               className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 text-slate-900 font-mono font-bold outline-none focus:border-orange-500 transition-all"
               value={sellForm.vin}
@@ -556,8 +1025,8 @@ export const UserDashboard = () => {
             />
           </div>
           <div className="space-y-2">
-            <label className="text-xs font-black text-slate-400 uppercase tracking-widest px-2">السنة</label>
-            <input aria-label="مدخل" title="مدخل" placeholder="مدخل" 
+            <label className="text-xs font-black text-slate-400 uppercase tracking-widest px-2">{t('userDashboard.sell.year')}</label>
+            <input aria-label="مدخل" title="مدخل" placeholder="مدخل"
               required type="number"
               className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 text-slate-900 font-bold outline-none focus:border-orange-500 transition-all"
               value={sellForm.year}
@@ -565,8 +1034,8 @@ export const UserDashboard = () => {
             />
           </div>
           <div className="space-y-2">
-            <label className="text-xs font-black text-slate-400 uppercase tracking-widest px-2">الشركة المصنعة (Make)</label>
-            <input aria-label="مدخل" title="مدخل" placeholder="مدخل" 
+            <label className="text-xs font-black text-slate-400 uppercase tracking-widest px-2">{t('userDashboard.sell.make')}</label>
+            <input aria-label="مدخل" title="مدخل" placeholder="مدخل"
               required
               className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 text-slate-900 font-bold outline-none focus:border-orange-500 transition-all"
               value={sellForm.make}
@@ -574,8 +1043,8 @@ export const UserDashboard = () => {
             />
           </div>
           <div className="space-y-2">
-            <label className="text-xs font-black text-slate-400 uppercase tracking-widest px-2">الطراز (Model)</label>
-            <input aria-label="مدخل" title="مدخل" placeholder="مدخل" 
+            <label className="text-xs font-black text-slate-400 uppercase tracking-widest px-2">{t('userDashboard.sell.model')}</label>
+            <input aria-label="مدخل" title="مدخل" placeholder="مدخل"
               required
               className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 text-slate-900 font-bold outline-none focus:border-orange-500 transition-all"
               value={sellForm.model}
@@ -583,17 +1052,20 @@ export const UserDashboard = () => {
             />
           </div>
           <div className="space-y-2">
-            <label className="text-xs font-black text-slate-400 uppercase tracking-widest px-2">سعر الاحتياطي ($ Reserve)</label>
-            <input aria-label="مدخل" title="مدخل" placeholder="مدخل" 
-              required type="number"
-              className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 text-slate-900 font-bold outline-none focus:border-orange-500 transition-all"
-              value={sellForm.reservePrice}
-              onChange={e => setSellForm({ ...sellForm, reservePrice: e.target.value })}
-            />
+            <label className="text-xs font-black text-slate-400 uppercase tracking-widest px-2">{t('userDashboard.sell.reserve')}</label>
+            <div className="relative">
+              <DollarSign className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+              <input aria-label="مدخل" title="مدخل" placeholder="مدخل"
+                type="number" required
+                className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 pr-12 text-slate-900 font-bold outline-none focus:border-orange-500 transition-all"
+                value={sellForm.reservePrice}
+                onChange={e => setSellForm({ ...sellForm, reservePrice: e.target.value })}
+              />
+            </div>
           </div>
           <div className="space-y-2">
-            <label className="text-xs font-black text-slate-400 uppercase tracking-widest px-2">المسافة المقطوعة (Odometer)</label>
-            <input aria-label="مدخل" title="مدخل" placeholder="مدخل" 
+            <label className="text-xs font-black text-slate-400 uppercase tracking-widest px-2">{t('userDashboard.sell.odometer')}</label>
+            <input aria-label="مدخل" title="مدخل" placeholder="مدخل"
               required type="number"
               className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 text-slate-900 font-bold outline-none focus:border-orange-500 transition-all"
               value={sellForm.odometer}
@@ -603,47 +1075,48 @@ export const UserDashboard = () => {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <label className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-slate-200 rounded-[2rem] hover:border-orange-500 transition-colors cursor-pointer group bg-white/50">
-            <UploadCloud className="w-10 h-10 text-slate-300 group-hover:text-orange-500 mb-2" />
-            <span className="text-sm font-bold text-slate-500 group-hover:text-orange-500">رفع الصور (الحد الأدنى 10)</span>
-            <input
-              type="file" multiple className="hidden"
-              onChange={(e) => {
-                const files = Array.from(e.target.files || []);
-                if (files.length > 0) {
-                  // Simulate image upload - in real app use FormData and backend
-                  setSellForm(prev => ({ ...prev, images: [...prev.images, ...files.map(f => URL.createObjectURL(f as Blob))] }));
-                  showAlert(`تم اختيار ${files.length} صور`, 'success');
-                }
-              }}
-            />
-            {sellForm.images.length > 0 && <span className="text-xs font-black text-green-500 mt-2">تم رفع {sellForm.images.length} صور</span>}
-          </label>
-
-          <label className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-slate-200 rounded-[2rem] hover:border-orange-500 transition-colors cursor-pointer group bg-white/50">
-            <FileText className="w-10 h-10 text-slate-300 group-hover:text-orange-500 mb-2" />
-            <span className="text-sm font-bold text-slate-500 group-hover:text-orange-500">رفع تقرير الفحص (PDF)</span>
-            <input
-              type="file" accept=".pdf" className="hidden"
-              onChange={(e) => {
-                if (e.target.files?.[0]) {
-                  setSellForm(prev => ({ ...prev, inspectionPdf: e.target.files![0].name }));
-                  showAlert('تم رفع التقرير بنجاح', 'success');
-                }
-              }}
-            />
-            {sellForm.inspectionPdf && <span className="text-xs font-black text-green-500 mt-2">{sellForm.inspectionPdf}</span>}
-          </label>
+          <div className="space-y-2">
+            <label className="text-xs font-black text-slate-400 uppercase tracking-widest px-2">{t('userDashboard.sell.uploadImages')}</label>
+            <label className="flex flex-col items-center justify-center h-32 w-full border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50 hover:bg-slate-100 cursor-pointer transition-all">
+              <Camera className="w-8 h-8 text-slate-400 mb-2" />
+              <span className="text-sm font-bold text-slate-500">
+                {sellForm.images.length > 0 ? t('userDashboard.sell.imagesSelected', { count: sellForm.images.length }) : t('userDashboard.sell.uploadImages')}
+              </span>
+              <input aria-label="مدخل" title="مدخل" placeholder="مدخل"
+                type="file" multiple accept="image/*" className="hidden"
+                onChange={(e) => {
+                  if (e.target.files) {
+                    setSellForm({ ...sellForm, images: Array.from(e.target.files) as any });
+                  }
+                }}
+              />
+            </label>
+          </div>
+          <div className="space-y-2">
+            <label className="text-xs font-black text-slate-400 uppercase tracking-widest px-2">{t('userDashboard.sell.uploadReport')}</label>
+            <label className="flex flex-col items-center justify-center h-32 w-full border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50 hover:bg-slate-100 cursor-pointer transition-all">
+              <FileText className="w-8 h-8 text-slate-400 mb-2" />
+              <span className="text-sm font-bold text-slate-500">PDF Report</span>
+              <input aria-label="مدخل" title="مدخل" type="file" accept=".pdf" className="hidden"
+                onChange={(e) => {
+                  if (e.target.files?.[0]) {
+                    setSellForm(prev => ({ ...prev, inspectionPdf: e.target.files![0].name }));
+                    showAlert('تم رفع التقرير بنجاح', 'success');
+                  }
+                }}
+              />
+            </label>
+          </div>
         </div>
 
         <div className="space-y-2">
-          <label className="text-xs font-black text-slate-400 uppercase tracking-widest mr-4">وصف السيارة وملاحظات إضافية</label>
-          <textarea
+          <label className="text-xs font-black text-slate-400 uppercase tracking-widest px-2">{t('userDashboard.sell.descriptionLabel')}</label>
+          <textarea aria-label="مدخل" title="مدخل"
             value={sellForm.description}
             onChange={(e) => setSellForm(prev => ({ ...prev, description: e.target.value }))}
-            placeholder="اكتب هنا حالة الماكينة، القير، أي خدوش، أو أي معلومات تهم المزايدين..."
-            className="w-full p-6 bg-slate-50 border border-slate-100 rounded-[2rem] outline-none focus:border-orange-500 transition-all min-h-[150px] font-medium"
-          />
+            className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 text-slate-900 font-bold outline-none focus:border-orange-500 transition-all min-h-[120px]"
+            placeholder={t('userDashboard.sell.descriptionPlaceholder')}
+          ></textarea>
         </div>
 
         <button
@@ -750,11 +1223,11 @@ export const UserDashboard = () => {
           <div>
             {branchConfig ? (
               <div className="text-xl font-black text-slate-950 tracking-tighter leading-tight">
-                {branchConfig.logoText.split(' ')[0]}<br />
-                <span className="text-orange-500">{branchConfig.logoText.split(' ').slice(1).join(' ')}</span>
+                {branchConfig.logoText?.split(' ')?.[0]}<br />
+                <span className="text-orange-500">{branchConfig.logoText?.split(' ')?.slice(1)?.join(' ')}</span>
               </div>
             ) : (
-              <div className="text-xl font-black text-slate-950 tracking-tighter leading-tight">ليبيا<br /><span className="text-orange-500">أوتو برو</span></div>
+              <div className="text-xl font-black text-slate-950 tracking-tighter leading-tight">ليبيا<br /><span className="text-orange-500">AUTO PRO</span></div>
             )}
             <div className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">{branchConfig?.logoSubtext || 'Libya'}</div>
           </div>
@@ -891,13 +1364,14 @@ export const UserDashboard = () => {
                 <div className="text-[10px] font-bold text-slate-400 text-right uppercase tracking-[0.2em]">{effectiveUser.role}</div>
               </div>
               <div className="w-14 h-14 bg-slate-950 rounded-[1.25rem] flex items-center justify-center text-white font-black text-xl border-4 border-white shadow-2xl group-hover:rotate-6 transition-transform">
-                {effectiveUser.firstName[0]}
+                {effectiveUser.firstName?.[0] || 'U'}
               </div>
             </div>
           </div>
         </header>
 
         {view === 'overview' && renderOverview()}
+        {view === 'bids' && renderBids()}
         {view === 'wallet' && renderWallet()}
         {view === 'invoices' && renderInvoices()}
         {view === 'sell' && renderSellCar()}
@@ -915,7 +1389,7 @@ export const UserDashboard = () => {
                 {cars.filter(c => watchlist.some(w => w.carId === c.id)).map(car => (
                   <div key={car.id} className="bg-white rounded-[2.5rem] border border-slate-100 shadow-xl overflow-hidden group hover:shadow-2xl transition-all">
                     <div className="aspect-video relative overflow-hidden">
-                      <img src={car.images[0]} className="w-full h-full object-cover car-card-image group-hover:scale-110 transition-transform duration-700" alt="صورة" />
+                      <img src={car.images[0]} className="w-full h-full object-cover car-card-image group-hover:scale-110 transition-transform duration-700" alt={`صورة السيارة ${car.make} ${car.model}`} />
                       <div className="absolute top-4 right-4 bg-white/90 backdrop-blur px-3 py-1 rounded-xl text-[10px] font-black shadow-sm">#{car.lotNumber}</div>
                     </div>
                     <div className="p-6">
@@ -931,72 +1405,150 @@ export const UserDashboard = () => {
         {view === 'logistics' && (
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
             <h2 className="text-3xl font-black text-slate-900">التتبع والشحن 📦</h2>
-            {shipments.map((ship: any) => {
-              const steps = [
-                { key: 'awaiting_payment', label: 'بانتظار الدفع', icon: '💳' },
-                { key: 'paid', label: 'تم الدفع', icon: '✅' },
-                { key: 'shipping_requested', label: 'طلب الشحن', icon: '🚚' },
-                { key: 'in_transport', label: 'قيد النقل', icon: '🚛' },
-                { key: 'in_warehouse', label: 'في المستودع', icon: '🏭' },
-                { key: 'in_shipping', label: 'جاري الشحن', icon: '🚢' },
-                { key: 'customs', label: 'التخليص الجمركي', icon: '📋' },
-                { key: 'delivered', label: 'تم التوصيل', icon: '🎉' }
-              ];
-              const currentIdx = steps.findIndex(s => s.key === ship.status);
-              return (
-                <div key={ship.id} className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-xl overflow-hidden">
-                  <div className="flex items-center gap-4 mb-8">
-                    <img src={ship.images?.[0]} className="w-24 h-16 object-cover rounded-2xl car-card-image shadow-sm" alt="صورة" />
-                    <div>
-                      <div className="font-black text-slate-900 text-lg">{ship.year} {ship.make} {ship.model}</div>
-                      <div className="text-xs text-slate-400 font-bold">LOT #{ship.lotNumber}</div>
-                    </div>
-                  </div>
-                  {/* Timeline */}
-                  <div className="relative px-4 pb-8">
-                    <div className="flex items-center justify-between relative z-10">
-                      {steps.map((s, i) => (
-                        <div key={s.key} className="flex flex-col items-center flex-1 relative">
-                          <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg border-2 transition-all duration-500 ${i < currentIdx ? 'bg-emerald-500 border-emerald-500 text-white shadow-lg shadow-emerald-500/20' :
-                            i === currentIdx ? 'bg-orange-500 border-orange-500 text-white scale-110 shadow-lg shadow-orange-500/30' :
-                              'bg-slate-50 border-slate-200 text-slate-400'
-                            }`}>
-                            {i < currentIdx ? <CheckCircle2 className="w-5 h-5" /> : s.icon}
-                          </div>
-                          <span className={`text-[9px] font-black mt-3 text-center transition-colors duration-500 ${i <= currentIdx ? 'text-slate-900' : 'text-slate-400'
-                            }`}>{s.label}</span>
-                        </div>
-                      ))}
-                    </div>
-                    {/* Progress bar background */}
-                    <div className="absolute top-5 left-8 right-8 h-1 bg-slate-100 rounded-full">
-                      {/* Animated progress fill */}
-                      <div
-                        className="h-full bg-emerald-500 transition-all duration-1000 ease-out shadow-[0_0_10px_rgba(16,185,129,0.3)]"
-                        ref={(el) => { if (el) el.style.width = `${(currentIdx / (steps.length - 1)) * 100}%`; }}
-                      ></div>
-                    </div>
-                  </div>
-                  {(ship.currentLocation || ship.trackingNumber) && (
-                    <div className="mt-4 pt-6 border-t border-slate-50 flex flex-wrap gap-4 justify-between items-center">
-                      <div className="flex gap-4">
-                        {ship.trackingNumber && (
-                          <div className="px-4 py-2 bg-slate-50 rounded-xl text-[10px] font-black text-slate-600 border border-slate-100 flex items-center gap-2">
-                            رقم التتبع: <span className="text-slate-900">{ship.trackingNumber}</span>
-                          </div>
-                        )}
-                        {ship.currentLocation && (
-                          <div className="px-4 py-2 bg-blue-50 rounded-xl text-[10px] font-black text-blue-700 border border-blue-100 flex items-center gap-2">
-                            <MapPin className="w-4 h-4" /> الموقع: {ship.currentLocation}
-                          </div>
-                        )}
+
+            {shipments.length === 0 ? (
+              <div className="bg-white p-20 rounded-[3rem] border border-slate-100 shadow-xl text-center">
+                <Truck className="w-16 h-16 text-slate-200 mx-auto mb-6" />
+                <h3 className="text-xl font-black text-slate-400">لا توجد شحنات نشطة حالياً. ادفع فواتير سياراتك واطلب شحنها للبدء بالتتبع.</h3>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {shipments.map((ship: any) => {
+                  const steps = [
+                    { key: 'car_paid', label: 'سداد السيارة', icon: '💲' },
+                    { key: 'inland_paid', label: 'سداد النقل', icon: '💲' },
+                    { key: 'in_transport', label: 'النقل البري', icon: '🚛' },
+                    { key: 'shipping_paid', label: 'سداد الشحن', icon: '💲' },
+                    { key: 'in_shipping', label: 'شحن بحري', icon: '🚢' },
+                    { key: 'customs', label: 'التخليص', icon: '📋' },
+                    { key: 'delivered', label: 'توصيل', icon: '🎉' }
+                  ];
+
+                  // Map existing and new statuses to the timeline index
+                  const statusMap: Record<string, string> = {
+                    'awaiting_payment': 'none',
+                    'paid': 'car_paid',
+                    'shipping_requested': 'car_paid',
+                    'inland_paid': 'inland_paid',
+                    'in_transport': 'in_transport',
+                    'in_warehouse': 'in_transport',
+                    'shipping_paid': 'shipping_paid',
+                    'in_shipping': 'in_shipping',
+                    'customs': 'customs',
+                    'delivered': 'delivered'
+                  };
+                  const mappedStatus = statusMap[ship.status] || ship.status;
+                  let currentIdx = steps.findIndex(s => s.key === mappedStatus);
+                  if (mappedStatus === 'none') currentIdx = -1;
+
+                  return (
+                    <div key={ship.id} className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-xl relative overflow-hidden group">
+                      {/* Invoice/Payment Status Badge */}
+                      <div className={`absolute top-0 right-0 px-6 py-2 rounded-bl-[2rem] text-xs font-black uppercase tracking-widest ${currentIdx >= 3 ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
+                        {currentIdx < 0 ? 'بانتظار أداء ثمن السيارة 🛒' :
+                          currentIdx < 1 ? 'بانتظار سداد النقل الداخلي 🚛' :
+                            currentIdx < 3 ? 'بانتظار سداد الشحن البحري 🚢' :
+                              'مدفوعة بالكامل ✅'}
                       </div>
-                      <button className="text-xs font-black text-orange-600 hover:text-orange-700 underline underline-offset-4">تحميل تقرير الشحن الكامل</button>
+
+                      <div className="flex items-center gap-6 mb-12 relative z-10 mt-4">
+                        {ship.images && ship.images.length > 0 ? (
+                          <img src={ship.images[0]} alt={`صورة الشحنة`} className="w-32 h-20 object-cover rounded-2xl shadow-sm border border-slate-200 group-hover:scale-110 transition-transform" />
+                        ) : (
+                          <div className="w-32 h-20 bg-slate-100 rounded-2xl flex items-center justify-center border border-slate-200 shadow-sm">
+                            <Truck className="w-8 h-8 text-slate-300" />
+                          </div>
+                        )}
+                        <div className="flex-1">
+                          <h3 className="text-2xl font-black text-slate-900">{ship.carMake || ship.make} {ship.carModel || ship.model} <span className="text-slate-400 font-bold ml-2">{ship.carYear || ship.year}</span></h3>
+
+                          <div className="flex flex-wrap items-center gap-4 mt-2">
+                            <div className="text-xs font-mono font-bold text-slate-500 bg-slate-50 px-3 py-1 rounded-lg border border-slate-100">
+                              LOT #{ship.lotNumber || 'غير متوفر'}
+                            </div>
+                            <div className="text-xs font-bold text-slate-600 bg-slate-50 px-3 py-1 rounded-lg border border-slate-100 flex items-center gap-1">
+                              <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                              <span className="text-slate-500">موقع السيارة:</span> {ship.location || 'مستودع المزاد (غير محدد)'}
+                            </div>
+                            <div className="text-xs font-mono font-bold text-slate-500 bg-slate-50 px-3 py-1 rounded-lg border border-slate-100 flex items-center gap-1">
+                              <span className="text-slate-400">VIN:</span> {ship.vin || 'غير متوفر'}
+                            </div>
+                            {ship.finalPrice && (
+                              <div className="text-xs font-black text-slate-900 bg-emerald-50 text-emerald-700 px-3 py-1 rounded-lg border border-emerald-100">
+                                السعر: ${ship.finalPrice.toLocaleString()}
+                              </div>
+                            )}
+
+                            {/* Render elapsed times based on payment and shipping creation */}
+                            {ship.paidAt && (
+                              <div className="text-xs font-bold text-slate-600 bg-slate-50 px-3 py-1 rounded-lg border border-slate-100 flex items-center gap-1" title="الوقت المنقضي منذ سداد الفاتورة">
+                                <Clock className="w-3.5 h-3.5 text-slate-400" />
+                                {(() => {
+                                  const diff = Math.floor((new Date().getTime() - new Date(ship.paidAt).getTime()) / (1000 * 3600 * 24));
+                                  return diff === 0 ? 'دُفعت اليوم' : `منذ ${diff} يوم (الدفع)`;
+                                })()}
+                              </div>
+                            )}
+                            {ship.createdAt && ship.status !== 'delivered' && (
+                              <div className="text-xs font-bold text-orange-600 bg-orange-50 px-3 py-1 rounded-lg border border-orange-100 flex items-center gap-1" title="الزمن المستغرق في عملية الشحن النشطة حتى الآن">
+                                <Truck className="w-3.5 h-3.5 text-orange-400" />
+                                {(() => {
+                                  const diff = Math.floor((new Date().getTime() - new Date(ship.createdAt).getTime()) / (1000 * 3600 * 24));
+                                  return diff === 0 ? 'بدأ الشحن اليوم' : `قيد الشحن لـ ${diff} يوم`;
+                                })()}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Timeline */}
+                      <div className="relative pt-8 pb-4">
+                        <div className="flex items-center justify-between relative z-10">
+                          {steps.map((s, i) => (
+                            <div key={s.key} className="flex flex-col items-center flex-1 relative">
+                              <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg border-2 transition-all duration-500 ${i < currentIdx ? 'bg-emerald-500 border-emerald-500 text-white shadow-lg shadow-emerald-500/20' :
+                                i === currentIdx ? 'bg-orange-500 border-orange-500 text-white scale-110 shadow-lg shadow-orange-500/30' :
+                                  'bg-slate-50 border-slate-200 text-slate-400'
+                                }`}>
+                                {i < currentIdx ? <CheckCircle2 className="w-5 h-5" /> : s.icon}
+                              </div>
+                              <span className={`text-[9px] font-black mt-3 text-center transition-colors duration-500 ${i <= currentIdx ? 'text-slate-900' : 'text-slate-400'
+                                }`}>{s.label}</span>
+                            </div>
+                          ))}
+                        </div>
+                        {/* Progress bar background */}
+                        <div className="absolute top-5 left-8 right-8 h-1 bg-slate-100 rounded-full">
+                          {/* Animated progress fill */}
+                          <div
+                            className="h-full bg-emerald-500 transition-all duration-1000 ease-out shadow-[0_0_10px_rgba(16,185,129,0.3)]"
+                            ref={(el) => { if (el) el.style.width = `${(currentIdx / (steps.length - 1)) * 100}%`; }}
+                          ></div>
+                        </div>
+                      </div>
+                      {(ship.currentLocation || ship.trackingNumber) && (
+                        <div className="mt-4 pt-6 border-t border-slate-50 flex flex-wrap gap-4 justify-between items-center">
+                          <div className="flex gap-4">
+                            {ship.trackingNumber && (
+                              <div className="px-4 py-2 bg-slate-50 rounded-xl text-[10px] font-black text-slate-600 border border-slate-100 flex items-center gap-2">
+                                رقم التتبع: <span className="text-slate-900">{ship.trackingNumber}</span>
+                              </div>
+                            )}
+                            {ship.currentLocation && (
+                              <div className="px-4 py-2 bg-blue-50 rounded-xl text-[10px] font-black text-blue-700 border border-blue-100 flex items-center gap-2">
+                                <MapPin className="w-4 h-4" /> الموقع: {ship.currentLocation}
+                              </div>
+                            )}
+                          </div>
+                          <button className="text-xs font-black text-orange-600 hover:text-orange-700 underline underline-offset-4">تحميل تقرير الشحن الكامل</button>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-              );
-            })}
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
         {view === 'messages' && (
@@ -1035,7 +1587,15 @@ export const UserDashboard = () => {
                             {msg.senderFirstName?.[0] || 'إ'}
                           </div>
                           <div>
-                            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">{msg.category || 'عام'}</div>
+                            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">
+                              {msg.category === 'registration' ? 'فريق التسجيل' :
+                                msg.category === 'accounting' ? 'فريق المحاسبة' :
+                                  msg.category === 'purchasing' ? 'فريق الشراء' :
+                                    msg.category === 'transport' ? 'فريق النقل' :
+                                      msg.category === 'clearance' ? 'فريق التخليص الجمركي' :
+                                        msg.category === 'shipping' ? 'فريق الشحن' :
+                                          msg.category === 'complaints' ? 'فريق الشكاوي والجودة' : 'عام'}
+                            </div>
                             <div className="text-sm font-black text-slate-900">{msg.senderFirstName} {msg.senderLastName}</div>
                           </div>
                         </div>
@@ -1057,7 +1617,7 @@ export const UserDashboard = () => {
                 <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg p-8 animate-in zoom-in-95 duration-200">
                   <div className="flex justify-between items-center mb-6">
                     <h3 className="text-xl font-black text-slate-900">إرسال رسالة للدعم</h3>
-                    <button aria-label="زر" title="زر"  onClick={() => setShowNewMessageModal(false)} className="p-2 hover:bg-slate-100 rounded-xl transition-all">
+                    <button aria-label="زر" title="زر" onClick={() => setShowNewMessageModal(false)} className="p-2 hover:bg-slate-100 rounded-xl transition-all">
                       <X className="w-5 h-5 text-slate-400" />
                     </button>
                   </div>
@@ -1066,23 +1626,25 @@ export const UserDashboard = () => {
                     {/* Category */}
                     <div>
                       <label className="block text-[11px] font-black text-slate-400 uppercase mb-1.5">نوع الطلب</label>
-                      <select aria-label="تحديد" title="تحديد" 
+                      <select aria-label="تحديد" title="تحديد"
                         className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 font-bold text-sm outline-none focus:border-orange-500 transition-all"
                         value={newMessageData.category}
                         onChange={e => setNewMessageData(p => ({ ...p, category: e.target.value }))}
                       >
-                        <option value="general">عام</option>
-                        <option value="billing">فواتير ومدفوعات</option>
-                        <option value="shipping">شحن ولوجستيك</option>
-                        <option value="technical">دعم تقني</option>
-                        <option value="auction">استفسار عن مزاد</option>
+                        <option value="registration">فريق التسجيل</option>
+                        <option value="accounting">فريق المحاسبة</option>
+                        <option value="purchasing">فريق الشراء</option>
+                        <option value="transport">فريق النقل</option>
+                        <option value="clearance">فريق التخليص الجمركي</option>
+                        <option value="shipping">فريق الشحن</option>
+                        <option value="complaints">فريق الشكاوي والجودة</option>
                       </select>
                     </div>
 
                     {/* Subject */}
                     <div>
                       <label className="block text-[11px] font-black text-slate-400 uppercase mb-1.5">موضوع الرسالة</label>
-                      <input aria-label="مدخل" title="مدخل" placeholder="مدخل" 
+                      <input aria-label="مدخل" title="مدخل" placeholder="مدخل"
                         type="text"
                         className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 font-bold text-sm outline-none focus:border-orange-500 transition-all"
                         value={newMessageData.subject}
@@ -1115,7 +1677,7 @@ export const UserDashboard = () => {
                               headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify({
                                 senderId: effectiveUser.id,
-                                recipientId: 1, // Admin
+                                receiverId: 'admin-1', // Admin
                                 subject: newMessageData.subject,
                                 content: newMessageData.content,
                                 category: newMessageData.category,
@@ -1153,77 +1715,98 @@ export const UserDashboard = () => {
               </div>
             )}
           </div>
-        )}
-        {view === 'services' && (
-          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-            <h2 className="text-3xl font-black text-slate-900">تقارير السوق والأسعار 📊</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {[
-                { title: 'تحليل أسعار السوق', desc: 'قارن أسعار السيارات المشابهة في السوق المحلي والدولي.', icon: TrendingUp },
-                { title: 'تقرير مبيعات الشهر', desc: 'إحصائيات تفصيلية عن حركة المبيعات والأصناف الأكثر طلباً.', icon: BarChart3 },
-                { title: 'أسعار الشحن المحدثة', desc: 'آخر تحديثات تكاليف الشحن من الموانئ الأمريكية والخليجية.', icon: Ship },
-              ].map((report, i) => (
-                <div key={i} className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-xl hover:shadow-2xl transition-all group">
-                  <div className="w-14 h-14 bg-orange-50 rounded-2xl flex items-center justify-center text-orange-600 mb-6 group-hover:bg-orange-600 group-hover:text-white transition-all">
-                    <report.icon className="w-7 h-7" />
-                  </div>
-                  <h3 className="text-xl font-black text-slate-900 mb-2">{report.title}</h3>
-                  <p className="text-sm text-slate-500 font-medium mb-6 leading-relaxed">{report.desc}</p>
-                  <button
-                    onClick={() => {
-                      setSelectedReport(report);
-                      setShowReportModal(true);
-                    }}
-                    className="text-xs font-black text-orange-600 hover:text-orange-700 flex items-center gap-2"
-                  >
-                    عرض التقرير التفصيلي <ArrowUpRight className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
-            </div>
-
-            {/* Reports Modal */}
-            {showReportModal && selectedReport && (
-              <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center z-[110] p-4 text-right" dir="rtl">
-                <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-2xl p-10 animate-in zoom-in-95 duration-200">
-                  <div className="flex justify-between items-start mb-8">
-                    <div className="w-16 h-16 bg-orange-50 rounded-2xl flex items-center justify-center text-orange-600">
-                      <selectedReport.icon className="w-8 h-8" />
+        )
+        }
+        {
+          view === 'services' && (
+            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+              <h2 className="text-3xl font-black text-slate-900">تقارير السوق والأسعار 📊</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {[
+                  { title: 'تحليل أسعار السوق', desc: 'قارن أسعار السيارات المشابهة في السوق المحلي والدولي.', icon: TrendingUp },
+                  { title: 'تقرير مبيعات الشهر', desc: 'إحصائيات تفصيلية عن حركة المبيعات والأصناف الأكثر طلباً.', icon: BarChart3 },
+                  { title: 'أسعار الشحن المحدثة', desc: 'آخر تحديثات تكاليف الشحن من الموانئ الأمريكية والخليجية.', icon: Ship },
+                ].map((report, i) => (
+                  <div key={i} className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-xl hover:shadow-2xl transition-all group">
+                    <div className="w-14 h-14 bg-orange-50 rounded-2xl flex items-center justify-center text-orange-600 mb-6 group-hover:bg-orange-600 group-hover:text-white transition-all">
+                      <report.icon className="w-7 h-7" />
                     </div>
-                    <button aria-label="زر" title="زر"  onClick={() => setShowReportModal(false)} className="p-2 hover:bg-slate-100 rounded-xl transition-all">
-                      <X className="w-6 h-6 text-slate-400" />
+                    <h3 className="text-xl font-black text-slate-900 mb-2">{report.title}</h3>
+                    <p className="text-sm text-slate-500 font-medium mb-6 leading-relaxed">{report.desc}</p>
+                    <button
+                      onClick={() => {
+                        setSelectedReport(report);
+                        setShowReportModal(true);
+                      }}
+                      className="text-xs font-black text-orange-600 hover:text-orange-700 flex items-center gap-2"
+                    >
+                      عرض التقرير التفصيلي <ArrowUpRight className="w-4 h-4" />
                     </button>
                   </div>
-
-                  <h3 className="text-2xl font-black text-slate-900 mb-2">{selectedReport.title}</h3>
-                  <p className="text-slate-500 font-bold mb-8">{selectedReport.desc}</p>
-
-                  <div className="grid grid-cols-2 gap-6 mb-8">
-                    <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
-                      <div className="text-[10px] font-black text-slate-400 uppercase mb-2">النطاق الزمني</div>
-                      <div className="text-lg font-black text-slate-900">آخر 30 يوماً</div>
-                    </div>
-                    <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
-                      <div className="text-[10px] font-black text-slate-400 uppercase mb-2">دقة المعلومات</div>
-                      <div className="text-lg font-black text-emerald-600">99.8% مؤكدة</div>
-                    </div>
-                  </div>
-
-                  <div className="bg-orange-50 p-6 rounded-3xl border border-orange-100 flex gap-4 mb-8">
-                    <Info className="w-6 h-6 text-orange-500 shrink-0" />
-                    <p className="text-xs text-orange-700 font-bold leading-relaxed">
-                      هذا التقرير يستند إلى تحليل البيانات التاريخية لآلاف العمليات المشابهة في المنصة. قد تختلف الأسعار الفعلية بناءً على حالة كل سيارة وتوقيت المزاد.
-                    </p>
-                  </div>
-
-                  <button className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black hover:bg-slate-800 transition-all shadow-xl active:scale-95">
-                    تحميل التقرير الكامل بصيغة PDF
-                  </button>
-                </div>
+                ))}
               </div>
-            )}
-          </div>
-        )}
+
+              {/* Reports Modal */}
+              {showReportModal && selectedReport && !showDetailedReport && (
+                <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center z-[110] p-4 text-right" dir="rtl">
+                  <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-2xl p-10 animate-in zoom-in-95 duration-200">
+                    <div className="flex justify-between items-start mb-8">
+                      <div className="w-16 h-16 bg-orange-50 rounded-2xl flex items-center justify-center text-orange-600">
+                        <selectedReport.icon className="w-8 h-8" />
+                      </div>
+                      <button aria-label="زر" title="زر" onClick={() => setShowReportModal(false)} className="p-2 hover:bg-slate-100 rounded-xl transition-all">
+                        <X className="w-6 h-6 text-slate-400" />
+                      </button>
+                    </div>
+
+                    <h3 className="text-2xl font-black text-slate-900 mb-2">{selectedReport.title}</h3>
+                    <p className="text-slate-500 font-bold mb-8">{selectedReport.desc}</p>
+
+                    <div className="grid grid-cols-2 gap-6 mb-8">
+                      <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
+                        <div className="text-[10px] font-black text-slate-400 uppercase mb-2">النطاق الزمني</div>
+                        <div className="text-lg font-black text-slate-900">آخر 30 يوماً</div>
+                      </div>
+                      <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
+                        <div className="text-[10px] font-black text-slate-400 uppercase mb-2">دقة المعلومات</div>
+                        <div className="text-lg font-black text-emerald-600">99.8% مؤكدة</div>
+                      </div>
+                    </div>
+
+                    <div className="bg-orange-50 p-6 rounded-3xl border border-orange-100 flex gap-4 mb-8">
+                      <Info className="w-6 h-6 text-orange-500 shrink-0" />
+                      <p className="text-xs text-orange-700 font-bold leading-relaxed">
+                        هذا التقرير يستند إلى تحليل البيانات التاريخية لآلاف العمليات المشابهة في المنصة. قد تختلف الأسعار الفعلية بناءً على حالة كل سيارة وتوقيت المزاد.
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={async () => {
+                        setShowDetailedReport(true);
+                        setLoadingMarketData(true);
+                        try {
+                          const res = await fetch('/api/market-data?make=Toyota&model=Camry');
+                          const data = await res.json();
+                          if (data.success) {
+                            setMarketData(data);
+                          }
+                        } catch (e) {
+                          console.error("Failed to load market data", e);
+                        } finally {
+                          setLoadingMarketData(false);
+                        }
+                      }}
+                      className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black hover:bg-slate-800 transition-all shadow-xl active:scale-95 flex items-center justify-center gap-2"
+                    >
+                      <BarChart3 className="w-5 h-5" /> عرض التقرير التفاعلي المفصل
+                    </button>
+                  </div>
+                </div>
+              )}
+
+            </div>
+          )}
+
         {view === 'inspections' && (
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
             <h2 className="text-3xl font-black text-slate-900">طلبات فحص السيارات 🔍</h2>
@@ -1263,7 +1846,7 @@ export const UserDashboard = () => {
 
                     <div>
                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2 mr-1">موقع تواجد السيارة</label>
-                      <input aria-label="مدخل" title="مدخل" placeholder="مدخل" 
+                      <input aria-label="مدخل" title="مدخل" placeholder="مدخل"
                         type="text"
                         className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 outline-none focus:border-orange-500 transition-all font-bold"
                         value={inspectionForm.location}
@@ -1329,6 +1912,7 @@ export const UserDashboard = () => {
             )}
           </div>
         )}
+
         {view === 'profile' && (
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
             <div className="flex justify-between items-center">
@@ -1349,7 +1933,7 @@ export const UserDashboard = () => {
 
               <div className="flex items-center gap-8 mb-10">
                 <div className="w-32 h-32 bg-slate-950 rounded-[2.5rem] flex items-center justify-center text-white text-5xl font-black shadow-2xl relative group">
-                  {effectiveUser.firstName[0]}
+                  {effectiveUser.firstName?.[0] || 'U'}
                   <div className="absolute inset-0 bg-orange-500/80 rounded-[2.5rem] opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity cursor-pointer">
                     <Camera className="w-8 h-8 text-white" />
                   </div>
@@ -1370,23 +1954,34 @@ export const UserDashboard = () => {
                 <form onSubmit={handleUpdateProfile} className="space-y-6 pt-10 border-t border-slate-50">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">معرف المستخدم (User ID)</label>
+                      <input aria-label="مدخل" title="مدخل" placeholder="مدخل" className="w-full p-4 bg-slate-100 rounded-2xl font-bold text-slate-500 border border-slate-200 outline-none cursor-not-allowed"
+                        value={effectiveUser.id} disabled />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">البريد الإلكتروني</label>
+                      <input aria-label="مدخل" title="مدخل" placeholder="مدخل" className="w-full p-4 bg-slate-100 rounded-2xl font-bold text-slate-500 border border-slate-200 outline-none cursor-not-allowed"
+                        value={effectiveUser.email} disabled />
+                    </div>
+                    <div className="space-y-2">
                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">الاسم الأول</label>
-                      <input aria-label="مدخل" title="مدخل" placeholder="مدخل"  className="w-full p-4 bg-slate-50 rounded-2xl font-bold text-slate-900 border border-slate-200 focus:border-orange-500 outline-none transition-all"
-                        value={profileForm.firstName} onChange={e => setProfileForm({ ...profileForm, firstName: e.target.value })} />
+                      <input aria-label="مدخل" title="مدخل" placeholder="مدخل" className="w-full p-4 bg-slate-100 rounded-2xl font-bold text-slate-500 border border-slate-200 outline-none cursor-not-allowed"
+                        value={effectiveUser.firstName} disabled />
                     </div>
                     <div className="space-y-2">
                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">الاسم الأخير</label>
-                      <input aria-label="مدخل" title="مدخل" placeholder="مدخل"  className="w-full p-4 bg-slate-50 rounded-2xl font-bold text-slate-900 border border-slate-200 focus:border-orange-500 outline-none transition-all"
-                        value={profileForm.lastName} onChange={e => setProfileForm({ ...profileForm, lastName: e.target.value })} />
+                      <input aria-label="مدخل" title="مدخل" placeholder="مدخل" className="w-full p-4 bg-slate-100 rounded-2xl font-bold text-slate-500 border border-slate-200 outline-none cursor-not-allowed"
+                        value={effectiveUser.lastName} disabled />
                     </div>
                     <div className="space-y-2">
                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">رقم الهاتف</label>
-                      <input aria-label="مدخل" title="مدخل" placeholder="مدخل"  className="w-full p-4 bg-slate-50 rounded-2xl font-bold text-slate-900 border border-slate-200 focus:border-orange-500 outline-none transition-all"
-                        value={profileForm.phone} onChange={e => setProfileForm({ ...profileForm, phone: e.target.value })} />
+                      <input aria-label="مدخل" title="مدخل" placeholder="مدخل" className="w-full p-4 bg-slate-100 rounded-2xl font-bold text-slate-500 border border-slate-200 outline-none cursor-not-allowed"
+                        value={effectiveUser.phone} disabled />
+                      <p className="text-[10px] text-orange-500 px-2 mt-1">لا يمكن تغيير بيانات الهوية أو الاتصال إلا من خلال الإدارة.</p>
                     </div>
                     <div className="space-y-2">
                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">العنوان</label>
-                      <input aria-label="مدخل" title="مدخل" placeholder="مدخل"  className="w-full p-4 bg-slate-50 rounded-2xl font-bold text-slate-900 border border-slate-200 focus:border-orange-500 outline-none transition-all"
+                      <input aria-label="مدخل" title="مدخل" placeholder="مدخل" className="w-full p-4 bg-slate-50 rounded-2xl font-bold text-slate-900 border border-slate-200 focus:border-orange-500 outline-none transition-all"
                         value={profileForm.address} onChange={e => setProfileForm({ ...profileForm, address: e.target.value })} />
                     </div>
                   </div>
@@ -1401,6 +1996,14 @@ export const UserDashboard = () => {
                 </form>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-10 border-t border-slate-50">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">معرف المستخدم (User ID)</label>
+                    <div className="p-4 bg-slate-50 rounded-2xl font-bold text-slate-900 border border-slate-100">{effectiveUser.id}</div>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">البريد الإلكتروني</label>
+                    <div className="p-4 bg-slate-50 rounded-2xl font-bold text-slate-900 border border-slate-100">{effectiveUser.email}</div>
+                  </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">الاسم الأول</label>
                     <div className="p-4 bg-slate-50 rounded-2xl font-bold text-slate-900 border border-slate-100">{effectiveUser.firstName}</div>
@@ -1432,17 +2035,17 @@ export const UserDashboard = () => {
                 <form onSubmit={handleChangePassword} className="space-y-4 max-w-md">
                   <div>
                     <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block">كلمة المرور الحالية</label>
-                    <input aria-label="مدخل" title="مدخل" placeholder="مدخل"  type="password" required className="w-full p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-orange-500 font-bold"
+                    <input aria-label="مدخل" title="مدخل" placeholder="مدخل" type="password" required className="w-full p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-orange-500 font-bold"
                       value={passForm.current} onChange={e => setPassForm({ ...passForm, current: e.target.value })} />
                   </div>
                   <div>
                     <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block">كلمة المرور الجديدة</label>
-                    <input aria-label="مدخل" title="مدخل" placeholder="مدخل"  type="password" required className="w-full p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-orange-500 font-bold"
+                    <input aria-label="مدخل" title="مدخل" placeholder="مدخل" type="password" required className="w-full p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-orange-500 font-bold"
                       value={passForm.new} onChange={e => setPassForm({ ...passForm, new: e.target.value })} />
                   </div>
                   <div>
                     <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block">تأكيد كلمة المرور الجديدة</label>
-                    <input aria-label="مدخل" title="مدخل" placeholder="مدخل"  type="password" required className="w-full p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-orange-500 font-bold"
+                    <input aria-label="مدخل" title="مدخل" placeholder="مدخل" type="password" required className="w-full p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none focus:border-orange-500 font-bold"
                       value={passForm.confirm} onChange={e => setPassForm({ ...passForm, confirm: e.target.value })} />
                   </div>
                   <div className="flex gap-3 pt-4">
@@ -1458,69 +2061,313 @@ export const UserDashboard = () => {
                 </button>
               )}
             </div>
+
+            {/* Notification Preferences Section */}
+            <div className="bg-white p-10 rounded-[3rem] border border-slate-100 shadow-xl overflow-hidden mt-8">
+              <h3 className="text-xl font-black text-slate-900 mb-6 flex items-center gap-3">
+                <Bell className="w-6 h-6 text-orange-500" />
+                إعدادات الإشعارات (Omnichannel)
+              </h3>
+
+              <div className="space-y-4 max-w-lg">
+                <div className="flex items-center justify-between p-4 bg-slate-50 border border-slate-100 rounded-2xl">
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center">
+                      <Mail className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="font-black text-slate-900">إشعارات البريد الإلكتروني</div>
+                      <div className="text-[10px] font-bold text-slate-500 mt-1">تلقي التنبيهات والفواتير عبر البريد</div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => toggleNotificationSetting('emailNotifications')}
+                    disabled={isSavingSettings}
+                    className={`relative w-14 h-8 rounded-full transition-colors ${notificationSettings.emailNotifications ? 'bg-orange-500' : 'bg-slate-300'}`}
+                  >
+                    <span className={`absolute top-1 w-6 h-6 bg-white rounded-full transition-all ${notificationSettings.emailNotifications ? 'right-1' : 'left-1 rtl:right-auto rtl:left-7'}`}></span>
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-between p-4 bg-slate-50 border border-slate-100 rounded-2xl">
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center">
+                      <MessageSquare className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="font-black text-slate-900">إشعارات الواتساب (WhatsApp)</div>
+                      <div className="text-[10px] font-bold text-slate-500 mt-1">تلقي تنبيهات المزايدات والشحن فوراً</div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => toggleNotificationSetting('whatsappNotifications')}
+                    disabled={isSavingSettings}
+                    className={`relative w-14 h-8 rounded-full transition-colors ${notificationSettings.whatsappNotifications ? 'bg-orange-500' : 'bg-slate-300'}`}
+                  >
+                    <span className={`absolute top-1 w-6 h-6 bg-white rounded-full transition-all ${notificationSettings.whatsappNotifications ? 'right-1' : 'left-1 rtl:right-auto rtl:left-7'}`}></span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
           </div>
         )}
 
-        {/* ===== BIDS SECTION ===== */}
-        {view === 'bids' && (
-          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-            <h2 className="text-3xl font-black text-slate-900">مزاداتي النشطة 🔨</h2>
-            {/* Currently Winning */}
-            {activeBids.length > 0 && (
-              <div className="bg-green-50 p-6 rounded-[2rem] border border-green-100">
-                <h3 className="font-black text-green-700 mb-4 flex items-center gap-2"><Trophy className="w-5 h-5" /> أنت الفائز حالياً في:</h3>
-                <div className="space-y-3">
-                  {activeBids.map(car => (
-                    <div key={car.id} className="flex items-center justify-between p-4 bg-white rounded-2xl border border-green-200">
-                      <div className="flex items-center gap-3">
-                        <img src={car.images?.[0]} className="w-16 h-12 object-cover rounded-xl" alt="صورة" />
-                        <div>
-                          <div className="font-bold text-slate-900">{car.year} {car.make} {car.model}</div>
-                          <div className="text-xs text-slate-400">LOT #{car.lotNumber}</div>
-                        </div>
+        {/* Detailed Interactive Report Modal */}
+        {showDetailedReport && selectedReport && (
+          <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-md z-[115] overflow-y-auto" dir="rtl">
+            <div className="min-h-screen flex items-center justify-center p-4">
+              <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-4xl p-8 md:p-12 animate-in zoom-in-95 duration-300 relative my-8">
+                {/* Header */}
+                <div className="flex justify-between items-start mb-10 border-b border-slate-100 pb-8">
+                  <div>
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="w-12 h-12 bg-orange-500 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-orange-500/20">
+                        <TrendingUp className="w-6 h-6" />
                       </div>
-                      <div className="text-left">
-                        <div className="font-black text-green-700">${car.currentBid?.toLocaleString()}</div>
-                        <div className="text-[10px] font-bold text-green-500">الفائز حالياً ⭐</div>
+                      <div>
+                        <h2 className="text-3xl font-black text-slate-900">التحليل الشامل لأسعار السوق</h2>
+                        <p className="text-slate-500 font-bold text-sm">مقارنة حية لأسعار السيارات (ليبيا مقابل الاستيراد الامريكي)</p>
                       </div>
                     </div>
-                  ))}
+                  </div>
+                  <button aria-label="زر إغلاق" title="إغلاق التقرير" onClick={() => setShowDetailedReport(false)} className="p-3 bg-slate-100 hover:bg-slate-200 rounded-2xl transition-all">
+                    <X className="w-6 h-6 text-slate-500" />
+                  </button>
                 </div>
-              </div>
-            )}
-            {/* Bid History */}
-            <div className="bg-white rounded-[2rem] border border-slate-100 shadow-xl overflow-hidden">
-              <div className="px-8 py-5 bg-slate-50/50 border-b border-slate-100">
-                <h3 className="font-black text-slate-900">سجل المزايدات</h3>
-              </div>
-              <div className="divide-y divide-slate-50">
-                {userBids.map((bid: any, i: number) => {
-                  const isWinning = bid.carStatus === 'live' && bid.winnerId === effectiveUser.id;
-                  const hasWon = bid.carStatus === 'closed' && bid.winnerId === effectiveUser.id;
-                  const hasLost = bid.carStatus === 'closed' && bid.winnerId !== effectiveUser.id;
-                  return (
-                    <div key={bid.id || i} className="px-8 py-4 flex items-center justify-between hover:bg-slate-50/50 transition-colors">
-                      <div className="flex items-center gap-4">
-                        <img src={bid.images?.[0]} className="w-14 h-10 object-cover rounded-lg" alt="صورة" />
+
+                {/* Data Sources Indicators */}
+                <div className="flex flex-wrap gap-4 justify-center mb-10">
+                  <div className="px-4 py-2 bg-blue-50 text-blue-700 border border-blue-100 rounded-xl text-xs font-black flex items-center gap-2">
+                    <Globe className="w-4 h-4" /> مُحلل من فيسبوك (السوق الليبي)
+                  </div>
+                  <div className="px-4 py-2 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-xl text-xs font-black flex items-center gap-2">
+                    <Store className="w-4 h-4" /> بيانات السوق المفتوح (مؤكدة)
+                  </div>
+                  <div className="px-4 py-2 bg-orange-50 text-orange-700 border border-orange-100 rounded-xl text-xs font-black flex items-center gap-2">
+                    <Car className="w-4 h-4" /> بيانات أوتو برو الحصرية (استيراد)
+                  </div>
+                </div>
+
+                {/* Market Price Analysis Report */}
+                {selectedReport.title === 'تحليل أسعار السوق' && (
+                  <div className="bg-slate-50 p-8 rounded-[2rem] border border-slate-100 mb-10">
+                    <h3 className="text-xl font-black text-slate-800 mb-8 flex items-center gap-2">
+                      <TrendingUp className="w-6 h-6 text-slate-400" />
+                      متوسط أسعار السيارات المطلوبة حديثاً (مثال: {marketData ? `${marketData.make} ${marketData.model}` : 'تويوتا كامري'})
+                    </h3>
+
+                    {loadingMarketData ? (
+                      <div className="py-12 flex flex-col items-center justify-center space-y-4">
+                        <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+                        <div className="text-sm font-bold text-slate-500 animate-pulse">جاري جلب الأسعار الحية من السوق المحلي...</div>
+                      </div>
+                    ) : (
+                      <div className="space-y-6">
+                        {/* Local Market Bar */}
                         <div>
-                          <div className="font-bold text-slate-900 text-sm">{bid.year} {bid.make} {bid.model}</div>
-                          <div className="text-xs text-slate-400">{new Date(bid.timestamp).toLocaleString('ar-EG')}</div>
+                          <div className="flex justify-between text-sm font-bold text-slate-600 mb-2">
+                            <span>السوق المحلي (ليبيا - معارض وصفحات فيسبوك)</span>
+                            <span className="text-slate-900">~ ${(marketData?.usdEquivalent ? Math.round(marketData.usdEquivalent * 1.05) : 28000).toLocaleString()}</span>
+                          </div>
+                          <div className="w-full bg-slate-200 rounded-full h-6 overflow-hidden">
+                            <div className="bg-slate-400 h-6 rounded-full" style={{ width: '100%' }}></div>
+                          </div>
+                        </div>
+
+                        {/* OpenSooq Bar */}
+                        <div>
+                          <div className="flex justify-between text-sm font-bold text-slate-600 mb-2">
+                            <span>{marketData?.source || 'السوق المفتوح (ليبيا)'}</span>
+                            <span className="text-slate-900 font-bold">~ ${(marketData?.usdEquivalent || 27500).toLocaleString()} <span className="text-xs text-slate-400 font-normal">({(marketData?.averageLyd || 192500).toLocaleString()} د.ل)</span></span>
+                          </div>
+                          <div className="w-full bg-slate-200 rounded-full h-6 overflow-hidden">
+                            <div className="bg-blue-400 h-6 rounded-full transition-all duration-1000" style={{ width: '95%' }}></div>
+                          </div>
+                        </div>
+
+                        {/* Import Bar */}
+                        <div>
+                          <div className="flex justify-between text-sm font-black text-orange-600 mb-2">
+                            <span>استيراد مباشر عبر أوتو برو (شامل الشحن والجمارك)</span>
+                            <span className="text-orange-600 text-lg">~ ${(marketData?.usdEquivalent ? Math.round(marketData.usdEquivalent * 0.5) : 14000).toLocaleString()}</span>
+                          </div>
+                          <div className="w-full bg-orange-100 rounded-full h-8 overflow-hidden relative shadow-inner">
+                            <div className="bg-gradient-to-l from-orange-400 to-orange-500 h-8 rounded-full shadow-lg relative flex items-center px-4 transition-all duration-1000 delay-500" style={{ width: '50%' }}>
+                              <span className="text-white text-xs font-black absolute left-4">توفير 50%</span>
+                            </div>
+                          </div>
                         </div>
                       </div>
-                      <div className="text-left flex items-center gap-4">
-                        <div className="font-black text-slate-900">${bid.amount?.toLocaleString()}</div>
-                        <span className={`px-3 py-1 rounded-full text-[10px] font-black ${isWinning ? 'bg-green-100 text-green-700' :
-                          hasWon ? 'bg-yellow-100 text-yellow-700' :
-                            hasLost ? 'bg-red-100 text-red-600' :
-                              'bg-slate-100 text-slate-500'
-                          }`}>
-                          {isWinning ? 'الفائز حالياً ⭐' : hasWon ? 'فزت 🏆' : hasLost ? 'لم تفز' : 'مزايدة'}
-                        </span>
+                    )}
+                  </div>
+                )}
+
+                {/* Monthly Sales Report */}
+                {selectedReport.title === 'تقرير مبيعات الشهر' && (
+                  <div className="bg-slate-50 p-8 rounded-[2rem] border border-slate-100 mb-10 text-right" dir="rtl">
+                    <h3 className="text-xl font-black text-slate-800 mb-8 flex items-center gap-2">
+                      <BarChart3 className="w-6 h-6 text-slate-400" />
+                      إحصائيات المبيعات والأصناف الأكثر طلباً عبر منصة أوتو برو
+                    </h3>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm text-center">
+                        <div className="text-sm font-bold text-slate-500 mb-2">إجمالي السيارات المباعة</div>
+                        <div className="text-3xl font-black text-orange-500">142</div>
+                        <div className="text-xs text-emerald-500 font-bold mt-2">+12% عن الشهر الماضي</div>
+                      </div>
+                      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm text-center">
+                        <div className="text-sm font-bold text-slate-500 mb-2">حجم المبيعات (دولار)</div>
+                        <div className="text-3xl font-black text-orange-500">$1.2M</div>
+                        <div className="text-xs text-emerald-500 font-bold mt-2">+8% عن الشهر الماضي</div>
+                      </div>
+                      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm text-center">
+                        <div className="text-sm font-bold text-slate-500 mb-2">متوسط التوفير للعملاء</div>
+                        <div className="text-3xl font-black text-orange-500">35%</div>
+                        <div className="text-xs text-emerald-500 font-bold mt-2">مقارنة بالسوق المحلي</div>
                       </div>
                     </div>
-                  );
-                })}
-                {userBids.length === 0 && <div className="p-12 text-center text-slate-400 italic font-bold">لا توجد مزايدات بعد</div>}
+
+                    <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+                      <table className="w-full text-sm">
+                        <thead className="bg-slate-100 text-slate-500 font-bold">
+                          <tr>
+                            <th className="py-4 px-6 text-right">الماركة / الطراز</th>
+                            <th className="py-4 px-6 text-right">العدد المباع</th>
+                            <th className="py-4 px-6 text-right">متوسط سعر البيع</th>
+                            <th className="py-4 px-6 text-right">الوجهة الرئيسية</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 font-bold text-slate-700">
+                          <tr className="hover:bg-slate-50 transition-colors">
+                            <td className="py-4 px-6">Toyota Camry</td>
+                            <td className="py-4 px-6">38</td>
+                            <td className="py-4 px-6">$14,500</td>
+                            <td className="py-4 px-6">ليبيا</td>
+                          </tr>
+                          <tr className="hover:bg-slate-50 transition-colors">
+                            <td className="py-4 px-6">Hyundai Elantra</td>
+                            <td className="py-4 px-6">25</td>
+                            <td className="py-4 px-6">$9,200</td>
+                            <td className="py-4 px-6">مصر</td>
+                          </tr>
+                          <tr className="hover:bg-slate-50 transition-colors">
+                            <td className="py-4 px-6">Lexus RX 350</td>
+                            <td className="py-4 px-6">14</td>
+                            <td className="py-4 px-6">$32,000</td>
+                            <td className="py-4 px-6">الإمارات</td>
+                          </tr>
+                          <tr className="hover:bg-slate-50 transition-colors">
+                            <td className="py-4 px-6">Mercedes S500</td>
+                            <td className="py-4 px-6">8</td>
+                            <td className="py-4 px-6">$85,000</td>
+                            <td className="py-4 px-6">السعودية</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* Updated Shipping Prices */}
+                {selectedReport.title === 'أسعار الشحن المحدثة' && (
+                  <div className="bg-slate-50 p-8 rounded-[2rem] border border-slate-100 mb-10 text-right" dir="rtl">
+                    <h3 className="text-xl font-black text-slate-800 mb-8 flex items-center gap-2">
+                      <Ship className="w-6 h-6 text-slate-400" />
+                      آخر أسعار الشحن المحدثة عبر أوتو برو لجميع الوجهات العربية
+                    </h3>
+
+                    <div className="space-y-6">
+                      {/* US to Arab */}
+                      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden p-6 shadow-sm mb-4">
+                        <h4 className="font-black text-lg text-slate-900 mb-4 border-b border-slate-100 pb-2">من موانئ أمريكا إلى الوجهات العربية</h4>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm font-bold">
+                          <div className="flex justify-between p-3 bg-slate-50 rounded-xl"><span>إلى ليبيا:</span><span className="text-orange-600">$1,200</span></div>
+                          <div className="flex justify-between p-3 bg-slate-50 rounded-xl"><span>إلى مصر:</span><span className="text-orange-600">$1,350</span></div>
+                          <div className="flex justify-between p-3 bg-slate-50 rounded-xl"><span>إلى الإمارات:</span><span className="text-orange-600">$1,100</span></div>
+                          <div className="flex justify-between p-3 bg-slate-50 rounded-xl"><span>إلى السعودية:</span><span className="text-orange-600">$1,250</span></div>
+                          <div className="flex justify-between p-3 bg-slate-50 rounded-xl"><span>إلى الأردن:</span><span className="text-orange-600">$1,400</span></div>
+                          <div className="flex justify-between p-3 bg-slate-50 rounded-xl"><span>إلى عمان:</span><span className="text-orange-600">$1,150</span></div>
+                        </div>
+                      </div>
+
+                      {/* Libya to Arab */}
+                      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden p-6 shadow-sm mb-4">
+                        <h4 className="font-black text-lg text-slate-900 mb-4 border-b border-slate-100 pb-2">من موانئ ليبيا إلى الوجهات العربية</h4>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm font-bold">
+                          <div className="flex justify-between p-3 bg-slate-50 rounded-xl"><span>إلى مصر:</span><span className="text-orange-600">$400</span></div>
+                          <div className="flex justify-between p-3 bg-slate-50 rounded-xl"><span>إلى الإمارات:</span><span className="text-orange-600">$850</span></div>
+                          <div className="flex justify-between p-3 bg-slate-50 rounded-xl"><span>إلى السعودية:</span><span className="text-orange-600">$750</span></div>
+                          <div className="flex justify-between p-3 bg-slate-50 rounded-xl"><span>إلى تونس:</span><span className="text-orange-600">$200</span></div>
+                        </div>
+                      </div>
+
+                      {/* UAE to Arab */}
+                      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden p-6 shadow-sm mb-4">
+                        <h4 className="font-black text-lg text-slate-900 mb-4 border-b border-slate-100 pb-2">من الإمارات إلى الوجهات العربية</h4>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm font-bold">
+                          <div className="flex justify-between p-3 bg-slate-50 rounded-xl"><span>إلى السعودية:</span><span className="text-orange-600">$300</span></div>
+                          <div className="flex justify-between p-3 bg-slate-50 rounded-xl"><span>إلى عمان:</span><span className="text-orange-600">$150</span></div>
+                          <div className="flex justify-between p-3 bg-slate-50 rounded-xl"><span>إلى مصر:</span><span className="text-orange-600">$900</span></div>
+                          <div className="flex justify-between p-3 bg-slate-50 rounded-xl"><span>إلى ليبيا:</span><span className="text-orange-600">$1,050</span></div>
+                        </div>
+                      </div>
+
+                      {/* Saudi to Arab */}
+                      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden p-6 shadow-sm mb-4">
+                        <h4 className="font-black text-lg text-slate-900 mb-4 border-b border-slate-100 pb-2">من السعودية إلى الوجهات العربية</h4>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm font-bold">
+                          <div className="flex justify-between p-3 bg-slate-50 rounded-xl"><span>إلى الإمارات:</span><span className="text-orange-600">$300</span></div>
+                          <div className="flex justify-between p-3 bg-slate-50 rounded-xl"><span>إلى مصر:</span><span className="text-orange-600">$600</span></div>
+                          <div className="flex justify-between p-3 bg-slate-50 rounded-xl"><span>إلى الأردن:</span><span className="text-orange-600">$250</span></div>
+                          <div className="flex justify-between p-3 bg-slate-50 rounded-xl"><span>إلى البحرين:</span><span className="text-orange-600">$100</span></div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Market Insights Text */}
+                <div className="bg-emerald-50 text-emerald-800 p-6 rounded-2xl mb-10 border border-emerald-100">
+                  <div className="flex items-start gap-4">
+                    <TrendingUp className="w-8 h-8 text-emerald-600 shrink-0 mt-1" />
+                    <div>
+                      <h4 className="text-lg font-black mb-2">الخلاصة والتحليل الذكي</h4>
+                      <p className="text-sm font-bold leading-relaxed opacity-90">
+                        بحسب البيانات الحية وتحليلات الذكاء الاصطناعي لأسعار السيارات في <strong>موقع إقامتك (ليبيا)</strong> مقارنة بمزادات الولايات المتحدة، يتضح أن الاستيراد المباشر للسيارات المستعملة أو المصدومة صدمات خفيفة يوفر لك ما يقارب <strong>50% (نصف التكلفة)</strong> مقارنة بالشراء من السوق المحلي.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Marketing Call to Action Banner */}
+                <div className="bg-slate-900 text-white p-8 md:p-10 rounded-[2rem] relative overflow-hidden shadow-2xl">
+                  <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-8 text-center md:text-right">
+                    <div className="flex-1">
+                      <h4 className="text-2xl font-black mb-3">هل تبحث عن الموثوقية والأمان في الاستيراد؟</h4>
+                      <p className="text-slate-300 text-sm font-bold leading-relaxed mb-6">
+                        إذا كنت تريد جهة موثوقة لتساعدك في استيراد سيارتك بأرخص الأسعار وتتكفل بكافة إجراءات الشحن والجمارك حتى باب بيتك، تواصل معنا الآن.
+                      </p>
+                    </div>
+                    <div className="shrink-0 w-full md:w-auto">
+                      <a
+                        href="https://www.macchinaa.com"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block w-full md:w-auto bg-orange-500 text-white px-8 py-4 rounded-xl font-black text-sm hover:bg-orange-400 transition-all shadow-lg hover:shadow-orange-500/50 hover:-translate-y-1 text-center"
+                      >
+                        تواصل مع مزاد ماكينا
+                        <span className="block text-[10px] font-bold text-orange-100 mt-1">أحد فروع مجموعة المزاد الدولي وأوتو برو</span>
+                      </a>
+                    </div>
+                  </div>
+
+                  {/* Abstract Graphic representing connection */}
+                  <div className="absolute top-0 left-0 w-64 h-64 bg-orange-500/10 rounded-full blur-3xl -translate-y-1/2 -translate-x-1/2"></div>
+                  <div className="absolute bottom-0 right-0 w-48 h-48 bg-blue-500/10 rounded-full blur-2xl translate-y-1/2 translate-x-1/2"></div>
+                </div>
+
               </div>
             </div>
           </div>
@@ -1538,7 +2385,7 @@ export const UserDashboard = () => {
         )}
 
         {/* Modal overlays are handled globally at the end of the viewport */}
-      </main>
-    </div>
+      </main >
+    </div >
   );
 };

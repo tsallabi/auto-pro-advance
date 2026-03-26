@@ -1,0 +1,52 @@
+import React from 'react';
+import { Lock } from 'lucide-react';
+
+export const PrivacyPage = () => {
+    return (
+        <div className="min-h-screen bg-slate-50 pt-24 pb-16">
+            <div className="max-w-4xl mx-auto px-6">
+
+                <div className="bg-white rounded-3xl p-8 md:p-12 shadow-sm border border-slate-200">
+                    <div className="flex items-center gap-4 mb-8 pb-8 border-b border-slate-100">
+                        <div className="w-14 h-14 bg-blue-50 rounded-2xl flex items-center justify-center shrink-0">
+                            <Lock className="w-7 h-7 text-blue-500" />
+                        </div>
+                        <div>
+                            <h1 className="text-3xl font-black text-slate-900 mb-2">سياسة الخصوصية وأمن البيانات</h1>
+                            <p className="text-slate-500 font-medium">نلتزم بحماية بياناتك الشخصية والمالية.</p>
+                        </div>
+                    </div>
+
+                    <div className="prose prose-slate max-w-none prose-headings:font-black prose-headings:text-slate-900 prose-p:text-slate-600 prose-p:leading-relaxed">
+                        <p>
+                            في منصة أوتو برو، نعتبر خصوصية بياناتك وتأمينها على رأس أولوياتنا. توضح هذه الوثيقة ماهية البيانات التي نجمعها، ولماذا نجمعها، وكيف نقوم بمعالجتها للحفاظ على سرية عملياتك التجارية.
+                        </p>
+
+                        <h2>1. البيانات التي نجمعها</h2>
+                        <ul>
+                            <li><strong>معلومات الهوية:</strong> الاسم الكامل، رقم الهاتف، البريد الإلكتروني، وصورة جواز السفر أو الهوية الوطنية لغرض توثيق الحساب (KYC).</li>
+                            <li><strong>سجل التعاملات:</strong> المزايدات، الفواتير، طرق الدفع وعمليات تحويل الأموال.</li>
+                            <li><strong>معلومات التتبع:</strong> لتوفير إشعارات موقع الشحنة والرسائل التنبيهية عبر الواتساب.</li>
+                        </ul>
+
+                        <h2>2. استخدام البيانات</h2>
+                        <p>
+                            نستخدم بياناتك لتنفيذ التزاماتنا تجاهك فقط. هذا يشمل توثيق قدرتك المالية أمام المزادات الأمريكية، وشحن السيارة إلى اسم المستخدم الصحيح دون أخطاء جمركية. لا نقوم إطلاقاً ببيع أو تداول بيانات عملائنا أو سجل مشترياتهم لأي طرف ثالث بغرض التسويق.
+                        </p>
+
+                        <h2>3. أمن وتشفير المعلومات</h2>
+                        <p>
+                            جميع العمليات الحساسة وبيانات الفواتير والهويات تتم تخزينها عبر خوادم سحابية محمية بأعلى بروتوكولات التشفير القياسية للمجال المالي السحابي.
+                        </p>
+
+                        <h2>4. حذف أو إغلاق الحساب</h2>
+                        <p>
+                            يمكنك في أي وقت تقديم طلب للمسؤولين بحذف حسابك نهائياً من منصة أوتو برو وإزالة كافة وثائقك الشخصية، شريطة عدم وجود مستحقات مالية أو فواتير معلقة مرتبطة بالحساب.
+                        </p>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    );
+};

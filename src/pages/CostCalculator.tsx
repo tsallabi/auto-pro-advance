@@ -14,9 +14,11 @@ import {
     Settings
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useStore } from '../context/StoreContext';
 
 export const CostCalculator = () => {
     const navigate = useNavigate();
+    const { exchangeRate } = useStore();
     const [price, setPrice] = useState<number>(5000);
 
     // Default local settings
@@ -114,8 +116,13 @@ export const CostCalculator = () => {
 
                                 <div className="p-10 bg-gradient-to-br from-slate-900 to-slate-950 relative z-10 border-b border-white/5">
                                     <div className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] mb-4">صافي التكلفة النهائية ($)</div>
-                                    <div className="text-7xl font-black font-mono text-emerald-400 tracking-tighter drop-shadow-2xl">
-                                        ${total.toLocaleString()}
+                                    <div className="text-7xl flex flex-col items-center">
+                                        <span className="font-black font-mono text-emerald-400 tracking-tighter drop-shadow-2xl">
+                                            ${total.toLocaleString('en-US')}
+                                        </span>
+                                        <span className="text-3xl font-black font-mono text-emerald-400/70 tracking-tighter mt-2">
+                                            ≈ {Math.round(total * (exchangeRate || 7)).toLocaleString('en-US')} د.ل
+                                        </span>
                                     </div>
                                     <div className="mt-6 flex items-center gap-3">
                                         <div className="flex h-2 w-2">
@@ -141,7 +148,7 @@ export const CostCalculator = () => {
                                                 </div>
                                                 <span className={`text-sm font-black ${item.color}`}>{item.label}</span>
                                             </div>
-                                            <span className="text-xl font-black font-mono text-white">${item.value.toLocaleString()}</span>
+                                            <span className="text-xl font-black font-mono text-white">${item.value.toLocaleString('en-US')}</span>
                                         </div>
                                     ))}
 

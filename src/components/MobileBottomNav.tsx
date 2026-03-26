@@ -12,9 +12,6 @@ export const MobileBottomNav: React.FC = () => {
     const location = useLocation();
     const { currentUser } = useStore();
 
-    // Hide on dashboard pages (they have their own nav)
-    if (location.pathname.startsWith('/dashboard')) return null;
-
     const tabs = [
         {
             href: '/marketplace?tab=live',
@@ -61,9 +58,9 @@ export const MobileBottomNav: React.FC = () => {
     return (
         <nav
             dir="rtl"
-            className="fixed bottom-0 left-0 right-0 z-[300] md:hidden bg-slate-900/95 backdrop-blur-xl border-t border-slate-800"
+            className="fixed bottom-0 left-0 right-0 z-[9999] md:hidden bg-slate-900/95 backdrop-blur-xl border-t border-slate-800 pb-safe"
         >
-            <div className="flex items-center justify-around h-16 pb-safe">
+            <div className="flex items-center justify-around h-16">
                 {tabs.map(tab => {
                     const active = isActive(tab);
                     const Icon = tab.icon;

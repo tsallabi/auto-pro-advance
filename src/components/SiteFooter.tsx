@@ -2,9 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Car, Phone, Mail, MapPin, Facebook, Twitter, Instagram, Youtube } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
+import { useTranslation } from 'react-i18next';
 
 // Key must match FOOTER_KEY in AdminDashboard
-const FOOTER_KEY = 'autopro_footer_settings';
+const FOOTER_KEY = 'autopro_footer_settings_v7';
 const FOOTER_DEFAULT = {
     description: 'منصة مزادات السيارات الأولى في ليبيا — شراء، بيع، شحن دولي بكل شفافية.',
     phone: '+218 91 234 5678',
@@ -12,21 +13,21 @@ const FOOTER_DEFAULT = {
     address: 'طرابلس، ليبيا',
     facebook: '#', twitter: '#', instagram: '#', youtube: '#',
     companyLinks: [
-        { label: 'عن الشركة', href: '/about' },
-        { label: 'كيف يعمل النظام', href: '/how-it-works' },
-        { label: 'الفروع', href: '/branches' },
-        { label: 'وظائف', href: '/careers' },
+        { label: 'footer.aboutCompany', href: '/about' },
+        { label: 'footer.howItWorks', href: '/how-it-works' },
+        { label: 'footer.branches', href: '/branches' },
+        { label: 'footer.careers', href: '/careers' },
     ],
     serviceLinks: [
-        { label: 'المزادات المباشرة', href: '/marketplace?tab=live' },
-        { label: 'تصفح السيارات', href: '/marketplace' },
-        { label: 'حاسبة التكلفة', href: '/calculator' },
-        { label: 'خدمات الشحن', href: '/shipping' },
+        { label: 'footer.liveAuctions', href: '/marketplace?tab=live' },
+        { label: 'footer.browseCars', href: '/marketplace' },
+        { label: 'footer.costCalculator', href: '/calculator' },
+        { label: 'footer.shippingServices', href: '/shipping' },
     ],
     legalLinks: [
-        { label: 'الشروط والأحكام', href: '/terms' },
-        { label: 'سياسة الخصوصية', href: '/privacy' },
-        { label: 'سياسة الإلغاء', href: '/refund' },
+        { label: 'footer.termsAndConditions', href: '/terms' },
+        { label: 'footer.privacyPolicy', href: '/privacy' },
+        { label: 'footer.refundPolicy', href: '/refund' },
     ],
 };
 
@@ -39,6 +40,7 @@ const loadFooter = () => {
 export const SiteFooter = () => {
     const { branchConfig } = useStore();
     const [cfg, setCfg] = useState(loadFooter);
+    const { t, i18n } = useTranslation();
 
     // Reload whenever admin saves footer settings
     useEffect(() => {
@@ -48,24 +50,24 @@ export const SiteFooter = () => {
     }, []);
 
     const year = new Date().getFullYear();
-    const siteName = branchConfig?.name || 'ليبيا أوتو برو';
+    const siteName = branchConfig?.name || (i18n.language === 'en' ? 'Libya AUTO PRO' : 'ليبيا AUTO PRO');
 
     const socialLinks = [
-        { icon: Facebook, href: cfg.facebook || '#' },
-        { icon: Twitter, href: cfg.twitter || '#' },
-        { icon: Instagram, href: cfg.instagram || '#' },
-        { icon: Youtube, href: cfg.youtube || '#' },
+        { name: 'فيسبوك', icon: Facebook, href: cfg.facebook || '#' },
+        { name: 'تويتر', icon: Twitter, href: cfg.twitter || '#' },
+        { name: 'إنستجرام', icon: Instagram, href: cfg.instagram || '#' },
+        { name: 'يوتيوب', icon: Youtube, href: cfg.youtube || '#' },
     ];
 
     return (
-        <footer dir="rtl" className="bg-slate-950 text-slate-400 font-cairo border-t border-slate-800/50">
+        <footer dir={i18n.language === 'ar' ? 'rtl' : 'ltr'} className="bg-slate-950 text-slate-400 font-sans border-t border-slate-800/50">
 
             {/* ── Main grid ── */}
             <div className="max-w-7xl mx-auto px-6 py-16 grid grid-cols-2 md:grid-cols-4 gap-10">
 
                 {/* Brand column */}
                 <div className="col-span-2 md:col-span-1 space-y-5">
-                    <Link to="/" className="flex items-center gap-3 group w-fit">
+                    <Link to="/" aria-label="الرئيسية" title="الرئيسية" className="flex items-center gap-3 group w-fit">
                         <div className="w-10 h-10 bg-orange-500 rounded-xl flex items-center justify-center shadow-lg shadow-orange-500/20 group-hover:scale-110 transition-transform">
                             <Car className="w-6 h-6 text-white" />
                         </div>
@@ -76,10 +78,10 @@ export const SiteFooter = () => {
                             </span>
                         </span>
                     </Link>
-                    <p className="text-sm leading-relaxed">{cfg.description}</p>
+                    <p className="text-sm leading-relaxed">{t(cfg.description)}</p>
                     <div className="flex items-center gap-3 pt-1">
-                        {socialLinks.map(({ icon: Icon, href }) => (
-                            <a key={href} href={href} target="_blank" rel="noopener noreferrer"
+                        {socialLinks.map(({ name, icon: Icon, href }) => (
+                            <a key={name} href={href} aria-label={name} title={name} target="_blank" rel="noopener noreferrer"
                                 className="w-9 h-9 rounded-xl bg-slate-800 hover:bg-orange-500 flex items-center justify-center transition-colors group">
                                 <Icon className="w-4 h-4 text-slate-400 group-hover:text-white transition-colors" />
                             </a>
@@ -89,12 +91,12 @@ export const SiteFooter = () => {
 
                 {/* Company links */}
                 <div className="space-y-4">
-                    <h4 className="text-white font-black text-sm uppercase tracking-widest">الشركة</h4>
+                    <h4 className="text-white font-black text-sm uppercase tracking-widest">{t('footer.company')}</h4>
                     <ul className="space-y-2.5">
                         {cfg.companyLinks.map((l: any) => (
                             <li key={l.href}>
                                 <Link to={l.href} className="text-sm hover:text-orange-400 hover:translate-x-1 transition-all inline-block">
-                                    {l.label}
+                                    {t(l.label)}
                                 </Link>
                             </li>
                         ))}
@@ -103,12 +105,12 @@ export const SiteFooter = () => {
 
                 {/* Services links */}
                 <div className="space-y-4">
-                    <h4 className="text-white font-black text-sm uppercase tracking-widest">الخدمات</h4>
+                    <h4 className="text-white font-black text-sm uppercase tracking-widest">{t('footer.services')}</h4>
                     <ul className="space-y-2.5">
                         {cfg.serviceLinks.map((l: any) => (
                             <li key={l.href}>
                                 <Link to={l.href} className="text-sm hover:text-orange-400 hover:translate-x-1 transition-all inline-block">
-                                    {l.label}
+                                    {t(l.label)}
                                 </Link>
                             </li>
                         ))}
@@ -117,7 +119,7 @@ export const SiteFooter = () => {
 
                 {/* Contact */}
                 <div className="space-y-4">
-                    <h4 className="text-white font-black text-sm uppercase tracking-widest">تواصل معنا</h4>
+                    <h4 className="text-white font-black text-sm uppercase tracking-widest">{t('footer.contact')}</h4>
                     <ul className="space-y-3">
                         <li>
                             <a href={`tel:${cfg.phone}`} className="flex items-center gap-2.5 text-sm hover:text-orange-400 transition-colors">
@@ -131,7 +133,7 @@ export const SiteFooter = () => {
                         </li>
                         <li>
                             <span className="flex items-start gap-2.5 text-sm">
-                                <MapPin className="w-4 h-4 text-orange-500 shrink-0 mt-0.5" />{cfg.address}
+                                <MapPin className="w-4 h-4 text-orange-500 shrink-0 mt-0.5" />{t(cfg.address)}
                             </span>
                         </li>
                     </ul>
@@ -141,11 +143,11 @@ export const SiteFooter = () => {
             {/* ── Bottom bar ── */}
             <div className="border-t border-slate-800 py-5">
                 <div className="max-w-7xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
-                    <p>© {year} {siteName}. جميع الحقوق محفوظة.</p>
+                    <p>© {year} {siteName}. {t('footer.rightsReserved')}</p>
                     <div className="flex items-center gap-4">
                         {cfg.legalLinks.map((l: any) => (
                             <Link key={l.href} to={l.href} className="hover:text-orange-400 transition-colors">
-                                {l.label}
+                                {t(l.label)}
                             </Link>
                         ))}
                     </div>

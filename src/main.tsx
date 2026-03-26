@@ -2,19 +2,26 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
+import './i18n';
+import { GoogleOAuthProvider } from '@react-oauth/google';
 
-/* ── Phase 13: Register Service Worker (PWA) ── */
+/* ── Ensure Service Workers are Unregistered in Dev ── */
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker
-      .register('/sw.js', { scope: '/' })
-      .then(reg => console.log('[SW] Registered:', reg.scope))
-      .catch(err => console.warn('[SW] Registration failed:', err));
+  navigator.serviceWorker.getRegistrations().then((registrations) => {
+    for (let registration of registrations) {
+      registration.unregister();
+      console.log('[SW] Unregistered:', registration.scope);
+    }
   });
 }
 
+// We'll use an environment variable or a fallback for the Google Client ID
+const GOOGLE_CLIENT_ID = (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID || '1047123985392-xxxxxxxxx.apps.googleusercontent.com';
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
+      <App />
+    </GoogleOAuthProvider>
   </StrictMode>,
 );

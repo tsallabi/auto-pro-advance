@@ -10,6 +10,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import multer from "multer";
 import fs from "fs";
+import nodemailer from "nodemailer";
 
 const JWT_SECRET = process.env.JWT_SECRET || "autopro-secret-key-change-in-production-2026";
 const SALT_ROUNDS = 10;
@@ -28,6 +29,21 @@ interface AuctionTimer {
   isActive: boolean;
 }
 const auctionTimers: Record<string, AuctionTimer> = {};
+
+// Global memory state for performance
+let GLOBAL_EXCHANGE_RATE = 1;
+
+// Global Email Transporter
+const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST || 'smtp.gmail.com',
+  port: parseInt(process.env.SMTP_PORT || '465'),
+  secure: process.env.SMTP_SECURE === 'true',
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS?.replace(/"/g, '') // remove quotes if any
+  }
+});
+
 
 // Initialize Database
 db.exec("PRAGMA foreign_keys = OFF;");
@@ -141,6 +157,26 @@ db.exec(`
     FOREIGN KEY(userId) REFERENCES users(id),
     FOREIGN KEY(carId) REFERENCES cars(id)
   );
+
+  CREATE TABLE IF NOT EXISTS watchers (
+    userId TEXT,
+    carId TEXT,
+    FOREIGN KEY(carId) REFERENCES cars(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS verification_codes (
+    email TEXT PRIMARY KEY,
+    code TEXT,
+    expiresAt TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS user_settings (
+    userId TEXT PRIMARY KEY,
+    emailNotifications INTEGER DEFAULT 1,
+    whatsappNotifications INTEGER DEFAULT 1,
+    smsNotifications INTEGER DEFAULT 0,
+    FOREIGN KEY(userId) REFERENCES users(id)
+  );
   CREATE TABLE IF NOT EXISTS watchlist (
     id TEXT PRIMARY KEY,
     userId TEXT,
@@ -218,6 +254,28 @@ db.exec(`
     updatedAt TEXT
   );
 
+  CREATE TABLE IF NOT EXISTS market_estimates (
+    id TEXT PRIMARY KEY,
+    make TEXT,
+    model TEXT,
+    year INTEGER,
+    minPrice REAL,
+    maxPrice REAL,
+    lastUpdated TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS libyan_market_prices (
+    id TEXT PRIMARY KEY,
+    condition TEXT,
+    make TEXT,
+    model TEXT,
+    year INTEGER,
+    transmission TEXT,
+    fuel TEXT,
+    mileage TEXT,
+    priceLYD REAL
+  );
+
   INSERT OR IGNORE INTO system_settings (key, value, description, updatedAt) VALUES
   ('platform_commission_rate', '0.07', 'Platform commission as decimal (0.07 = 7%)', CURRENT_TIMESTAMP),
   ('internal_transport_fee', '450', 'Fixed fee for internal transport ($)', CURRENT_TIMESTAMP),
@@ -225,7 +283,8 @@ db.exec(`
   ('auction_extension_seconds', '15', 'Time added after late bid (seconds)', CURRENT_TIMESTAMP),
   ('min_bid_increment', '100', 'Minimum bid increment ($)', CURRENT_TIMESTAMP),
   ('default_buying_power_multiplier', '10', 'Default multiplier for deposit to calculate buying power', CURRENT_TIMESTAMP),
-  ('require_kyc_for_bidding', '1', 'Require KYC approval before allowing bids (1=Yes, 0=No)', CURRENT_TIMESTAMP);
+  ('require_kyc_for_bidding', '1', 'Require KYC approval before allowing bids (1=Yes, 0=No)', CURRENT_TIMESTAMP),
+  ('usd_lyd_rate', '7.00', 'Global exchange rate for USD to Libyan Dinar', CURRENT_TIMESTAMP);
 
   -- Insert default branch configs
   INSERT OR IGNORE INTO branch_configs (id, name, englishName, logoText, logoSubtext, currency, domain, primaryColor)
@@ -281,7 +340,10 @@ db.exec("PRAGMA foreign_keys = ON;");
   "secondaryDamage TEXT",
   "keys TEXT",
   "runsDrives TEXT",
-  "notes TEXT"
+  "notes TEXT",
+  "auctionSessionCount INTEGER DEFAULT 0",
+  "acceptedBy TEXT",
+  "sellerCounterPrice REAL"
 ].forEach(colDef => {
   try {
     db.exec(`ALTER TABLE cars ADD COLUMN ${colDef}`);
@@ -303,7 +365,9 @@ db.exec("PRAGMA foreign_keys = ON;");
 
 // 3. Ensure all columns exist for 'invoices'
 [
-  "pickupAuthCode TEXT"
+  "pickupAuthCode TEXT",
+  "isViewed INTEGER DEFAULT 0",
+  "sentAt TEXT"
 ].forEach(colDef => {
   try {
     db.exec(`ALTER TABLE invoices ADD COLUMN ${colDef}`);
@@ -316,6 +380,46 @@ try {
 } catch (e) { /* Column already exists */ }
 
 // ======= PHASE 4: SELLER WALLET TABLES =======
+const initLibyanMarketPrices = () => {
+  try {
+    const count: any = db.prepare("SELECT COUNT(*) as count FROM libyan_market_prices").get();
+    if (count && count.count === 0) {
+      const rawData = `جديد	تويوتا	ستارليت	2025	اوتوماتيك	بنزين	0	99,999
+جديد	جيتور	T2	2026	اوتوماتيك	بنزين	0	255,000
+جديد	آيتو	آيتو 9	2026	اوتوماتيك	بنزين	0	36,666
+مستعمل	تويوتا	كامري	2024	اوتوماتيك	بنزين	1,000 - 9,999	260,000
+جديد	أودي	Q3	2024	اوتوماتيك	بنزين	0	178,938
+مستعمل	هيونداي	كريتا	2025	اوتوماتيك	بنزين	10,000 - 19,999	99,999
+جديد	كيا	سورينتو	2023	اوتوماتيك	بنزين	0	135,000
+مستعمل	هيونداي	سنتافي	2023	اوتوماتيك	بنزين	50,000 - 59,999	135,000
+مستعمل	هيونداي	فوليستر	2023	اوتوماتيك	بنزين	90,000 - 99,999	55,000
+مستعمل	كيا	فورتي	2023	اوتوماتيك	بنزين	10,000 - 19,999	65,000
+جديد	تويوتا	توندرا	2023	اوتوماتيك	بنزين	0	295,000
+مستعمل	هيونداي	سنتافي	2022	اوتوماتيك	بنزين	40,000 - 49,999	125,000
+مستعمل	هيونداي	توسان	2022	اوتوماتيك	بنزين	60,000 - 69,999	110,000
+مستعمل	هيونداي	سوناتا	2022	اوتوماتيك	بنزين	80,000 - 89,999	82,000
+مستعمل	مرسيدس بنز	الفئة-C	2021	اوتوماتيك	بنزين	10,000 - 19,999	84,000
+مستعمل	تويوتا	كامري	2020	اوتوماتيك	بنزين	70,000 - 79,999	80,000
+مستعمل	كيا	فورتي	2020	اوتوماتيك	بنزين	130,000 - 139,999	50,000
+مستعمل	نيسان	باترول	2020	اوتوماتيك	بنزين	+200,000	64,000
+مستعمل	كيا	سبورتاج	2019	اوتوماتيك	بنزين	170,000 - 179,999	57,000
+مستعمل	كيا	اوبتيما	2017	اوتوماتيك	بنزين	110,000 - 119,999	36,000`;
+      
+      const lines = rawData.split('\n').filter(l => l.trim().length > 0);
+      const stmt = db.prepare('INSERT INTO libyan_market_prices (id, condition, make, model, year, transmission, fuel, mileage, priceLYD) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+      db.transaction(() => {
+        lines.forEach((line, idx) => {
+          const [condition, make, model, year, transmission, fuel, mileage, priceStr] = line.split('\t');
+          const price = parseFloat(priceStr?.replace(/,/g, '') || '0');
+          stmt.run(`lmp-${idx}`, condition, make, model, parseInt(year), transmission, fuel, mileage, price);
+        });
+      })();
+      console.log(`✅ Seeded ${lines.length} Libyan Market Prices`);
+    }
+  } catch (err) { console.error("Market seeder error", err); }
+};
+initLibyanMarketPrices();
+
 db.exec(`
   CREATE TABLE IF NOT EXISTS seller_wallets (
     sellerId TEXT PRIMARY KEY,
@@ -577,6 +681,40 @@ async function startServer() {
     res.json({ status: "ok", time: new Date().toISOString() });
   });
 
+  // Settings API
+  app.get("/api/settings", (req, res) => {
+    try {
+      const settings = db.prepare("SELECT key, value FROM system_settings").all() as any[];
+      const config: Record<string, string> = {};
+      settings.forEach(s => config[s.key] = s.value);
+      res.json(config);
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to fetch settings" });
+    }
+  });
+
+  app.post("/api/settings", (req, res) => {
+    try {
+      const updates = req.body;
+      const stmt = db.prepare("UPDATE system_settings SET value = ?, updatedAt = ? WHERE key = ?");
+      const insertStmt = db.prepare("INSERT OR IGNORE INTO system_settings (key, value, description, updatedAt) VALUES (?, ?, 'Added via API', ?)");
+      
+      const now = new Date().toISOString();
+      db.transaction(() => {
+        for (const [key, value] of Object.entries(updates)) {
+          const valStr = String(value);
+          const result = stmt.run(valStr, now, key);
+          if (result.changes === 0) {
+            insertStmt.run(key, valStr, now);
+          }
+        }
+      })();
+      res.json({ success: true, message: "Settings updated successfully" });
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to update settings", details: err.message });
+    }
+  });
+
   // Start listening before Vite
   httpServer.listen(PORT, "0.0.0.0", () => {
     console.log(`✅ HTTP Server listening on http://localhost:${PORT}`);
@@ -605,6 +743,7 @@ async function startServer() {
     } catch (err) { console.error('sendInternalMessage error:', err); }
   }
 
+  // Function to send a notification and optional email/whatsapp mirror
   function sendNotification(userId: string, title: string, message: string, type: string = 'info') {
     const id = `notif-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
     const timestamp = new Date().toISOString();
@@ -614,10 +753,59 @@ async function startServer() {
 
       const notifData = { id, userId, title, message, type, timestamp, isRead: 0 };
       io.to(`user_${userId}`).emit("new_notification", notifData);
+
+      // Omni-Channel External Dispatch (Email/WhatsApp)
+      const user: any = db.prepare("SELECT email, phone FROM users WHERE id = ?").get(userId);
+      if (!user) return;
+
+      const settings: any = db.prepare("SELECT emailNotifications, whatsappNotifications FROM user_settings WHERE userId = ?").get(userId);
+      const wantsEmail = settings ? settings.emailNotifications === 1 : true;
+      const wantsWhatsapp = settings ? settings.whatsappNotifications === 1 : true;
+
+      if (wantsEmail && transporter && user.email) {
+        transporter.sendMail({
+          from: process.env.SMTP_FROM || '"AutoPro Auctions" <info@autopro.ac>',
+          to: user.email,
+          subject: `تنبيه من أوتو برو: ${title}`,
+          html: `
+            <div dir="rtl" style="font-family: Arial, sans-serif; padding: 20px; background: #f8fafc; border-radius: 12px; color: #0f172a;">
+              <h2 style="color: #0369a1;">${title}</h2>
+              <p style="font-size: 16px; line-height: 1.5; white-space: pre-wrap;">${message}</p>
+              <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;">
+              <p style="font-size: 12px; color: #64748b;">هذا إشعار تلقائي من منصة ليبيا أوتو برو للمزادات.<br>يمكنك تعديل إعدادات الإشعارات من حسابك.</p>
+            </div>
+          `
+        }).catch(err => console.error("External Email Error ignoring:", err.message));
+      }
+
+      if (wantsWhatsapp && user.phone) {
+        const cleanPhone = user.phone.replace(/[^0-9]/g, '');
+        console.log(`[WHATSAPP DISPATCH] From: 00353894435368 | To: ${cleanPhone} | MSG: ${title} - ${message}`);
+
+        const instanceId = process.env.ULTRAMSG_INSTANCE_ID;
+        const token = process.env.ULTRAMSG_TOKEN;
+
+        if (instanceId && token) {
+          fetch(`https://api.ultramsg.com/${instanceId}/messages/chat`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+              token: token,
+              to: cleanPhone,
+              body: `*AutoPro Auctions: ${title}*\n\n${message}\n\n_لتغيير إعدادات الإشعارات، توجه لملفك الشخصي._`
+            })
+          }).catch(err => console.error("UltraMsg WhatsApp Dispatch Error:", err.message));
+        }
+      }
+
     } catch (err) { console.error('sendNotification error:', err); }
   }
 
   function createWinInvoices(userId: string, carId: string, amount: number) {
+    // Idempotency check: Ensure we don't create duplicate invoices and shipments for the same car win
+    const existingInvoice: any = db.prepare("SELECT id FROM invoices WHERE carId = ? AND type = 'purchase'").get(carId);
+    if (existingInvoice) return { purchaseInvoice: existingInvoice.id, transportInvoice: null, shippingInvoice: null, shipmentId: null };
+
     const now = new Date().toISOString();
     const dueDate7 = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
@@ -654,6 +842,16 @@ async function startServer() {
         `يرجى التوجه لقسم اللوجستيات في لوحة التاجر لمتابعة إجراءات التسليم والرفع.`
       );
     }
+
+    if (car) {
+      sendNotification(userId, 'تهانينا! فزت بسيارة 🎉', `لقد فزت بمزاد سيارة ${car.make} ${car.model} بمبلغ $${amount.toLocaleString()}. الفواتير متاحة الآن لدفعها.`, 'success');
+      sendInternalMessage('admin-1', userId, '🏆 إشعار فوز بالمزاد وإصدار فواتير',
+        `أهلاً! لقد فزت بسيارة ${car.make} ${car.model} (${car.year}).\n\n` +
+        `السعر النهائي: $${amount.toLocaleString()}\n` +
+        `تم إصدار فاتورة الشراء وتكاليف النقل، يرجى سدادها خلال 7 أيام من تاريخ اليوم لإتمام عملية الشحن.`
+      );
+    }
+    
     return { purchaseInvoice: inv1, transportInvoice: inv2, shippingInvoice: inv3, shipmentId: shipId };
   }
 
@@ -691,6 +889,17 @@ async function startServer() {
     return newBalance;
   }
 
+  let isTransitioning = false;
+
+  function processAuctionTransition() {
+    isTransitioning = true;
+    io.emit("auction_transition", { duration: 5000 });
+    setTimeout(() => {
+      isTransitioning = false;
+      checkUpcomingAuctions();
+    }, 5000);
+  }
+
   function finalizeAuction(carId: string) {
     try {
       const car: any = db.prepare("SELECT * FROM cars WHERE id = ?").get(carId) as any;
@@ -700,21 +909,19 @@ async function startServer() {
       const winnerId = lastBid ? lastBid.userId : null;
 
       if (winnerId && car.reservePrice && car.currentBid < car.reservePrice) {
-        const offerMarketEndTime = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString();
+        // Did not reach reserve -> offer market for 24h
+        const offerMarketEndTime = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
         db.prepare("UPDATE cars SET status = 'offer_market', offerMarketEndTime = ? WHERE id = ?").run(offerMarketEndTime, carId);
         io.emit("car_updated", { id: carId, status: 'offer_market', offerMarketEndTime });
-        return;
-      }
-
-      db.prepare("UPDATE cars SET status = 'closed', winnerId = ? WHERE id = ?").run(winnerId, carId);
-      if (winnerId) {
+      } else if (winnerId) {
+        // Won -> closed
+        db.prepare("UPDATE cars SET status = 'closed', winnerId = ? WHERE id = ?").run(winnerId, carId);
         createWinInvoices(winnerId, carId, car.currentBid);
         sendInternalMessage('admin-1', winnerId,
           `🏆 تهانينا! فزت بسيارة ${car.make} ${car.model} ${car.year}`,
           `تهانينا! لقد فزت في المزاد على سيارة ${car.make} ${car.model} ${car.year}!\n\nسعر الفوز: $${car.currentBid.toLocaleString()}\nرقم اللوت: ${car.lotNumber}\n\n📄 تم إنشاء 3 فواتير في حسابك:\n1. فاتورة الشراء (مستحقة الآن)\n2. فاتورة النقل الداخلي (تُفعّل بعد دفع الشراء)\n3. فاتورة الشحن الدولي (تُفعّل بعد وصول المستودع)\n\nفريق ليبيا أوتو برو 🚗`
         );
 
-        // Notify losers
         const losers = db.prepare("SELECT DISTINCT userId FROM bids WHERE carId = ? AND userId != ?").all(carId, winnerId) as any[];
         losers.forEach((loser: any) => {
           sendInternalMessage('admin-1', loser.userId,
@@ -722,41 +929,65 @@ async function startServer() {
             `للأسف، لم تفز في مزاد سيارة ${car.make} ${car.model} ${car.year}.\n\nالسعر النهائي: $${car.currentBid.toLocaleString()}\n\nالمبلغ المحجوز تم تحريره وعاد لقوتك الشرائية.\n\n🔍 تصفح سيارات مشابهة في المزادات القادمة!\n\nفريق ليبيا أوتو برو 🚗`
           );
         });
+        io.emit("car_updated", { id: carId, status: 'closed', winnerId });
+      } else {
+        // No bids at all -> offer market for 24h
+        const offerMarketEndTime = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+        db.prepare("UPDATE cars SET status = 'offer_market', offerMarketEndTime = ? WHERE id = ?").run(offerMarketEndTime, carId);
+        io.emit("car_updated", { id: carId, status: 'offer_market', offerMarketEndTime });
       }
-      io.emit("car_updated", { id: carId, status: 'closed', winnerId });
     } catch (e) {
       console.error(`Error finalizing auction ${carId}:`, e);
     }
   }
 
   function checkUpcomingAuctions() {
-    const now = new Date().toISOString();
-    const upcoming: any[] = db.prepare("SELECT * FROM cars WHERE status = 'upcoming' AND auctionEndDate <= ?").all(now);
-    upcoming.forEach((car: any) => {
-      db.prepare("UPDATE cars SET status = 'live' WHERE id = ?").run(car.id);
-      auctionTimers[car.id] = { timeLeft: 300, isActive: true };
-      io.emit("auction_started", { carId: car.id });
-    });
+    if (isTransitioning) return;
+    const liveRow: any = db.prepare("SELECT COUNT(*) as count FROM cars WHERE status = 'live'").get();
+    if (liveRow && liveRow.count === 0) {
+      const next: any = db.prepare("SELECT * FROM cars WHERE status = 'upcoming' ORDER BY auctionEndDate ASC, id ASC LIMIT 1").get();
+      if (next) {
+        // Auction duration exactly 2 minutes
+        const newEndDate = new Date(Date.now() + 2 * 60 * 1000).toISOString();
+        db.prepare("UPDATE cars SET status = 'live', auctionEndDate = ? WHERE id = ?").run(newEndDate, next.id);
+        io.emit("car_updated", { id: next.id, status: 'live', auctionEndDate: newEndDate });
+        io.emit("auction_started", { carId: next.id });
+        console.log(`[AUCTION QUEUE] Car ${next.id} is now LIVE. Ends at ${newEndDate}`);
+      }
+    }
   }
 
   function tickAuctions() {
-    checkUpcomingAuctions();
-    const activeTimers: Record<string, number> = {};
-    let hasUpdates = false;
-    Object.keys(auctionTimers).forEach(carId => {
-      const timer = auctionTimers[carId];
-      if (timer.isActive && timer.timeLeft > 0) {
-        timer.timeLeft -= 1;
-        activeTimers[carId] = timer.timeLeft;
-        hasUpdates = true;
-        if (timer.timeLeft === 0) {
-          timer.isActive = false;
-          finalizeAuction(carId);
-        }
-      }
-    });
-    if (hasUpdates) io.emit("timers_update", activeTimers);
+    if (isTransitioning) return;
+    const now = new Date().toISOString();
+
+    // AUTO REPAIR: Any live car missing an end date gets exactly 2 minutes from NOW.
+    const nullEndDateCars: any[] = db.prepare("SELECT id FROM cars WHERE status = 'live' AND (auctionEndDate IS NULL OR auctionEndDate = '')").all();
+    if (nullEndDateCars.length > 0) {
+      const newEndDate = new Date(Date.now() + 2 * 60 * 1000).toISOString();
+      nullEndDateCars.forEach((car: any) => {
+        db.prepare("UPDATE cars SET auctionEndDate = ? WHERE id = ?").run(newEndDate, car.id);
+        io.emit("car_updated", { id: car.id, auctionEndDate: newEndDate });
+        console.log(`[AUTO-REPAIR] Fixed null end date for live car ${car.id}. Ends at ${newEndDate}`);
+      });
+    }
+    
+    // Finalize any live cars whose time has expired
+    const expiredLive: any[] = db.prepare("SELECT id FROM cars WHERE status = 'live' AND auctionEndDate <= ?").all(now);
+    if (expiredLive.length > 0) {
+      expiredLive.forEach((car: any) => {
+        console.log(`[AUCTION QUEUE] Car ${car.id} time expired. Finalizing...`);
+        finalizeAuction(car.id);
+      });
+      // Enter 5 seconds transition phase before jumping to the next car
+      processAuctionTransition();
+    } else {
+      checkUpcomingAuctions();
+    }
   }
+
+  // Start the heartbeat timer for live auctions
+  setInterval(tickAuctions, 1000);
 
   // API Routes
   app.get("/api/debug/seed-simulation", (req, res) => {
@@ -1283,6 +1514,38 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `أهلاً ${firstName} ${lastName}!\n\nشكراً لتسجيلك في منصة ليبيا أوتو برو للمزادات.\n\nحسابك الآن قيد المراجعة من قبل فريق الإدارة. سيتم إشعارك فور الموافقة على حسابك.\n\n📋 الخطوات القادمة:\n1. انتظر موافقة المدير على حسابك\n2. بعد التفعيل، قم بإيداع العربون لتفعيل القوة الشرائية\n3. ابدأ المزايدة على السيارات!\n\n💰 ملاحظة مهمة: القوة الشرائية = العربون × 10\nمثال: إيداع $5,000 = قوة شرائية $50,000\n\nفريق ليبيا أوتو برو 🚗`
       );
 
+      // Generate Verification Token
+      const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(); // 24h
+
+      db.prepare(`INSERT OR REPLACE INTO verification_codes(email, code, expiresAt) VALUES(?, ?, ?)`).run(email, token, expiresAt);
+
+      const verifyLink = `https://autopro.ac/api/auth/verify-email?token=${token}&email=${encodeURIComponent(email)}`;
+
+      // Dispatch Email via Transporter
+      try {
+        await transporter.sendMail({
+          from: process.env.SMTP_FROM || '"AutoPro Auctions" <info@autopro.ac>',
+          to: email,
+          subject: 'يرجى توثيق بريدك الإلكتروني - AutoPro',
+          html: `
+            <div dir="rtl" style="font-family: Arial, sans-serif; padding: 20px; background: #f8fafc; border-radius: 12px; color: #0f172a;">
+              <h2 style="color: #ea580c;">أهلاً ${firstName} 👋</h2>
+              <p>شكراً لتسجيلك في منصة ليبيا أوتو برو للمزادات.</p>
+              <p>لتأكيد حسابك واستكمال إجراءات التسجيل، يرجى النقر على الزر أدناه:</p>
+              <a href="${verifyLink}" style="display: inline-block; background: #ea580c; color: #fff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; margin: 20px 0;">توثيق الحساب الآن</a>
+              <p style="font-size: 12px; color: #64748b;">هذا الرابط صالح لمدة 24 ساعة.</p>
+            </div>
+          `
+        });
+        console.log(`[SMTP] Verification email dispatched to ${email}`);
+
+        // WhatsApp Registration Welcome
+        console.log(`[WHATSAPP DISPATCH] From: 00353894435368 | To: ${phone} | MSG: مرحباً بك ${firstName}! يرجى مراجعة بريدك الإلكتروني لتوثيق الحساب.`);
+      } catch (mailErr) {
+        console.error(`[SMTP ERROR] Failed to send verification to ${email}:`, mailErr);
+      }
+
       // Notify all admins about new registration
       const admins: any[] = db.prepare("SELECT id FROM users WHERE role = 'admin'").all();
       admins.forEach((admin: any) => {
@@ -1301,6 +1564,34 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
   });
 
+  app.get("/api/auth/verify-email", (req, res) => {
+    const { token, email } = req.query;
+    try {
+      if (!token || !email) return res.status(400).send("<h1 style='color:red; text-align:center; padding-top: 50px;'>رابط غیر صالح</h1>");
+
+      const record: any = db.prepare("SELECT * FROM verification_codes WHERE email = ? AND code = ?").get(email, token);
+      if (!record) return res.status(400).send("<h1 style='color:red; text-align:center; padding-top: 50px;'>الرابط منتهي الصلاحية أو غير صحيح</h1>");
+
+      if (new Date() > new Date(record.expiresAt)) {
+        return res.status(400).send("<h1 style='color:red; text-align:center; padding-top: 50px;'>الرابط منتهي الصلاحية</h1>");
+      }
+
+      // Success
+      db.prepare("UPDATE users SET isEmailVerified = 1 WHERE email = ?").run(email);
+      db.prepare("DELETE FROM verification_codes WHERE email = ?").run(email);
+
+      res.send(`
+        <div dir="rtl" style="font-family: Arial, sans-serif; padding: 40px; text-align: center; background: #e0f2fe; height: 100vh;">
+          <h1 style="color: #0369a1; font-size: 40px;">تم التحقق بنجاح! ✅</h1>
+          <p style="color: #0f172a; font-size: 18px;">بريدك الإلكتروني موثق الآن. سيتم توجيهك للمنصة خلال 3 ثوانٍ...</p>
+          <script>setTimeout(() => window.location.href = "/", 3000);</script>
+        </div>
+      `);
+    } catch (e) {
+      res.status(500).send("<h1 style='color:red; text-align:center; padding-top: 50px;'>Verification Failed</h1>");
+    }
+  });
+
   app.post("/api/auth/login", async (req, res) => {
     const { email, password } = req.body;
     console.log(`Login attempt: ${email}`);
@@ -1309,6 +1600,10 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       if (!user) {
         console.log(`Login failed: user not found for ${email}`);
         return res.status(401).json({ error: "بيانات الدخول غير صحيحة" });
+      }
+
+      if (user.isEmailVerified === 0) {
+        return res.status(403).json({ error: "يرجى تأكيد بريدك الإلكتروني أولاً عبر الرابط المرسل إليك" });
       }
 
       // 🔐 SECURITY: Support both hashed (new) and plain (legacy seed) passwords
@@ -1420,39 +1715,147 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
   app.post("/api/offers/:carId/accept", (req, res) => {
     const { carId } = req.params;
+    const { userId, userRole } = req.body || {};
+    const actionUserId = userId || 'admin-1'; // fallback to admin if accessed directly from admin panel
+
     try {
       const car: any = db.prepare("SELECT * FROM cars WHERE id = ?").get(carId);
       if (!car) return res.status(404).json({ error: "Car not found" });
 
-      const lastBid: any = db.prepare("SELECT userId FROM bids WHERE carId = ? ORDER BY amount DESC LIMIT 1").get(carId);
-      if (!lastBid) return res.status(400).json({ error: "No bids to accept" });
+      if (userRole !== 'admin' && userId && car.sellerId !== userId) {
+        return res.status(403).json({ error: "ليس لديك صلاحية للموافقة على هذا العرض" });
+      }
+
+      const lastBid: any = db.prepare("SELECT * FROM bids WHERE carId = ? AND type = 'offer' ORDER BY amount DESC LIMIT 1").get(carId);
+      if (!lastBid) return res.status(400).json({ error: "لا توجد عروض لهذه السيارة" });
+
+      const saleDate = new Date().toISOString();
 
       db.transaction(() => {
-        db.prepare("UPDATE cars SET status = 'closed', winnerId = ? WHERE id = ?").run(lastBid.userId, carId);
-        createWinInvoices(lastBid.userId, carId, car.currentBid);
-        sendInternalMessage('admin-1', lastBid.userId,
-          `🏆 تم الموافقة على عرضك! فزت بسيارة ${car.make} ${car.model}`,
-          `أهلاً! لقد وافقت الإدارة على عرضك الأخير لسيارة ${car.make} ${car.model} بمبلغ $${car.currentBid.toLocaleString()}.\n\nتم إنشاء الفواتير في حسابك.`
-        );
+        db.prepare("UPDATE cars SET status = 'closed', winnerId = ?, currentBid = ?, auctionEndDate = ?, acceptedBy = ?, sellerCounterPrice = NULL WHERE id = ?").run(lastBid.userId, lastBid.amount, saleDate, actionUserId, carId);
+        createWinInvoices(lastBid.userId, carId, lastBid.amount);
       })();
 
-      io.emit("car_updated", { id: carId, status: 'closed' });
-      res.json({ success: true });
+      io.emit("car_updated", { id: carId, status: 'closed', winnerId: lastBid.userId, currentBid: lastBid.amount });
+      res.json({ success: true, message: "تم قبول العرض وإصدار الفاتورة" });
     } catch (e) {
+      console.error(e);
       res.status(500).json({ error: "Failed to accept offer" });
     }
   });
 
   app.post("/api/offers/:carId/reject", (req, res) => {
     const { carId } = req.params;
+    const { userId, userRole } = req.body || {};
+
     try {
-      db.prepare("UPDATE cars SET status = 'upcoming', currentBid = 0, winnerId = NULL WHERE id = ?").run(carId);
-      db.prepare("DELETE FROM bids WHERE carId = ?").run(carId);
-      io.emit("car_updated", { id: carId, status: 'upcoming' });
-      res.json({ success: true });
+      const car: any = db.prepare("SELECT * FROM cars WHERE id = ?").get(carId);
+      if (!car) return res.status(404).json({ error: "السيارة غير موجودة" });
+
+      if (userRole !== 'admin' && userId && car.sellerId !== userId) {
+        return res.status(403).json({ error: "ليس لديك صلاحية لرفض هذا العرض" });
+      }
+
+      db.prepare("UPDATE cars SET status = 'upcoming', offerMarketEndTime = NULL, sellerCounterPrice = NULL WHERE id = ?").run(carId);
+      db.prepare("DELETE FROM bids WHERE carId = ? AND type = 'offer'").run(carId);
+      
+      const prevBid: any = db.prepare("SELECT amount, userId FROM bids WHERE carId = ? ORDER BY amount DESC LIMIT 1").get(carId);
+      if(prevBid) {
+         db.prepare("UPDATE cars SET currentBid = ?, winnerId = ? WHERE id = ?").run(prevBid.amount, prevBid.userId, carId);
+      }
+
+      io.emit("car_updated", { id: carId, status: 'upcoming', currentBid: prevBid?.amount || 0 });
+      res.json({ success: true, message: "تم رفض العرض وإعادة السيارة للجدولة" });
     } catch (e) {
+      console.error(e);
       res.status(500).json({ error: "Failed to reject offer" });
     }
+  });
+
+  app.post("/api/offers/:carId/counter", (req, res) => {
+    const { carId } = req.params;
+    const { counterAmount, userId, userRole } = req.body || {};
+
+    try {
+      const car: any = db.prepare("SELECT * FROM cars WHERE id = ?").get(carId);
+      if (!car) return res.status(404).json({ error: "السيارة غير موجودة" });
+
+      if (userRole !== 'admin' && userId && car.sellerId !== userId) {
+        return res.status(403).json({ error: "ليس لديك صلاحية لتقديم عرض مضاد" });
+      }
+
+      if (!counterAmount || isNaN(counterAmount)) {
+        return res.status(400).json({ error: "مبلغ العرض غير صحيح" });
+      }
+
+      const lastBid: any = db.prepare("SELECT * FROM bids WHERE carId = ? AND type = 'offer' ORDER BY amount DESC LIMIT 1").get(carId);
+      
+      db.prepare("UPDATE cars SET sellerCounterPrice = ? WHERE id = ?").run(counterAmount, carId);
+
+      if (lastBid) {
+        sendNotification(lastBid.userId, 'تم تقديم عرض مضاد 🔄', `تم تقديم عرض مضاد لسيارتك بقيمة $${Number(counterAmount).toLocaleString()}`, 'info');
+        sendInternalMessage('admin-1', lastBid.userId, '🔄 التفاوض: الإدارة قدمت لك عرضاً مضاداً',
+          `أهلاً، لقد قام البائع بتقديم عرض مضاد لسيارة ${car.make} ${car.model}.\nالسعر المضاد هو: $${Number(counterAmount).toLocaleString()}\nيرجى مراجعة صفحة السيارة للإستجابة.`
+        );
+      }
+
+      io.emit("car_updated", { id: carId, sellerCounterPrice: counterAmount });
+      res.json({ success: true, message: "تم تسجيل العرض المضاد وإرسال تنبيه للمشتري" });
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: "فشل تقديم العرض المضاد" });
+    }
+  });
+
+  app.post("/api/offers/:carId/respond", (req, res) => {
+    const { carId } = req.params;
+    const { userId, action } = req.body || {};
+
+    try {
+      const car: any = db.prepare("SELECT * FROM cars WHERE id = ?").get(carId);
+      if (!car) return res.status(404).json({ error: "السيارة غير موجودة" });
+
+      if (action === 'accept') {
+        if (!car.sellerCounterPrice) return res.status(400).json({ error: "لا يوجد عرض مضاد" });
+        db.transaction(() => {
+          db.prepare("UPDATE cars SET status = 'closed', winnerId = ?, currentBid = ?, sellerCounterPrice = NULL WHERE id = ?").run(userId, car.sellerCounterPrice, carId);
+          createWinInvoices(userId, carId, car.sellerCounterPrice);
+        })();
+        io.emit("car_updated", { id: carId, status: 'closed', winnerId: userId, currentBid: car.sellerCounterPrice });
+        res.json({ success: true, message: "تم قبول العرض المضاد وإتمام البيع" });
+      } else if (action === 'reject') {
+        db.prepare("UPDATE cars SET status = 'upcoming', offerMarketEndTime = NULL, sellerCounterPrice = NULL WHERE id = ?").run(carId);
+        db.prepare("DELETE FROM bids WHERE carId = ? AND type = 'offer'").run(carId);
+        
+        const prevBid: any = db.prepare("SELECT amount, userId FROM bids WHERE carId = ? ORDER BY amount DESC LIMIT 1").get(carId);
+        if (prevBid) {
+           db.prepare("UPDATE cars SET currentBid = ?, winnerId = ? WHERE id = ?").run(prevBid.amount, prevBid.userId, carId);
+        }
+
+        io.emit("car_updated", { id: carId, status: 'upcoming', currentBid: prevBid?.amount || 0 });
+        res.json({ success: true, message: "تم رفض العرض المضاد" });
+      } else {
+        res.status(400).json({ error: "إجراء غير معروف" });
+      }
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: "فشل معالجة الرد" });
+    }
+  });
+
+  // ====== MARKETING API ======
+  app.get("/api/admin/mailing-list", (req, res) => {
+    try {
+      const list = db.prepare("SELECT id, firstName, lastName, email FROM users WHERE role IN ('buyer', 'user', 'user_pending', 'seller')").all();
+      res.json(list);
+    } catch (e) { res.status(500).json({ error: "Failed to fetch mailing list" }); }
+  });
+
+  app.get("/api/admin/marketing-cars", (req, res) => {
+    try {
+      const list = db.prepare("SELECT * FROM cars WHERE status IN ('live', 'active', 'upcoming', 'offer_market') OR isBuyNow = 1").all();
+      res.json(list);
+    } catch (e) { res.status(500).json({ error: "Failed to fetch marketing cars" }); }
   });
 
   // User Routes
@@ -1479,6 +1882,38 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       res.json({ success: true });
     } catch (e) {
       res.status(400).json({ error: "فشل تحديث بيانات المستخدم" });
+    }
+  });
+
+  // ======= USER SETTINGS =======
+  app.get("/api/user/settings/:id", (req, res) => {
+    const { id } = req.params;
+    try {
+      let settings: any = db.prepare("SELECT * FROM user_settings WHERE userId = ?").get(id);
+      if (!settings) {
+        db.prepare("INSERT INTO user_settings (userId, emailNotifications, whatsappNotifications) VALUES (?, 1, 1)").run(id);
+        settings = { userId: id, emailNotifications: 1, whatsappNotifications: 1, smsNotifications: 0 };
+      }
+      res.json(settings);
+    } catch (e) {
+      res.status(500).json({ error: "فشل جلب إعدادات المستخدم" });
+    }
+  });
+
+  app.post("/api/user/settings/:id", (req, res) => {
+    const { id } = req.params;
+    const { emailNotifications, whatsappNotifications } = req.body;
+    try {
+      db.prepare(`
+        INSERT INTO user_settings (userId, emailNotifications, whatsappNotifications)
+        VALUES (?, ?, ?)
+        ON CONFLICT(userId) DO UPDATE SET
+        emailNotifications = excluded.emailNotifications,
+        whatsappNotifications = excluded.whatsappNotifications
+      `).run(id, emailNotifications ? 1 : 0, whatsappNotifications ? 1 : 0);
+      res.json({ success: true });
+    } catch (e) {
+      res.status(500).json({ error: "فشل تحديث إعدادات الإشعارات" });
     }
   });
 
@@ -1602,6 +2037,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         FROM shipments s
         JOIN cars c ON s.carId = c.id
         JOIN users u ON s.userId = u.id
+        GROUP BY s.carId
         ORDER BY s.createdAt DESC
       `).all();
       res.json(shipments.map((s: any) => ({ ...s, images: JSON.parse(s.images || '[]') })));
@@ -1620,6 +2056,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         JOIN cars c ON s.carId = c.id
         JOIN users u ON s.userId = u.id
         WHERE c.sellerId = ?
+        GROUP BY s.carId
         ORDER BY s.createdAt DESC
       `).all(id);
       res.json(shipments.map((s: any) => ({ ...s, images: JSON.parse(s.images || '[]') })));
@@ -1912,7 +2349,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     try {
       ensureSellerWallet(sellerId);
       const wallet: any = db.prepare("SELECT * FROM seller_wallets WHERE sellerId = ?").get(sellerId) as any;
-      const seller: any = db.prepare("SELECT firstName, lastName, iban, commission FROM users WHERE id = ?").get(sellerId) as any;
+      const seller: any = db.prepare("SELECT id, firstName, lastName, email, phone FROM users WHERE id = ?").get(sellerId) as any;
 
       // Count stats
       const soldCars: any = db.prepare("SELECT COUNT(*) as count FROM seller_transactions WHERE sellerId = ? AND type = 'sale'").get(sellerId) as any;
@@ -2157,17 +2594,165 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
   });
 
-  // ======= DEPOSIT & FINANCIAL APPROVALS =======
+  // ==========================================
+  // PAYMENT REQUESTS & LIQUIDITY LOGIC
+  // ==========================================
 
 
-  app.post("/api/deposit", (req, res) => {
+
+
+  app.get("/api/admin/payment-requests", (req, res) => {
+    try {
+      const deposits = db.prepare("SELECT t.*, u.name as userName, u.email as userEmail FROM transactions t JOIN users u ON t.userId = u.id WHERE t.type = 'deposit' ORDER BY t.timestamp DESC").all();
+      res.json(deposits);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to fetch payment requests' });
+    }
+  });
+
+  app.post("/api/admin/payment-requests/:id/:action", (req, res) => {
+    try {
+      const { id, action } = req.params;
+      const status = action === 'approve' ? 'completed' : 'failed';
+
+      const tx = db.prepare("SELECT * FROM transactions WHERE id = ?").get(id) as any;
+      if (!tx) return res.status(404).json({ error: 'Transaction not found' });
+
+      db.prepare("UPDATE transactions SET status = ? WHERE id = ?").run(status, id);
+
+      if (status === 'completed') {
+        const user = db.prepare("SELECT wallet FROM users WHERE id = ?").get(tx.userId) as any;
+        const wallet = JSON.parse(user.wallet || '{"balance":0,"held":0}');
+        wallet.balance += tx.amount;
+        db.prepare("UPDATE users SET wallet = ? WHERE id = ?").run(JSON.stringify(wallet), tx.userId);
+
+        sendNotification(tx.userId, 'تم شحن محفظتك بنجاح 💰', `تم إضافة $${tx.amount.toLocaleString()} إلى رصيدك نقداً.`, 'success');
+      } else {
+        sendNotification(tx.userId, 'رفض طلب الشحن ❌', `عذراً، تم رفض طلب شحن الرصيد بقيمة $${tx.amount.toLocaleString()}.`, 'error');
+      }
+
+      res.json({ success: true, status });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to process payment request' });
+    }
+  });
+
+  // ==========================================
+  // UNIFIED ACTIVITY LOG (MESSAGES / NOTIFICATIONS)
+  // ==========================================
+  app.get("/api/admin/all-messages", (req, res) => {
+    try {
+      const msgs = db.prepare("SELECT * FROM messages ORDER BY timestamp DESC LIMIT 500").all();
+      res.json(msgs);
+    } catch (e) { res.status(500).json({ error: "Failed to fetch messages" }); }
+  });
+
+  app.get("/api/admin/all-notifications", (req, res) => {
+    try {
+      const notes = db.prepare("SELECT * FROM notifications ORDER BY timestamp DESC LIMIT 500").all();
+      res.json(notes);
+    } catch (e) { res.status(500).json({ error: "Failed to fetch notifications" }); }
+  });
+
+  // ==========================================
+  // ROUTES
+  // ==========================================
+  app.post('/api/admin/send-campaign', async (req, res) => {
+    try {
+      const { carId, type } = req.body;
+      const stmt = db.prepare('SELECT * FROM cars WHERE id = ?');
+      const car = stmt.get(carId) as any;
+      if (!car) return res.status(404).json({ error: 'Car not found' });
+      if (typeof car.images === 'string') car.images = JSON.parse(car.images);
+
+      const usersStmt = db.prepare("SELECT * FROM users WHERE status = ? OR role = ?");
+      const allUsers = usersStmt.all('active', 'مستخدم');
+      const emails = allUsers.map((u: any) => u.email).filter(Boolean);
+
+      let color = '#f97316';
+      let title = 'سيارة قادمة في المزاد';
+      let action = 'سجل للمزايدة الآن';
+
+      if (type === 'live') {
+        color = '#ef4444'; title = 'المزاد بدأ الآن!'; action = 'زايد الآن';
+      } else if (type === 'offer_market') {
+        color = '#3b82f6'; title = 'فرصة سوق العروض للسيارة الفاخرة'; action = 'قدم عرضك الآن السعر: $' + (car.currentBid || car.reservePrice);
+      }
+
+      const htmlTemplate = `
+      <div dir="rtl" style="font-family: Arial; padding: 40px 20px; background: #0f172a; color: white;">
+        <div style="max-width: 600px; margin: auto; background: #1e293b; border-radius: 24px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);">
+          <!-- Header -->
+          <div style="padding: 30px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.1);">
+            <h1 style="color: ${color}; margin: 0; font-size: 28px;">ليبيـــا AUTO PRO</h1>
+            <p style="color: #94a3b8; margin: 10px 0 0;">${title}</p>
+          </div>
+
+          <!-- Image -->
+          <img src="${car.images[0]}" style="width: 100%; height: 350px; object-fit: cover;" />
+
+          <!-- Body -->
+          <div style="padding: 40px 30px;">
+            <h2 style="margin: 0 0 10px; font-size: 24px; text-align: center;">${car.make} ${car.model} ${car.year}</h2>
+            <p style="color: #94a3b8; text-align: center; margin: 0 0 30px;">${car.trim || ''} - متواجدة في ${car.location}</p>
+
+            <div style="background: rgba(255,255,255,0.05); border-radius: 16px; padding: 20px; margin-bottom: 30px;">
+              <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 15px; margin-bottom: 15px;">
+                <span style="color: #94a3b8;">رقم اللوت (Lot)</span>
+                <strong style="font-family: monospace;">${car.lotNumber}</strong>
+              </div>
+              <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 15px; margin-bottom: 15px;">
+                <span style="color: #94a3b8;">رقم الهيكل (VIN)</span>
+                <strong style="font-family: monospace;">${car.vin}</strong>
+              </div>
+              <div style="display: flex; justify-content: space-between;">
+                <span style="color: #94a3b8;">السعر / المزايدة الحالية</span>
+                <strong style="color: ${color}; font-size: 20px;">$${Number(car.currentBid || car.reservePrice).toLocaleString()}</strong>
+              </div>
+            </div>
+
+            <a href="http://localhost:3005" style="display: block; background: ${color}; color: white; text-align: center; padding: 18px; border-radius: 14px; text-decoration: none; font-weight: bold; font-size: 18px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);">
+              ${action}
+            </a>
+          </div>
+
+          <!-- Footer -->
+          <div style="padding: 20px; text-align: center; background: rgba(0,0,0,0.2);">
+            <p style="color: #64748b; font-size: 12px; margin: 0;">هذه الرسالة تم إرسالها من منصة Libya Auto Pro</p>
+          </div>
+        </div>
+      </div>
+      `;
+
+      // Process sending emails securely using Nodemailer
+      for (const email of emails) {
+        transporter.sendMail({
+          from: '"Libya Auto Pro" <' + process.env.SMTP_USER + '>',
+          to: email,
+          subject: `🔥 [Auto Pro] ${title} ${car.make} ${car.model}`,
+          html: htmlTemplate
+        }).catch(err => console.error('Email failed to send directly:', err));
+      }
+
+      res.json({ success: true, count: emails.length });
+    } catch (error) {
+      console.error('Campaign error:', error);
+      res.status(500).json({ error: 'Failed to broadcast campaign' });
+    }
+  });
+
+
+  // ==========================================
+  // WALLET & PAYMENT CORE ENDPOINTS (KYC/Topup/Withdrawal)
+  // ==========================================
+  app.post("/api/wallet/topup", (req, res) => {
     const { userId, amount, method } = req.body;
-    const id = `dep-${Date.now()}`;
+    const id = `dep - ${Date.now()} `;
     try {
       db.prepare(`
-        INSERT INTO transactions (id, userId, amount, type, status, timestamp, method)
-        VALUES (?, ?, ?, 'deposit', 'pending', ?, ?)
-      `).run(id, userId, amount, new Date().toISOString(), method || 'bank_transfer');
+        INSERT INTO transactions(id, userId, amount, type, status, timestamp, method)
+      VALUES(?, ?, ?, 'deposit', 'pending', ?, ?)
+        `).run(id, userId, amount, new Date().toISOString(), method || 'bank_transfer');
 
       res.json({ success: true, id });
     } catch (e) {
@@ -2182,7 +2767,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         FROM transactions t
         JOIN users u ON t.userId = u.id
         WHERE t.type = 'deposit' AND t.status = 'pending'
-      `).all();
+        `).all();
       res.json(deposits);
     } catch (e) {
       res.status(500).json({ error: "Failed to fetch pending deposits" });
@@ -2219,7 +2804,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       if (!tx) return res.status(404).json({ error: "العملية غير موجودة" });
 
       db.prepare("UPDATE transactions SET status = 'rejected' WHERE id = ?").run(transactionId);
-      sendNotification(tx.userId, 'تم رفض طلب الإيداع', `للأسف تم رفض طلب الإيداع: ${reason}`, 'alert');
+      sendNotification(tx.userId, 'تم رفض طلب الإيداع', `للأسف تم رفض طلب الإيداع: ${reason} `, 'alert');
 
       res.json({ success: true });
     } catch (e) {
@@ -2235,8 +2820,8 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       FROM messages m
       LEFT JOIN users u ON m.senderId = u.id
       WHERE m.receiverId = ?
-  ORDER BY m.timestamp DESC
-    `).all(userId);
+        ORDER BY m.timestamp DESC
+          `).all(userId);
     res.json(messages);
   });
 
@@ -2272,7 +2857,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         FROM users
         ORDER BY timestamp DESC
         LIMIT 20
-  `).all();
+        `).all();
       res.json(logs);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch logs" });
@@ -2324,13 +2909,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       // If offer meets reserve, sell immediately
       if (amount >= car.reservePrice) {
         db.prepare("UPDATE cars SET status = 'closed' WHERE id = ?").run(id);
-        const invId = `inv - ${Date.now()} `;
-        db.prepare(`
-          INSERT INTO invoices(id, userId, carId, amount, type, timestamp, dueDate)
-VALUES(?, ?, ?, ?, 'Purchase', ?, ?)
-        `).run(invId, userId, id, amount, timestamp,
-          new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
-        );
+        createWinInvoices(userId, id, amount);
         io.emit("car_updated", { id, status: 'closed', winnerId: userId });
         return res.json({ success: true, status: 'sold', message: "تم قبول العرض والبيع فوراً!" });
       }
@@ -2360,96 +2939,8 @@ VALUES(?, ?, ?, ?, 'Purchase', ?, ?)
     }
   });
 
-  app.post("/api/cars/:id/offer", (req, res) => {
-    const { id } = req.params;
-    const { userId, amount } = req.body;
 
-    try {
-      const car: any = db.prepare("SELECT * FROM cars WHERE id = ?").get(id);
-      if (!car || car.status !== 'offer_market') {
-        return res.status(400).json({ error: "لا يمكن تقديم عرض لهذه السيارة حالياً" });
-      }
-
-      const bidId = `bid - ${Date.now()} `;
-      db.prepare(`
-        INSERT INTO bids(id, carId, userId, amount, timestamp, type)
-VALUES(?, ?, ?, ?, ?, 'offer')
-      `).run(bidId, id, userId, amount, new Date().toISOString());
-
-      // Update car currentBid if this is the highest offer
-      if (amount > (car.currentBid || 0)) {
-        db.prepare("UPDATE cars SET currentBid = ?, winnerId = ? WHERE id = ?").run(amount, userId, id);
-        io.emit("car_updated", { id, currentBid: amount, winnerId: userId });
-      }
-
-      res.json({ success: true, message: "تم تقديم العرض بنجاح" });
-    } catch (e) {
-      res.status(500).json({ error: "فشل تقديم العرض" });
-    }
-  });
-
-  app.post("/api/offers/:id/accept", (req, res) => {
-    const { id } = req.params;
-    const { userId, userRole } = req.body;
-
-    try {
-      const car: any = db.prepare("SELECT * FROM cars WHERE id = ?").get(id);
-      if (!car) return res.status(404).json({ error: "السيارة غير موجودة" });
-
-      // RBAC check
-      if (userRole !== 'admin' && car.sellerId !== userId) {
-        return res.status(403).json({ error: "ليس لديك صلاحية للموافقة على هذا العرض" });
-      }
-
-      const lastBid: any = db.prepare("SELECT * FROM bids WHERE carId = ? AND type = 'offer' ORDER BY amount DESC LIMIT 1").get(id);
-      if (!lastBid) return res.status(400).json({ error: "لا توجد عروض لهذه السيارة" });
-
-      db.prepare("UPDATE cars SET status = 'closed', winnerId = ? WHERE id = ?").run(lastBid.userId, lastBid.amount, id);
-
-      const invId = `inv - ${Date.now()} `;
-      db.prepare(`
-        INSERT INTO invoices(id, userId, carId, amount, type, timestamp, dueDate)
-VALUES(?, ?, ?, ?, 'Purchase', ?, ?)
-  `).run(invId, lastBid.userId, id, lastBid.amount, new Date().toISOString(),
-        new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
-      );
-
-      io.emit("car_updated", { id, status: 'closed', winnerId: lastBid.userId });
-      res.json({ success: true, message: "تم قبول العرض وإصدار الفاتورة" });
-    } catch (e) {
-      res.status(500).json({ error: "فشل قبول العرض" });
-    }
-  });
-
-  app.post("/api/offers/:id/reject", (req, res) => {
-    const { id } = req.params;
-    const { userId, userRole } = req.body;
-
-    try {
-      const car: any = db.prepare("SELECT * FROM cars WHERE id = ?").get(id);
-      if (!car) return res.status(404).json({ error: "السيارة غير موجودة" });
-
-      // RBAC check
-      if (userRole !== 'admin' && car.sellerId !== userId) {
-        return res.status(403).json({ error: "ليس لديك صلاحية لرفض هذا العرض" });
-      }
-
-      // Delete the highest offer
-      const lastBid: any = db.prepare("SELECT id FROM bids WHERE carId = ? AND type = 'offer' ORDER BY amount DESC LIMIT 1").get(id);
-      if (lastBid) {
-        db.prepare("DELETE FROM bids WHERE id = ?").run(lastBid.id);
-      }
-
-      // Reset current bid to previous or 0
-      const prevBid: any = db.prepare("SELECT amount, userId FROM bids WHERE carId = ? ORDER BY amount DESC LIMIT 1").get(id);
-      db.prepare("UPDATE cars SET currentBid = ?, winnerId = ? WHERE id = ?").run(prevBid?.amount || 0, prevBid?.userId || null, id);
-
-      io.emit("car_updated", { id, currentBid: prevBid?.amount || 0, winnerId: prevBid?.userId || null });
-      res.json({ success: true, message: "تم رفض العرض" });
-    } catch (e) {
-      res.status(500).json({ error: "فشل رفض العرض" });
-    }
-  });
+  // Duplicate /api/offers/:id/accept and reject endpoints removed to resolve routing conflict
 
   app.post("/api/cars/:id/re-list", (req, res) => {
     const { id } = req.params;
@@ -2466,14 +2957,14 @@ VALUES(?, ?, ?, ?, 'Purchase', ?, ?)
 
       db.prepare(`
         UPDATE cars SET
-status = 'upcoming',
-  auctionEndDate = ?,
-  currentBid = 0,
-  winnerId = NULL,
-  offerMarketEndTime = NULL,
-  ultimoEndTime = NULL
+      status = 'upcoming',
+        auctionEndDate = ?,
+        currentBid = 0,
+        winnerId = NULL,
+        offerMarketEndTime = NULL,
+        ultimoEndTime = NULL
         WHERE id = ?
-  `).run(nextAuctionDate || new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), id);
+        `).run(nextAuctionDate || new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), id);
 
       // Optionally clear bids? Typically for a new auction we might clear bids or keep history.
       // For now we just reset the car status.
@@ -2516,20 +3007,20 @@ status = 'upcoming',
   app.post("/api/deposit", (req, res) => {
     const { userId, amount, method = 'bank_transfer' } = req.body;
     const now = new Date().toISOString();
-    const txId = `tx-${Date.now()}`;
+    const txId = `tx - ${Date.now()} `;
 
     try {
       // 1. Record transaction as PENDING first
       // Note: We don't update user balance yet!
       db.prepare(`
         INSERT INTO transactions(id, userId, amount, type, status, timestamp, method)
-        VALUES(?, ?, ?, 'deposit', 'pending', ?, ?)
+      VALUES(?, ?, ?, 'deposit', 'pending', ?, ?)
       `).run(txId, userId, amount, now, method);
 
       // 2. Notify Admin about new deposit request
       sendInternalMessage(userId, 'admin-1',
         '🆕 طلب إيداع عربون جديد',
-        `قام العميل (ID: ${userId}) بطلب إيداع مبلغ $${amount.toLocaleString()} عبر ${method}.\nيرجى مراجعة التحويل وتأكيده.`
+        `قام العميل(ID: ${userId}) بطلب إيداع مبلغ $${amount.toLocaleString()} عبر ${method}.\nيرجى مراجعة التحويل وتأكيده.`
       );
 
       res.json({ success: true, message: "تم إرسال طلب الإيداع بنجاح. سيتم تحديث رصيدك بعد مراجعة الإدارة.", txId });
@@ -2587,12 +3078,12 @@ status = 'upcoming',
     try {
       db.prepare(`
         UPDATE users SET
-firstName = ?, lastName = ?, email = ?, phone = ?,
-  role = ?, status = ?, deposit = ?, commission = ?,
-  manager = ?, office = ?, companyName = ?, country = ?,
-  address1 = ?, address2 = ?, buyingPower = ?
-    WHERE id = ?
-      `).run(
+      firstName = ?, lastName = ?, email = ?, phone = ?,
+        role = ?, status = ?, deposit = ?, commission = ?,
+        manager = ?, office = ?, companyName = ?, country = ?,
+        address1 = ?, address2 = ?, buyingPower = ?
+          WHERE id = ?
+            `).run(
         firstName, lastName, email, phone, role, status,
         deposit, commission, manager, office, companyName,
         country, address1, address2, (deposit || 0) * 10, id
@@ -2609,8 +3100,8 @@ firstName = ?, lastName = ?, email = ?, phone = ?,
     try {
       const messages: any[] = db.prepare(`
         SELECT m.*,
-  u1.firstName as senderFirstName, u1.lastName as senderLastName,
-  u2.firstName as receiverFirstName, u2.lastName as receiverLastName
+        u1.firstName as senderFirstName, u1.lastName as senderLastName,
+        u2.firstName as receiverFirstName, u2.lastName as receiverLastName
         FROM messages m
         JOIN users u1 ON m.senderId = u1.id
         JOIN users u2 ON m.receiverId = u2.id
@@ -2694,19 +3185,16 @@ firstName = ?, lastName = ?, email = ?, phone = ?,
       socket.join(carId);
       console.log(`User joined auction: ${carId} `);
 
-      // Initialize or send current timer state
-      const car: any = db.prepare("SELECT status FROM cars WHERE id = ?").get(carId);
+      // The frontend uses car.auctionEndDate directly, no need for active timer sync
+      const car: any = db.prepare("SELECT status, auctionEndDate FROM cars WHERE id = ?").get(carId);
       if (car && car.status === 'live') {
-        if (!auctionTimers[carId]) {
-          auctionTimers[carId] = { timeLeft: 300, isActive: true };
-        }
-        socket.emit("timer_update", { carId, timeLeft: auctionTimers[carId].timeLeft });
+        socket.emit("timer_update", { carId });
       }
     });
 
     socket.on("join_user_room", (userId) => {
-      socket.join(`user_${userId}`);
-      console.log(`User joined personal room: user_${userId}`);
+      socket.join(`user_${userId} `);
+      console.log(`User joined personal room: user_${userId} `);
     });
 
     socket.on("send_message", (data) => {
@@ -2716,8 +3204,8 @@ firstName = ?, lastName = ?, email = ?, phone = ?,
 
         // Also send a notification for the message
         const sender: any = db.prepare("SELECT firstName, lastName FROM users WHERE id = ?").get(senderId);
-        const senderName = sender ? `${sender.firstName} ${sender.lastName}` : 'النظام';
-        sendNotification(receiverId, `رسالة جديدة: ${subject}`, `لديك رسالة جديدة من ${senderName}`, 'info');
+        const senderName = sender ? `${sender.firstName} ${sender.lastName} ` : 'النظام';
+        sendNotification(receiverId, `رسالة جديدة: ${subject} `, `لديك رسالة جديدة من ${senderName} `, 'info');
 
       } catch (err) {
         console.error("Socket message error:", err);
@@ -2764,18 +3252,24 @@ firstName = ?, lastName = ?, email = ?, phone = ?,
         return;
       }
 
-      // Reset/Extend timer on bid (ANTI-SNIPING) - Only for LIVE auctions
-      if (car.status === 'live') {
-        if (!auctionTimers[carId]) {
-          auctionTimers[carId] = { timeLeft: 30, isActive: true };
-        } else {
-          // If less than 10 seconds, extend to 60 (as per master plan)
-          if (auctionTimers[carId].timeLeft <= 10) {
-            auctionTimers[carId].timeLeft = 60;
-            console.log(`Anti - Sniping triggered for ${carId}: Extended to 60s`);
-          }
-          auctionTimers[carId].isActive = true;
-        }
+      // Shift time for live car and all upcoming cars (15 seconds increment)
+      if (car.status === 'live' && car.auctionEndDate) {
+          const currentEndDate = new Date(car.auctionEndDate).getTime();
+          // Always add exactly 15 seconds to current end date (or current Date if somehow passed)
+          const newEndDate = new Date(Math.max(currentEndDate, Date.now()) + 15000).toISOString();
+          db.prepare("UPDATE cars SET auctionEndDate = ? WHERE id = ?").run(newEndDate, carId);
+          io.to(carId).emit("car_updated", { id: carId, auctionEndDate: newEndDate });
+
+          // Also shift upcoming cars by 15 seconds in the db
+          db.prepare(`
+              UPDATE cars 
+              SET auctionEndDate = datetime(auctionEndDate, '+15 seconds'),
+                  auctionStartTime = datetime(auctionStartTime, '+15 seconds')
+              WHERE status = 'upcoming'
+          `).run();
+          
+          io.emit("upcoming_cars_shifted", { shiftMs: 15000 });
+          console.log(`Bid placed: Live car ${carId} extended by 15s. All upcoming cars shifted.`);
       }
 
       const prevWinnerId = car.winnerId;
@@ -2785,7 +3279,7 @@ firstName = ?, lastName = ?, email = ?, phone = ?,
       // INSTANT OUTBID NOTIFICATION
       if (prevWinnerId && prevWinnerId !== userId) {
         sendNotification(prevWinnerId, "⚠️ تم تجاوز مزايدتك!", `قام شخص آخر بالمزايدة على ${car.make} ${car.model} بمبلغ $${amount.toLocaleString()}. زايد الآن لاستعادة الصدارة!`, 'warning');
-        io.to(`user_${prevWinnerId}`).emit("outbid", { carId, newBid: amount, make: car.make, model: car.model });
+        io.to(`user_${prevWinnerId} `).emit("outbid", { carId, newBid: amount, make: car.make, model: car.model });
       }
 
       // If Ultimo bid meets reserve, close immediately
@@ -2812,12 +3306,11 @@ firstName = ?, lastName = ?, email = ?, phone = ?,
       };
       // Broadcast bid and timer
       io.to(carId).emit("bid_updated", { carId, currentBid: amount, userId, timestamp, country: user.country });
-      io.to(carId).emit("timer_update", { carId, timeLeft: auctionTimers[carId].timeLeft });
       io.emit("global_bid_update", { carId, currentBid: amount });
       io.emit("new_log", logEntry);
 
       // Broadcast wallet balance update to the user
-      io.to(`user_${userId}`).emit("user_update", {
+      io.to(`user_${userId} `).emit("user_update", {
         id: userId,
         buyingPower: user.buyingPower,
         deposit: user.deposit
@@ -2873,27 +3366,6 @@ firstName = ?, lastName = ?, email = ?, phone = ?,
     });
   });
 
-  // Start Vite last
-  if (process.env.NODE_ENV !== "production") {
-    console.log("📦 Initializing Vite Middleware...");
-    try {
-      const vite = await createViteServer({
-        server: { middlewareMode: true },
-        appType: "spa",
-      });
-      app.use(vite.middlewares);
-      console.log("✅ Vite Middleware Ready.");
-    } catch (ve) {
-      console.error("❌ Vite Initialization Failed:", ve);
-    }
-  } else if (process.env.NODE_ENV === "production" || process.env.RENDER) {
-    app.use(express.static(path.join(__dirname, "dist")));
-
-    // Catch-all route to serve React app for client-side routing
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(__dirname, 'dist', 'index.html'));
-    });
-  }
 
   // ======= ADMIN INVENTORY APPROVAL =======
   app.get("/api/admin/pending-cars", (req, res) => {
@@ -2905,21 +3377,7 @@ firstName = ?, lastName = ?, email = ?, phone = ?,
     }
   });
 
-  app.post("/api/admin/approve-car/:id", (req, res) => {
-    const { id } = req.params;
-    try {
-      db.prepare("UPDATE cars SET status = 'live' WHERE id = ?").run(id);
-      const car: any = db.prepare("SELECT * FROM cars WHERE id = ?").get(id);
-      if (car.sellerId) {
-        sendInternalMessage('admin-1', car.sellerId, '✅ تمت الموافقة على سيارتك', `تمت مراجعة سيارتك ${car.make} ${car.model} وإدراجها في المزاد المباشر بنجاح.`);
-        sendNotification(car.sellerId, 'تم الموافقة على العرض', `سيارتك الآن في المزاد المباشر!`, 'success');
-      }
-      io.emit("car_updated", { id, status: 'live' });
-      res.json({ success: true });
-    } catch (e) {
-      res.status(500).json({ error: "Failed to approve car" });
-    }
-  });
+    // Removed duplicate approve-car route. Handled properly at line 1791.
 
   app.post("/api/admin/reject-car/:id", (req, res) => {
     const { id } = req.params;
@@ -2928,7 +3386,7 @@ firstName = ?, lastName = ?, email = ?, phone = ?,
       db.prepare("UPDATE cars SET status = 'rejected' WHERE id = ?").run(id);
       const car: any = db.prepare("SELECT * FROM cars WHERE id = ?").get(id);
       if (car.sellerId) {
-        sendInternalMessage('admin-1', car.sellerId, '❌ رفض إدراج سيارة', `للأسف تم رفض إدراج سيارتك ${car.make} ${car.model}.\nلسبب: ${reason}`);
+        sendInternalMessage('admin-1', car.sellerId, '❌ رفض إدراج سيارة', `للأسف تم رفض إدراج سيارتك ${car.make} ${car.model}.\nلسبب: ${reason} `);
       }
       res.json({ success: true });
     } catch (e) {
@@ -2952,7 +3410,7 @@ firstName = ?, lastName = ?, email = ?, phone = ?,
         FROM messages m
         LEFT JOIN users u ON m.senderId = u.id
         ORDER BY timestamp DESC
-      `).all();
+        `).all();
       res.json(msgs);
     } catch (e) { res.status(500).json({ error: "Messages fetch error" }); }
   });
@@ -2964,7 +3422,7 @@ firstName = ?, lastName = ?, email = ?, phone = ?,
         FROM transactions t
         LEFT JOIN users u ON t.userId = u.id
         ORDER BY t.timestamp DESC
-      `).all();
+        `).all();
       res.json(txs);
     } catch (e) { res.status(500).json({ error: "Transactions fetch error" }); }
   });
@@ -2976,7 +3434,7 @@ firstName = ?, lastName = ?, email = ?, phone = ?,
         FROM notifications n
         LEFT JOIN users u ON n.userId = u.id
         ORDER BY n.timestamp DESC
-      `).all();
+        `).all();
       res.json(notes);
     } catch (e) { res.status(500).json({ error: "Notifications fetch error" }); }
   });
@@ -3063,12 +3521,231 @@ firstName = ?, lastName = ?, email = ?, phone = ?,
       const car: any = db.prepare("SELECT * FROM cars WHERE id = ?").get(id);
       if (car.sellerId) {
         sendInternalMessage('admin-1', car.sellerId, status === 'live' ? '✅ تمت الموافقة' : '❌ تم الرفض',
-          status === 'live' ? `سيارتك ${car.make} ${car.model} الآن في المزاد!` : `عذراً، تم رفض سيارتك. السبب: ${reason}`);
+          status === 'live' ? `سيارتك ${car.make} ${car.model} الآن في المزاد!` : `عذراً، تم رفض سيارتك.السبب: ${reason} `);
       }
       io.emit("car_updated", { id, status });
       res.json({ success: true });
     } catch (e) { res.status(500).json({ error: "Review error" }); }
   });
+
+  // ====== MARKET ESTIMATES ======
+  app.get("/api/admin/market-estimates", (req, res) => {
+    try {
+      res.json(db.prepare("SELECT * FROM market_estimates ORDER BY lastUpdated DESC").all());
+    } catch (e) { res.status(500).json({ error: "Failed to fetch market estimates" }); }
+  });
+
+  app.post("/api/admin/market-estimates", (req, res) => {
+    const { make, model, year, minPrice, maxPrice } = req.body;
+    const id = `est - ${Date.now()} `;
+    const lastUpdated = new Date().toISOString();
+    try {
+      db.prepare("INSERT INTO market_estimates (id, make, model, year, minPrice, maxPrice, lastUpdated) VALUES (?, ?, ?, ?, ?, ?, ?)")
+        .run(id, make, model, year, minPrice, maxPrice, lastUpdated);
+      res.json({ id, make, model, year, minPrice, maxPrice, lastUpdated });
+    } catch (e) { res.status(500).json({ error: "Failed to create market estimate" }); }
+  });
+
+  app.put("/api/admin/market-estimates/:id", (req, res) => {
+    const { id } = req.params;
+    const { minPrice, maxPrice } = req.body;
+    const lastUpdated = new Date().toISOString();
+    try {
+      db.prepare("UPDATE market_estimates SET minPrice = ?, maxPrice = ?, lastUpdated = ? WHERE id = ?").run(minPrice, maxPrice, lastUpdated, id);
+      res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: "Failed to update market estimate" }); }
+  });
+
+  app.delete("/api/admin/market-estimates/:id", (req, res) => {
+    try {
+      db.prepare("DELETE FROM market_estimates WHERE id = ?").run(req.params.id);
+      res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: "Failed to delete" }); }
+  });
+
+  // ======= REAL ANALYTICS API =======
+  app.get("/api/admin/reports-analytics", (req, res) => {
+    try {
+      const activeUsers = (db.prepare("SELECT COUNT(*) as count FROM users WHERE status = 'active'").get() as any)?.count || 0;
+      const totalBids = (db.prepare("SELECT COUNT(*) as count FROM bids").get() as any)?.count || 0;
+      const salesVol = (db.prepare("SELECT SUM(amount) as val FROM transactions WHERE status = 'completed' AND type = 'deposit'").get() as any)?.val || 0;
+      
+      const geoSalesRaw = db.prepare("SELECT u.country, SUM(c.currentBid) as total FROM cars c JOIN users u ON c.winnerId = u.id WHERE c.status = 'closed' GROUP BY u.country").all();
+      
+      res.json({
+        activeUsers,
+        totalBids,
+        salesVol,
+        dbHitRate: 99.8,
+        geoSalesRaw
+      });
+    } catch(e) { res.status(500).json({ error: "Failed to fetch analytics" }); }
+  });
+
+  // ======= LIBYAN MARKET PRICES API =======
+  app.get("/api/libyan-market", (req, res) => {
+    try {
+      const { make, model, year } = req.query;
+      let query = "SELECT * FROM libyan_market_prices WHERE 1=1";
+      const params = [];
+      if (make) { query += " AND make LIKE ?"; params.push(`%${make}%`); }
+      if (model) { query += " AND model LIKE ?"; params.push(`%${model}%`); }
+      if (year) { query += " AND year = ?"; params.push(parseInt(year as string)); }
+      
+      query += " ORDER BY make, year DESC";
+      const data = db.prepare(query).all(...params);
+      res.json(data);
+    } catch(e) { res.status(500).json({ error: "Failed" }); }
+  });
+
+  app.post("/api/libyan-market", (req, res) => {
+    try {
+      const { condition, make, model, year, transmission, fuel, mileage, priceLYD } = req.body;
+      const id = `lmp-${Date.now()}`;
+      db.prepare("INSERT INTO libyan_market_prices (id, condition, make, model, year, transmission, fuel, mileage, priceLYD) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        .run(id, condition, make, model, year, transmission, fuel, mileage, priceLYD);
+      res.json({ success: true, id });
+    } catch(e) { res.status(500).json({ error: "Failed" }); }
+  });
+
+  app.delete("/api/libyan-market/:id", (req, res) => {
+    try {
+      db.prepare("DELETE FROM libyan_market_prices WHERE id = ?").run(req.params.id);
+      res.json({ success: true });
+    } catch(e) { res.status(500).json({ error: "Failed" }); }
+  });
+
+  app.put("/api/libyan-market/:id", (req, res) => {
+    try {
+      const { condition, make, model, year, transmission, fuel, mileage, priceLYD } = req.body;
+      db.prepare("UPDATE libyan_market_prices SET condition = ?, make = ?, model = ?, year = ?, transmission = ?, fuel = ?, mileage = ?, priceLYD = ? WHERE id = ?")
+        .run(condition, make, model, year, transmission, fuel, mileage, priceLYD, req.params.id);
+      res.json({ success: true });
+    } catch(e) { res.status(500).json({ error: "Failed" }); }
+  });
+
+  // ====== LIVE AUCTIONS MGMT ======
+  app.put("/api/admin/cars/:id/schedule", (req, res) => {
+    const { id } = req.params;
+    const { auctionStartTime, auctionEndDate, maxAuctionRetries } = req.body;
+    try {
+      db.prepare("UPDATE cars SET auctionStartTime = ?, auctionEndDate = ?, maxAuctionRetries = ?, status = 'upcoming' WHERE id = ?")
+        .run(auctionStartTime, auctionEndDate, maxAuctionRetries, id);
+      io.emit("car_updated", { id, status: 'upcoming', auctionStartTime });
+      res.json({ success: true });
+    } catch (e) {
+      res.status(500).json({ error: "Failed to schedule vehicle" });
+    }
+  });
+
+  app.post("/api/admin/cars/:id/mark-sold", (req, res) => {
+    const { id } = req.params;
+    const { winnerId, soldAmount } = req.body;
+    try {
+      db.prepare("UPDATE cars SET status = 'closed', winnerId = ?, currentBid = ? WHERE id = ?")
+        .run(winnerId, soldAmount, id);
+      
+      createWinInvoices(winnerId, id, soldAmount);
+      io.emit("car_updated", { id, status: 'closed', winnerId });
+      res.json({ success: true });
+    } catch (e) {
+      res.status(500).json({ error: "Failed to mark car as sold" });
+    }
+  });
+
+  app.get("/api/admin/manage-live-auctions", (req, res) => {
+    try {
+      const scheduledCars = db.prepare("SELECT * FROM cars WHERE (status = 'upcoming' AND auctionStartTime IS NOT NULL) OR status = 'live'").all();
+      const unscheduledCars = db.prepare("SELECT * FROM cars WHERE status = 'upcoming' AND (auctionStartTime IS NULL OR auctionEndDate IS NULL)").all();
+      const offerCars = db.prepare("SELECT * FROM cars WHERE status = 'offer_market' AND sellerCounterPrice IS NULL").all();
+      const counterCars = db.prepare("SELECT * FROM cars WHERE status = 'offer_market' AND sellerCounterPrice IS NOT NULL").all();
+
+      const wonCarsRaw = db.prepare(`
+        SELECT c.*, 
+               u.firstName as winnerFirstName, u.lastName as winnerLastName, u.email as winnerEmail,
+               s.firstName as sellerFirstName, s.lastName as sellerLastName, s.companyName as sellerCompanyName,
+               a.firstName as accFirstName, a.lastName as accLastName, a.companyName as accCompanyName,
+               (SELECT COUNT(*) FROM invoices i WHERE i.carId = c.id AND i.type = 'purchase') as invoiceCreated,
+               (SELECT COUNT(*) FROM invoices i WHERE i.carId = c.id AND i.type = 'purchase' AND i.isViewed = 1) as invoiceViewedCount,
+               (SELECT COUNT(*) FROM notifications n WHERE n.userId = c.winnerId AND (n.message LIKE '%' || c.make || '%' OR n.title LIKE '%فزت%')) as notifSent
+        FROM cars c
+        LEFT JOIN users u ON c.winnerId = u.id
+        LEFT JOIN users s ON c.sellerId = s.id
+        LEFT JOIN users a ON c.acceptedBy = a.id
+        WHERE c.status = 'closed'
+        ORDER BY c.auctionEndDate DESC
+        `).all() as any[];
+
+      const wonCars = wonCarsRaw.map(car => ({
+        ...car,
+        sellerFullName: car.sellerCompanyName || (car.sellerFirstName ? `${car.sellerFirstName} ${car.sellerLastName}` : 'غير معروف'),
+        acceptedByName: car.acceptedBy === 'admin-1' ? 'الإدارة (Admin)' : (car.accCompanyName || (car.accFirstName ? `${car.accFirstName} ${car.accLastName}` : 'تم القبول آلياً')),
+        invoiceCreated: car.invoiceCreated > 0,
+        invoiceViewed: car.invoiceViewedCount > 0,
+        notificationSent: car.notifSent > 0
+      }));
+
+      res.json({
+        scheduledCars,
+        unscheduledCars,
+        offerCars,
+        counterCars,
+        wonCars
+      });
+    } catch (e) {
+      res.status(500).json({ error: "Failed to fetch live auctions management data" });
+    }
+  });
+
+  // ====== SETTINGS ======
+  app.get("/api/settings", (req, res) => {
+    try {
+      const rows = db.prepare("SELECT key, value FROM system_settings").all() as { key: string, value: string }[];
+      const settings = rows.reduce((acc, row) => ({ ...acc, [row.key]: row.value }), {});
+      res.json(settings);
+    } catch (e) { res.status(500).json({ error: "Failed to fetch settings" }); }
+  });
+
+  app.put("/api/settings", (req, res) => {
+    try {
+      const updates = req.body;
+      const stmt = db.prepare("INSERT INTO system_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value");
+      const transaction = db.transaction((settings: Record<string, string>) => {
+        for (const [key, value] of Object.entries(settings)) {
+          stmt.run(key, String(value));
+        }
+      });
+      transaction(updates);
+
+      // Update runtime globals if exchangeRate changed
+      if (updates.exchangeRate) {
+        GLOBAL_EXCHANGE_RATE = parseFloat(updates.exchangeRate);
+      }
+      res.json({ success: true });
+    } catch (e) { console.error(e); res.status(500).json({ error: "Failed to update settings" }); }
+  });
+
+  // Start Vite last
+  if (process.env.NODE_ENV !== "production") {
+    console.log("📦 Initializing Vite Middleware...");
+    try {
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa",
+      });
+      app.use(vite.middlewares);
+      console.log("✅ Vite Middleware Ready.");
+    } catch (ve) {
+      console.error("❌ Vite Initialization Failed:", ve);
+    }
+  } else if (process.env.NODE_ENV === "production" || process.env.RENDER) {
+    app.use(express.static(path.join(__dirname, "dist")));
+
+    // Catch-all route to serve React app for client-side routing
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+    });
+  }
 }
 
 startServer().catch(err => {

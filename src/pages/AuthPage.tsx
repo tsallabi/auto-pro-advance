@@ -109,14 +109,14 @@ export const AuthPage = () => {
                     <Lock className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 w-5 h-5 pointer-events-none" />
                     <input type={showPass ? 'text' : 'password'} name="loginPassword" title="كلمة المرور" placeholder="كلمة المرور" required className={`${inp} pr-12 pl-12`}
                         value={form.password} onChange={f('password')} />
-                    <button type="button" onClick={() => setShowPass(p => !p)}
+                    <button type="button" aria-label="عرض كلمة المرور" title="عرض كلمة المرور" onClick={() => setShowPass(p => !p)}
                         className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-600">
                         {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                 </div>
                 <div className="flex justify-between items-center text-xs font-bold">
                     <label className="flex items-center gap-2 text-slate-500 cursor-pointer">
-                        <input type="checkbox" className="rounded" /> تذكرني
+                        <input type="checkbox" title="تذكرني" className="rounded" /> تذكرني
                     </label>
                     <button type="button" className="text-slate-400 hover:text-orange-600 transition-colors">نسيت كلمة المرور؟</button>
                 </div>
@@ -132,7 +132,7 @@ export const AuthPage = () => {
                         { type: 'buyer' as AccountType, icon: User, label: 'مشتري', desc: 'أبحث عن سيارات' },
                         { type: 'seller' as AccountType, icon: Store, label: 'بائع / معرض', desc: 'أبيع سياراتي' },
                     ]).map(opt => (
-                        <button key={opt.type} type="button" onClick={() => setAccountType(opt.type)}
+                        <button key={opt.type} type="button" aria-label={opt.label} title={opt.label} onClick={() => setAccountType(opt.type)}
                             className={`p-4 rounded-2xl border-2 text-center transition-all ${accountType === opt.type ? 'border-orange-500 bg-orange-50' : 'border-slate-100 hover:border-slate-200'}`}>
                             <opt.icon className={`w-6 h-6 mx-auto mb-2 ${accountType === opt.type ? 'text-orange-500' : 'text-slate-400'}`} />
                             <div className={`font-black text-sm ${accountType === opt.type ? 'text-orange-600' : 'text-slate-700'}`}>{opt.label}</div>
@@ -163,7 +163,7 @@ export const AuthPage = () => {
                     <Lock className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 w-5 h-5 pointer-events-none" />
                     <input type={showPass ? 'text' : 'password'} name="regPassword" title="كلمة المرور" placeholder="كلمة المرور" required className={`${inp} pr-12 pl-12`}
                         value={form.password} onChange={f('password')} />
-                    <button type="button" onClick={() => setShowPass(p => !p)}
+                    <button type="button" aria-label="عرض كلمة المرور" title="عرض كلمة المرور" onClick={() => setShowPass(p => !p)}
                         className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-600">
                         {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
@@ -171,7 +171,7 @@ export const AuthPage = () => {
 
                 {accountType === 'buyer' && (
                     <label className="flex items-start gap-3 cursor-pointer group pt-2">
-                        <input type="checkbox" required checked={form.agreeTerms}
+                        <input type="checkbox" title="الموافقة على الشروط" required checked={form.agreeTerms}
                             onChange={e => setForm(p => ({ ...p, agreeTerms: e.target.checked }))}
                             className="mt-0.5 w-4 h-4 rounded border-slate-300 text-orange-500 focus:ring-orange-500 shrink-0" />
                         <span className="text-xs font-bold text-slate-500 group-hover:text-slate-700 leading-relaxed">
@@ -249,7 +249,7 @@ export const AuthPage = () => {
                     </div>
                 )}
                 <label className="flex items-start gap-3 cursor-pointer group">
-                    <input type="checkbox" required checked={form.agreeTerms}
+                    <input type="checkbox" title="الموافقة على الشروط" required checked={form.agreeTerms}
                         onChange={e => setForm(p => ({ ...p, agreeTerms: e.target.checked }))}
                         className="mt-0.5 w-4 h-4 rounded border-slate-300 text-orange-500 focus:ring-orange-500 shrink-0" />
                     <span className="text-xs font-bold text-slate-500 group-hover:text-slate-700 leading-relaxed">
@@ -287,7 +287,7 @@ export const AuthPage = () => {
                     </Link>
                     <div className="text-sm font-bold text-slate-400">
                         {isLogin ? 'جديد هنا؟' : 'لديك حساب؟'}
-                        <button onClick={switchMode} className="text-orange-600 mr-2 underline hover:text-orange-700 transition-colors">
+                        <button type="button" onClick={switchMode} title={isLogin ? 'سجّل الآن' : 'دخول'} aria-label={isLogin ? 'سجّل الآن' : 'دخول'} className="text-orange-600 mr-2 underline hover:text-orange-700 transition-colors">
                             {isLogin ? 'سجّل الآن' : 'دخول'}
                         </button>
                     </div>
@@ -333,7 +333,7 @@ export const AuthPage = () => {
                 {error && (
                     <div className="bg-red-50 border border-red-100 text-red-600 p-3.5 rounded-2xl mb-5 text-sm font-bold flex items-center gap-3">
                         <Shield className="w-4 h-4 shrink-0" /> {error}
-                        <button aria-label="زر" title="زر" onClick={() => setError('')} className="mr-auto"><X className="w-4 h-4" /></button>
+                        <button aria-label="إغلاق" title="إغلاق" onClick={() => setError('')} className="mr-auto"><X className="w-4 h-4" /></button>
                     </div>
                 )}
 
@@ -343,12 +343,12 @@ export const AuthPage = () => {
 
                     <div className="flex gap-3 pt-1">
                         {!isLogin && step > 0 && (
-                            <button type="button" onClick={() => setStep(s => s - 1)}
+                            <button type="button" title="رجوع" aria-label="رجوع" onClick={() => setStep(s => s - 1)}
                                 className="px-5 py-3.5 border-2 border-slate-100 rounded-2xl font-black text-slate-500 hover:bg-slate-50 transition-all text-sm">
                                 رجوع
                             </button>
                         )}
-                        <button type="submit" disabled={loading}
+                        <button type="submit" disabled={loading} title={btnLabel} aria-label={btnLabel}
                             className="flex-1 bg-slate-900 text-white py-3.5 rounded-2xl font-black text-base shadow-xl shadow-slate-200 hover:bg-slate-800 hover:-translate-y-0.5 transition-all active:scale-95 flex items-center justify-center gap-3 disabled:opacity-60">
                             <Sparkles className="w-5 h-5" />
                             {btnLabel}
@@ -364,12 +364,12 @@ export const AuthPage = () => {
                         <div className="relative flex justify-center text-[10px] uppercase font-black text-slate-300"><span className="bg-white px-4">أو عبر</span></div>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
-                        <button type="button" onClick={() => {
+                        <button type="button" title="استمر مع جوجل" aria-label="استمر مع جوجل" onClick={() => {
                             setError('تسجيل الدخول عبر حسابات التواصل يتطلب ربط مفاتيح المطورين الخاصة بـ Google/Facebook. ستتم إضافتها قريباً.');
                         }} className="flex items-center justify-center gap-3 py-3.5 border-2 border-slate-100 rounded-2xl hover:bg-slate-50 transition-colors text-sm font-black text-slate-600">
                             <span className="text-lg font-serif">G</span> Google
                         </button>
-                        <button type="button" onClick={() => {
+                        <button type="button" title="استمر مع فيسبوك" aria-label="استمر مع فيسبوك" onClick={() => {
                             setError('تسجيل الدخول عبر حسابات التواصل يتطلب ربط مفاتيح المطورين الخاصة بـ Google/Facebook. ستتم إضافتها قريباً.');
                         }} className="flex items-center justify-center gap-3 py-3.5 border-2 border-slate-100 rounded-2xl hover:bg-slate-50 transition-colors text-sm font-black text-slate-600">
                             <span className="text-lg font-serif">f</span> Facebook

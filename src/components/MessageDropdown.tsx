@@ -52,6 +52,8 @@ export const MessageDropdown: React.FC<{ onClose: () => void }> = ({ onClose }) 
                 </div>
                 {view !== 'list' && (
                     <button
+                        title="الرجوع"
+                        aria-label="الرجوع للقائمة"
                         onClick={() => { setView('list'); setSelectedTeam(null); }}
                         className="text-xs font-black text-slate-400 hover:text-slate-600 flex items-center gap-1 bg-slate-50 px-3 py-1.5 rounded-full transition-all"
                     >

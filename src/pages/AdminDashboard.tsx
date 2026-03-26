@@ -1,12 +1,13 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import {
   Database, RefreshCw, AlertTriangle, CheckCircle2, Car, DollarSign, Users,
   Plus, Trash2, Edit, Building2, FileText, Mail, Wallet, Truck, ShieldCheck,
   Store, Gavel, List, File, History, HelpCircle, Settings, Filter, MessageSquare, MoreVertical,
   UploadCloud, Globe, Search, ShoppingCart, Ship, Check, Reply, Link as LinkIcon, Calculator, Info,
-  Shield, BookOpen, TrendingUp, Bell, Handshake, CreditCard, MapPin, Clock, X, Map, Zap, Trophy
+  Shield, BookOpen, TrendingUp, Bell, Handshake, CreditCard, MapPin, Clock, X, XCircle, Map, Zap, Trophy, Eye, UserPlus, ClipboardCheck, Download, Share2, Send, AlertCircle
 } from 'lucide-react';
 
 import { NotificationDropdown } from '../components/NotificationDropdown';
@@ -14,12 +15,13 @@ import { MessageDropdown } from '../components/MessageDropdown';
 import { useStore } from '../context/StoreContext';
 import { Car as CarType } from '../types';
 import { CopartAuctionSystem } from '../components/CopartAuctionSystem';
-
+import { UnifiedCarForm } from '../components/UnifiedCarForm';
+import { ConfirmModal } from '../components/ConfirmModal';
 
 /* ============================================================
    FooterSettingsPanel — Admin panel to control SiteFooter
    ============================================================ */
-export const FOOTER_KEY = 'autopro_footer_settings';
+export const FOOTER_KEY = 'autopro_footer_settings_v7';
 export const FOOTER_DEFAULT = {
   description: 'منصة مزادات السيارات الأولى في ليبيا — شراء، بيع، شحن دولي بكل شفافية.',
   phone: '+218 91 234 5678',
@@ -27,24 +29,453 @@ export const FOOTER_DEFAULT = {
   address: 'طرابلس، ليبيا',
   facebook: '#', twitter: '#', instagram: '#', youtube: '#',
   companyLinks: [
-    { label: 'عن الشركة', href: '/about' },
-    { label: 'كيف يعمل النظام', href: '/how-it-works' },
-    { label: 'الفروع', href: '/branches' },
-    { label: 'وظائف', href: '/careers' },
+    { label: 'footer.aboutCompany', href: '/about' },
+    { label: 'footer.howItWorks', href: '/how-it-works' },
+    { label: 'footer.branches', href: '/branches' },
+    { label: 'footer.careers', href: '/careers' },
   ],
   serviceLinks: [
-    { label: 'المزادات المباشرة', href: '/marketplace?tab=live' },
-    { label: 'تصفح السيارات', href: '/marketplace' },
-    { label: 'حاسبة التكلفة', href: '/calculator' },
-    { label: 'خدمات الشحن', href: '/shipping' },
+    { label: 'footer.liveAuctions', href: '/marketplace?tab=live' },
+    { label: 'footer.browseCars', href: '/marketplace' },
+    { label: 'footer.costCalculator', href: '/calculator' },
+    { label: 'footer.shippingServices', href: '/shipping' },
   ],
   legalLinks: [
-    { label: 'الشروط والأحكام', href: '/terms' },
-    { label: 'سياسة الخصوصية', href: '/privacy' },
-    { label: 'سياسة الإلغاء', href: '/refund' },
+    { label: 'footer.termsAndConditions', href: '/terms' },
+    { label: 'footer.privacyPolicy', href: '/privacy' },
+    { label: 'footer.refundPolicy', href: '/refund' },
   ],
 };
 
+
+/* ============================================================
+   ManageLiveAuctionsPanel
+   ============================================================ */
+const ManageLiveAuctionsPanel: React.FC<{ currentUser: any }> = ({ currentUser }) => {
+  const [data, setData] = useState<any>({ wonCars: [], offerCars: [], scheduledCars: [], counterCars: [], unscheduledCars: [] });
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'won' | 'offer' | 'scheduled' | 'counter' | 'unscheduled'>('scheduled');
+  const { showAlert, showConfirm } = useStore();
+  const [refresh, setRefresh] = useState(0);
+
+  // Edit State for Scheduling
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [scheduleData, setScheduleData] = useState({ startTime: '', endTime: '', retries: 1 });
+
+  // Mark Sold State
+  const [markSoldId, setMarkSoldId] = useState<string | null>(null);
+  const [soldData, setSoldData] = useState({ winnerId: '', amount: 0 });
+
+  const API_BASE = '';
+
+  useEffect(() => {
+    fetch(`/api/admin/manage-live-auctions`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.error) throw new Error(d.error);
+        setData(d);
+        setLoading(false);
+      })
+      .catch(e => {
+        console.error(e);
+        showAlert('فشل في جلب البيانات', 'error');
+        setLoading(false);
+      });
+  }, [refresh, showAlert]);
+
+  const handleAction = async (url: string, method: string, body?: any) => {
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: body ? JSON.stringify(body) : undefined
+      });
+      if (res.ok) {
+        showAlert('تمت العملية بنجاح', 'success');
+        setRefresh(r => r + 1);
+        if (url.includes('schedule')) setEditingId(null);
+        if (url.includes('mark-sold')) setMarkSoldId(null);
+      } else {
+        const d = await res.json();
+        showAlert(d.error || 'فشلت العملية', 'error');
+      }
+    } catch {
+      showAlert('خطأ في الاتصال بالخادم', 'error');
+    }
+  };
+
+  if (loading) return <div className="p-10 text-center animate-pulse text-slate-400 font-bold">جاري تحميل البيانات...</div>;
+
+  return (
+    <div className="space-y-6 animate-in fade-in duration-500" dir="rtl">
+      <div>
+        <h2 className="text-2xl font-black text-slate-800 flex items-center gap-3">
+          <Gavel className="w-8 h-8 text-orange-500" />
+          إدارة مزاداتنا الحية
+        </h2>
+        <p className="text-slate-500 text-sm mt-1">تتبع السيارات المباعة، إدارة العروض، وجدولة المزادات القادمة</p>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex bg-white rounded-2xl border border-slate-200 p-1 shadow-sm w-fit overflow-x-auto max-w-full">
+        {[
+          { id: 'unscheduled', label: 'غير مجدولة', count: data.unscheduledCars?.length || 0, icon: Clock },
+          { id: 'scheduled', label: 'المزادات المجدولة', count: data.scheduledCars?.length || 0, icon: Clock },
+          { id: 'offer', label: 'عروض قيد التفاوض', count: data.offerCars?.length || 0, icon: Handshake },
+          { id: 'counter', label: 'انتظار الموافقة / عروض مضادة', count: data.counterCars?.length || 0, icon: AlertCircle },
+          { id: 'won', label: 'السيارات المربوحة', count: data.wonCars?.length || 0, icon: Trophy }
+        ].map(t => (
+          <button key={t.id}
+            onClick={() => setActiveTab(t.id as any)}
+            className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-sm transition-all ${activeTab === t.id ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20' : 'text-slate-500 hover:bg-slate-50'}`}
+          >
+            <t.icon className="w-4 h-4" /> {t.label}
+            <span className={`px-2 auto bg-slate-900/10 rounded-full text-xs ml-1 ${activeTab === t.id ? 'text-white' : ''}`}>{t.count}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Content Area */}
+      <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+        {activeTab === 'won' && (
+          <table className="w-full text-right text-sm">
+            <thead className="bg-slate-50 text-slate-500">
+              <tr>
+                <th className="p-4">السيارة</th>
+                <th className="p-4">رقم اللوت (VIN)</th>
+                <th className="p-4">الفائز والبائع</th>
+                <th className="p-4">مبلغ البيع</th>
+                <th className="p-4">المتابعة والتنبيهات</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {data.wonCars.length === 0 && <tr><td colSpan={5} className="p-10 text-center font-bold text-slate-400">لا توجد سيارات مربوحة</td></tr>}
+              {data.wonCars.map((car: any) => (
+                <tr key={car.id} className="hover:bg-slate-50 transition-colors">
+                  <td className="p-4 font-black text-slate-800">{car.year} {car.make} {car.model}</td>
+                  <td className="p-4 font-mono text-slate-500">{car.lotNumber} <br /><span className="text-xs">{car.vin}</span></td>
+                  <td className="p-4">
+                    <div className="font-bold text-slate-700">{car.winnerFirstName} {car.winnerLastName}</div>
+                    <div className="text-[10px] text-slate-400 mb-2">{car.winnerEmail}</div>
+                    
+                    <div className="text-[10px] bg-slate-100 text-slate-600 rounded p-1 mb-1 font-bold">
+                      البائع: {car.sellerFullName}
+                    </div>
+                    <div className="text-[10px] bg-slate-100 text-slate-600 rounded p-1 font-bold">
+                      محاولات المزاد: {car.auctionSessionCount || 0} من {car.maxAuctionRetries || 1}
+                    </div>
+                  </td>
+                  <td className="p-4 font-black text-lg text-emerald-600">${Number(car.currentBid || 0).toLocaleString()}</td>
+                  <td className="p-4 text-xs">
+                    <div className="text-[10px] font-bold text-slate-600 text-left mb-1" dir="rtl">
+                      تاريخ البيع: <span dir="ltr" className="font-normal text-slate-500">{new Date(car.auctionEndDate || Date.now()).toLocaleString('en-US', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                    </div>
+                    {car.acceptedByName && (
+                      <div className="text-[10px] bg-indigo-50 text-indigo-700 rounded p-1 mb-2 font-bold w-fit ml-auto">
+                        مُعتمد البيع: {car.acceptedByName}
+                      </div>
+                    )}
+                    
+                    <div className="flex flex-col gap-1 mt-2">
+                       {car.notificationSent ? (
+                         <span className="text-[10px] bg-emerald-50 text-emerald-600 px-2 py-1 rounded inline-flex items-center gap-1 w-fit font-bold"><CheckCircle2 className="w-3 h-3"/> تم الإشعار</span>
+                       ) : (
+                         <span className="text-[10px] bg-slate-50 text-slate-500 px-2 py-1 rounded inline-flex items-center gap-1 w-fit font-bold"><XCircle className="w-3 h-3"/> جاري التنبيه...</span>
+                       )}
+                       
+                       {car.invoiceCreated ? (
+                         <div className={`text-[10px] px-2 py-1 rounded inline-flex items-center gap-1 w-fit border ${car.invoiceViewed ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-slate-50 border-slate-200 text-slate-600'} font-bold`}>
+                           <FileText className="w-3 h-3" />
+                           {car.invoiceViewed ? 'عُرضت الفاتورة 👁️' : 'أُرسلت (لم تُشاهد) ❌'}
+                         </div>
+                       ) : (
+                         <div className="text-[10px] px-2 py-1 rounded inline-flex items-center gap-1 w-fit border border-slate-200 bg-slate-50 text-slate-400 font-bold">
+                           <RefreshCw className="w-3 h-3" /> جاري الفوترة...
+                         </div>
+                       )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+
+        {activeTab === 'offer' && (
+          <table className="w-full text-right text-sm">
+            <thead className="bg-slate-50 text-slate-500">
+              <tr>
+                <th className="p-4">السيارة</th>
+                <th className="p-4">أعلى عرض والمقدم</th>
+                <th className="p-4">الحد الأدنى (Reserve)</th>
+                <th className="p-4">إجراء</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {data.offerCars.length === 0 && <tr><td colSpan={4} className="p-10 text-center font-bold text-slate-400">لا توجد سيارات في سوق العروض</td></tr>}
+              {data.offerCars.map((car: any) => (
+                <tr key={car.id} className="hover:bg-slate-50 transition-colors">
+                  <td className="p-4 font-black text-slate-800">{car.year} {car.make} {car.model}</td>
+                  <td className="p-4">
+                    <div className="font-black text-lg text-emerald-600">${Number(car.highestOffer || 0).toLocaleString()}</div>
+                    {car.bidderDetails ? (
+                      <div className="text-xs text-slate-500 font-bold">{car.bidderDetails.firstName} {car.bidderDetails.lastName}</div>
+                    ) : <span className="text-xs text-slate-400">بدون عروض</span>}
+                  </td>
+                  <td className="p-4 font-bold text-slate-600">${Number(car.reservePrice || 0).toLocaleString()}</td>
+                  <td className="p-4 flex gap-2 flex-wrap max-w-[250px]">
+                    <button onClick={() => handleAction(`/api/offers/${car.id}/accept`, 'POST')} disabled={!car.highestOffer}
+                      className="bg-emerald-500 text-white px-3 py-1.5 rounded-lg text-xs font-black hover:bg-emerald-600 disabled:opacity-50">قبول العرض</button>
+                    <button onClick={() => {
+                        const amount = window.prompt(`أدخل مبلغ العرض المضاد للسيارة:\n(${car.year} ${car.make} ${car.model})`);
+                        if(amount && !isNaN(Number(amount))) {
+                           handleAction(`/api/offers/${car.id}/counter`, 'POST', { counterAmount: Number(amount) });
+                        }
+                      }} disabled={!car.highestOffer}
+                      className="bg-amber-500 text-white px-3 py-1.5 rounded-lg text-xs font-black hover:bg-amber-600 disabled:opacity-50">عرض مضاد</button>
+                    <button onClick={() => handleAction(`/api/offers/${car.id}/reject`, 'POST')}
+                      className="bg-rose-500 text-white px-3 py-1.5 rounded-lg text-xs font-black hover:bg-rose-600">رفض و إرجاع للمزاد</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+
+        {activeTab === 'counter' && (
+          <table className="w-full text-right text-sm">
+            <thead className="bg-slate-50 text-slate-500">
+              <tr>
+                <th className="p-4">السيارة</th>
+                <th className="p-4">أعلى عرض والمقدم</th>
+                <th className="p-4">السعر المضاد للإدارة</th>
+                <th className="p-4">إجراء</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {data.counterCars?.length === 0 && <tr><td colSpan={4} className="p-10 text-center font-bold text-slate-400">لا توجد منتجات بانتظار التفاوض</td></tr>}
+              {data.counterCars?.map((car: any) => (
+                <tr key={car.id} className="hover:bg-slate-50 transition-colors">
+                  <td className="p-4 font-black text-slate-800">{car.year} {car.make} {car.model}</td>
+                  <td className="p-4">
+                    <div className="font-bold text-lg text-emerald-600">${Number(car.highestOffer || 0).toLocaleString()}</div>
+                    <div className="text-[10px] text-slate-400 uppercase">مقدم من المشتري</div>
+                  </td>
+                  <td className="p-4">
+                    <div className="font-black text-xl text-amber-500">${Number(car.sellerCounterPrice || 0).toLocaleString()}</div>
+                    <div className="text-[10px] bg-amber-50 text-amber-600 px-2 py-1 rounded w-fit mt-1 font-bold">بانتظار رد المشتري</div>
+                  </td>
+                  <td className="p-4 flex gap-2">
+                    <button onClick={() => handleAction(`/api/offers/${car.id}/accept`, 'POST')} disabled={!car.highestOffer}
+                      className="bg-emerald-50 text-emerald-600 px-3 py-1.5 rounded-lg text-xs font-black hover:bg-emerald-100 transition-colors disabled:opacity-50">قبول استثنائي</button>
+                    <button onClick={() => handleAction(`/api/offers/${car.id}/reject`, 'POST')}
+                      className="bg-rose-50 text-rose-600 px-3 py-1.5 rounded-lg text-xs font-black hover:bg-rose-100 transition-colors">إلغاء وإرجاع للمزاد</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+
+        {(activeTab === 'scheduled' || activeTab === 'unscheduled') && (
+          <table className="w-full text-right text-sm">
+            <thead className="bg-slate-50 text-slate-500">
+              <tr>
+                <th className="p-4">السيارة (VIN)</th>
+                <th className="p-4">تاريخ البداية والنهاية</th>
+                <th className="p-4">مرات الدخول وإعادة الطرح</th>
+                <th className="p-4">الحالة</th>
+                <th className="p-4 w-60">إجراءات الإدارة</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {data[activeTab === 'scheduled' ? 'scheduledCars' : 'unscheduledCars'].length === 0 && <tr><td colSpan={5} className="p-10 text-center font-bold text-slate-400">لا توجد مزادات في هذه القائمة</td></tr>}
+              {data[activeTab === 'scheduled' ? 'scheduledCars' : 'unscheduledCars'].map((car: any) => (
+                <tr key={car.id} className="hover:bg-slate-50 transition-colors">
+                  <td className="p-4">
+                    <div className="font-black text-slate-800">{car.year} {car.make} {car.model}</div>
+                    <div className="text-xs text-slate-400 font-mono mt-1">{car.vin}</div>
+                  </td>
+                  {editingId === car.id ? (
+                    <td colSpan={2} className="p-4 bg-orange-50/50">
+                      <div className="flex flex-col gap-2">
+                        <div className="flex gap-2 items-center">
+                          <label className="text-xs w-16">البداية:</label>
+                          <input type="datetime-local" title="تاريخ بداية المزاد" className="border text-xs p-1 rounded" value={scheduleData.startTime} onChange={e => setScheduleData({ ...scheduleData, startTime: e.target.value })} />
+                        </div>
+                        <div className="flex gap-2 items-center">
+                          <label className="text-xs w-16">النهاية:</label>
+                          <input type="datetime-local" title="تاريخ نهاية المزاد" className="border text-xs p-1 rounded" value={scheduleData.endTime} onChange={e => setScheduleData({ ...scheduleData, endTime: e.target.value })} />
+                        </div>
+                        <div className="flex gap-2 items-center">
+                          <label className="text-xs w-16">إعادات الطرح:</label>
+                          <input type="number" title="مرات إعادة الطرح" min={1} max={10} className="border text-xs p-1 rounded w-16" value={scheduleData.retries} onChange={e => setScheduleData({ ...scheduleData, retries: parseInt(e.target.value) })} />
+                        </div>
+                      </div>
+                    </td>
+                  ) : (
+                    <>
+                      <td className="p-4 text-xs text-slate-600 font-bold" dir="ltr">
+                        <div className="text-emerald-600 mb-1">{car.auctionStartTime ? new Date(car.auctionStartTime).toLocaleString('ar-EG') : 'غير محدد'}</div>
+                        <div className="text-rose-600">{car.auctionEndDate ? new Date(car.auctionEndDate).toLocaleString('ar-EG') : 'غير محدد'}</div>
+                      </td>
+                      <td className="p-4">
+                        <span className="bg-slate-100 px-2 py-1 rounded text-xs font-bold">{car.auctionSessionCount || 0} من {car.maxAuctionRetries || 1} مرة</span>
+                      </td>
+                    </>
+                  )}
+
+                  <td className="p-4">
+                    <span className={`px-2 py-1 rounded text-xs font-black ${car.status === 'live' ? 'bg-emerald-100 text-emerald-700 animate-pulse' : 'bg-orange-100 text-orange-700'}`}>
+                      {car.status === 'live' ? 'لايف الآن' : (car.status === 'upcoming' ? 'مجدول' : 'بانتظار الموافقة')}
+                    </span>
+                  </td>
+
+                  <td className="p-4 flex flex-col gap-2">
+                    {editingId === car.id ? (
+                      <div className="flex gap-2">
+                        <button onClick={() => handleAction(`/api/admin/cars/${car.id}/schedule`, 'PUT', { auctionStartTime: scheduleData.startTime, auctionEndDate: scheduleData.endTime, maxAuctionRetries: scheduleData.retries })} className="bg-emerald-500 text-white px-2 py-1 rounded text-xs">حفظ</button>
+                        <button onClick={() => setEditingId(null)} className="bg-slate-200 text-slate-600 px-2 py-1 rounded text-xs">إلغاء</button>
+                      </div>
+                    ) : (
+                      <button onClick={() => {
+                        setScheduleData({
+                          startTime: car.auctionStartTime ? new Date(car.auctionStartTime).toISOString().slice(0, 16) : '',
+                          endTime: car.auctionEndDate ? new Date(car.auctionEndDate).toISOString().slice(0, 16) : '',
+                          retries: car.maxAuctionRetries || 1
+                        });
+                        setEditingId(car.id);
+                        setMarkSoldId(null);
+                      }} className="bg-slate-100 text-slate-600 hover:bg-slate-200 px-3 py-1.5 rounded-lg text-xs font-bold w-full">تعديل الجدولة</button>
+                    )}
+
+                    {markSoldId === car.id ? (
+                      <div className="flex flex-col gap-2 bg-slate-50 p-2 rounded border border-slate-200 mt-2">
+                        <input type="text" placeholder="ID الفائز" className="text-xs p-1 border rounded" value={soldData.winnerId} onChange={e => setSoldData({ ...soldData, winnerId: e.target.value })} />
+                        <input type="number" placeholder="مبلغ البيع" className="text-xs p-1 border rounded" value={soldData.amount || ''} onChange={e => setSoldData({ ...soldData, amount: parseInt(e.target.value) })} />
+                        <div className="flex gap-1">
+                          <button onClick={() => handleAction(`/api/admin/cars/${car.id}/mark-sold`, 'POST', { winnerId: soldData.winnerId, soldAmount: soldData.amount })} className="bg-emerald-500 text-white px-2 py-1 text-[10px] rounded">تأكيد البيع</button>
+                          <button onClick={() => setMarkSoldId(null)} className="bg-slate-200 text-slate-600 px-2 py-1 text-[10px] rounded">إلغاء</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button onClick={() => { setMarkSoldId(car.id); setEditingId(null); }} className="bg-rose-50 text-rose-600 border border-rose-100 hover:bg-rose-100 px-3 py-1.5 rounded-lg text-xs font-bold w-full">إرساء الفوز يدويًا</button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+};
+
+/* ============================================================
+   ExternalLogsViewer — Real-time tracking of sent messages
+   ============================================================ */
+const ExternalLogsViewer: React.FC = () => {
+  const [logs, setLogs] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [testing, setTesting] = useState(false);
+
+  const fetchLogs = async () => {
+    try {
+      const res = await fetch('/api/admin/external-notifications');
+      const data = await res.json();
+      setLogs(Array.isArray(data) ? data : []);
+    } catch (e) { console.error(e); } finally { setLoading(false); }
+  };
+
+  useEffect(() => {
+    fetchLogs();
+    const interval = setInterval(fetchLogs, 5000); // Auto-refresh
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleTest = async () => {
+    setTesting(true);
+    try {
+      const res = await fetch('/api/admin/external-notifications/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'tsallabi@yahoo.ca', phone: '00353894435368' })
+      });
+      if (res.ok) {
+        alert('✅ تم إرسال رسائل التجربة بنجاح للمستخدم (tsallabi@yahoo.ca | 00353894435368)');
+        fetchLogs();
+      } else {
+        let msg = res.status.toString();
+        try {
+          const errData = await res.json();
+          msg = errData.error || msg;
+        } catch (e) { }
+        alert(`❌ فشل الاتصال بالخادم. \nتأكد أنك قمت بإعادة تشغيل السيرفر (npm run dev)، الخطأ: ${msg}`);
+      }
+    } catch (e) {
+      alert('❌ فشل إرسال التجربة، السيرفر لا يستجيب');
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  return (
+    <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-8 mt-8">
+      <div className="flex justify-between items-center mb-6">
+        <h3 className="font-black text-lg text-slate-800 flex items-center gap-2">
+          <Share2 className="w-5 h-5 text-indigo-500" />
+          سجل الإشعارات الخارجية (Email / WhatsApp)
+        </h3>
+        <button
+          onClick={handleTest}
+          disabled={testing}
+          className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl font-bold transition-all flex items-center gap-2 disabled:opacity-50"
+        >
+          {testing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+          إرسال رسالة تجريبية الآن
+        </button>
+      </div>
+
+      <div className="overflow-hidden rounded-2xl border border-slate-200">
+        <table className="w-full text-right text-sm">
+          <thead className="bg-slate-50 border-b border-slate-200">
+            <tr>
+              <th className="p-4 font-bold text-slate-600">التاريخ</th>
+              <th className="p-4 font-bold text-slate-600">النوع</th>
+              <th className="p-4 font-bold text-slate-600">المستلم (جهة الاتصال)</th>
+              <th className="p-4 font-bold text-slate-600">العنوان</th>
+              <th className="p-4 font-bold text-slate-600">الحالة</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {logs.length === 0 ? (
+              <tr><td colSpan={5} className="p-8 text-center text-slate-400">لا توجد إشعارات سابقة</td></tr>
+            ) : logs.map((log: any) => (
+              <tr key={log.id} className="hover:bg-slate-50 transition-colors">
+                <td className="p-4 text-slate-500">{new Date(log.timestamp).toLocaleString('ar-LY')}</td>
+                <td className="p-4">
+                  {log.type === 'email'
+                    ? <span className="inline-flex items-center gap-1 bg-blue-100 text-blue-700 px-2 py-1 rounded font-bold"><Mail className="w-3 h-3" /> إيميل</span>
+                    : <span className="inline-flex items-center gap-1 bg-green-100 text-green-700 px-2 py-1 rounded font-bold"><MessageSquare className="w-3 h-3" /> واتساب</span>}
+                </td>
+                <td className="p-4 font-bold text-slate-800" dir="ltr">{log.contact}</td>
+                <td className="p-4 text-slate-600 max-w-xs truncate">{log.title}</td>
+                <td className="p-4">
+                  {log.status === 'sent' || log.status.includes('sent_') ? (
+                    <span className="text-emerald-500 font-bold flex items-center gap-1"><CheckCircle2 className="w-4 h-4" /> تم الإرسال</span>
+                  ) : (
+                    <span className="text-red-500 font-bold flex items-center gap-1"><XCircle className="w-4 h-4" /> فشل الإرسال</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
 
 /* ============================================================
    SystemSettingsPanel — Global fees and system behavior
@@ -55,11 +486,20 @@ const SystemSettingsPanel: React.FC = () => {
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const { showAlert } = useStore();
 
+  const API_BASE = '';
+
   useEffect(() => {
-    fetch('/api/admin/settings')
-      .then(res => res.json())
+    fetch(`${API_BASE}/api/admin/settings`)
+      .then(res => {
+        if (!res.ok) throw new Error('Failed to fetch');
+        return res.json();
+      })
       .then(data => {
         setSettings(data);
+        setLoading(false);
+      })
+      .catch(e => {
+        console.error('Failed to load settings', e);
         setLoading(false);
       });
   }, []);
@@ -67,7 +507,7 @@ const SystemSettingsPanel: React.FC = () => {
   const updateSetting = async (key: string, value: string) => {
     setSavingKey(key);
     try {
-      const res = await fetch('/api/admin/settings/update', {
+      const res = await fetch(`${API_BASE}/api/admin/settings/update`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ key, value })
@@ -248,11 +688,60 @@ const SystemSettingsPanel: React.FC = () => {
             </div>
           </div>
         </div>
+
+        {/* External Notifications */}
+        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-8 space-y-6">
+          <h3 className="font-black text-lg text-slate-800 flex items-center gap-2 mb-4">
+            <Mail className="w-5 h-5 text-indigo-500" />
+            الإشعارات الخارجية للتنبيهات
+          </h3>
+
+          <div className="space-y-6">
+            {[
+              { key: 'enable_email_notifications', label: 'تفعيل إشعارات البريد الإلكتروني', type: 'boolean', desc: 'إرسال تنبيهات على إيميل المشتري والبائع' },
+              { key: 'enable_whatsapp_notifications', label: 'تفعيل إشعارات الواتساب', type: 'boolean', desc: 'إرسال رسائل واتس اب للمزايدين والبائعين' }
+            ].map(item => {
+              const setting = settings.find(s => s.key === item.key);
+
+              return (
+                <div key={item.key} className="bg-slate-50 rounded-2xl p-5 border border-slate-100 group transition-all hover:border-indigo-200">
+                  <div className="flex justify-between items-start mb-2">
+                    <div>
+                      <label className="block text-sm font-black text-slate-700">{item.label}</label>
+                      <span className="text-[10px] text-slate-400 font-bold">{item.desc}</span>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <select
+                      defaultValue={setting?.value || '1'}
+                      onChange={(e) => updateSetting(item.key, e.target.value)}
+                      className="flex-1 bg-white border border-slate-200 rounded-xl px-4 py-3 font-bold text-slate-900 focus:border-indigo-500 outline-none"
+                    >
+                      <option value="1">نعم (مفعل)</option>
+                      <option value="0">لا (غير مفعل)</option>
+                    </select>
+                    <div className="w-12 flex items-center justify-center">
+                      {savingKey === item.key ? (
+                        <RefreshCw className="w-5 h-5 text-indigo-500 animate-spin" />
+                      ) : (
+                        <CheckCircle2 className="w-5 h-5 text-emerald-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <ExternalLogsViewer />
+
       </div>
     </div>
   );
 };
 const FooterSettingsPanel: React.FC = () => {
+  const { t } = useTranslation();
   const [cfg, setCfg] = React.useState<any>(() => {
     try { return { ...FOOTER_DEFAULT, ...JSON.parse(localStorage.getItem(FOOTER_KEY) || '{}') }; }
     catch { return FOOTER_DEFAULT; }
@@ -369,7 +858,8 @@ const FooterSettingsPanel: React.FC = () => {
               {cfg[section.key].map((link: any, idx: number) => (
                 <div key={idx} className="space-y-1.5 bg-slate-50 rounded-xl p-3 relative group">
                   <input aria-label="مدخل" title="مدخل" placeholder="تحديد" type="text" className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-orange-500"
-                    value={link.label} onChange={e => updateLink(section.key, idx, 'label', e.target.value)} />
+                    value={t(link.label) === link.label ? link.label : `${t(link.label)} (${link.label})`}
+                    onChange={e => updateLink(section.key, idx, 'label', e.target.value)} />
                   <input aria-label="مدخل" title="مدخل" placeholder="تحديد" type="text" className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono outline-none focus:border-orange-500"
                     value={link.href} onChange={e => updateLink(section.key, idx, 'href', e.target.value)} />
                   <button onClick={() => removeLink(section.key, idx)}
@@ -971,16 +1461,364 @@ const KycReviewCard: React.FC<{
   );
 };
 
-export const AdminDashboard = () => {
+/* ============================================================
+   MarketingPanel — Email Campaigns & Marketing
+   ============================================================ */
+const MarketingPanel: React.FC = () => {
+  const [users, setUsers] = useState<any[]>([]);
+  const [cars, setCars] = useState<any[]>([]);
+  const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
+  const [selectedCars, setSelectedCars] = useState<string[]>([]);
+  const [templateType, setTemplateType] = useState<'upcoming' | 'live_auction' | 'offer_market'>('live_auction');
+  const [subject, setSubject] = useState('🚗 مزاد أوتو برو مفتوح الآن! سيارات حصرية بانتظارك');
+  const [sending, setSending] = useState(false);
+  const { showAlert } = useStore();
 
-  const { cars, addCar, deleteCar, stats, users, setUsers, addUser, showAlert, socket, messages, unreadCounts, markMessageAsRead } = useStore();
+  const getCarImage = (c: any) => {
+    try {
+      if (Array.isArray(c.images) && c.images.length > 0) return c.images[0];
+      if (typeof c.images === 'string' && c.images.startsWith('[')) return JSON.parse(c.images)[0] || '';
+      return c.images || c.image || 'https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&q=80&w=400';
+    } catch {
+      return 'https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&q=80&w=400';
+    }
+  };
+
+  useEffect(() => {
+    fetch('/api/admin/mailing-list').then(r => r.json()).then(data => {
+      if (Array.isArray(data)) setUsers(data);
+    }).catch(e => console.error(e));
+
+    fetch('/api/admin/marketing-cars').then(r => r.json()).then(data => {
+      if (Array.isArray(data)) {
+        setCars(data);
+      }
+    }).catch(e => console.error(e));
+  }, []);
+
+  const toggleUser = (id: string) => {
+    setSelectedUsers(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id]);
+  };
+
+  const toggleAllUsers = () => {
+    if (selectedUsers.length === users.length) setSelectedUsers([]);
+    else setSelectedUsers(users.map(u => u.id));
+  };
+
+  const toggleCar = (id: string) => {
+    setSelectedCars(p => {
+      if (p.includes(id)) return p.filter(x => x !== id);
+      if (p.length >= 6) return p;
+      return [...p, id];
+    });
+  };
+
+  const generateHTML = () => {
+
+    let config = {
+      bgTitle: '#0f172a',
+      bgBody: '#1e293b',
+      accent: '#f97316',
+      title: 'إغلاق المزاد!',
+      buttonText: 'تصفح واربح سيارتك من هنا',
+      badgeText: 'متاح الآن!',
+      priceLabel: 'السعر الحالي',
+      showPrice: (c: any) => c.buyNowPrice || c.currentBid || 0
+    };
+
+    if (templateType === 'upcoming') {
+      config = { bgTitle: '#1e3a8a', bgBody: '#172554', accent: '#fcd34d', title: 'سيارات نخبوية قادمة!', buttonText: 'أضف لمفضلتك واستعد للمزايدة', badgeText: 'قريباً في المزاد', priceLabel: 'السعر المبدئي', showPrice: (c: any) => c.startingBid || 0 };
+    } else if (templateType === 'live_auction') {
+      config = { bgTitle: '#9f1239', bgBody: '#881337', accent: '#f8fafc', title: 'المزاد يشتعل الآن!', buttonText: 'ادخل المزاد قبل انتهاء الوقت', badgeText: 'متاح الآن للمزايدة!', priceLabel: 'السعر الحالي', showPrice: (c: any) => c.currentBid || c.startingBid || 0 };
+    } else if (templateType === 'offer_market') {
+      config = { bgTitle: '#065f46', bgBody: '#064e3b', accent: '#ea580c', title: 'عروض مذهلة بانتظارك', buttonText: 'تصفح سوق العروض واشترِ الآن', badgeText: 'شراء فوري', priceLabel: 'سعر الشراء الفوري', showPrice: (c: any) => c.buyNowPrice || 0 };
+    }
+
+    const carsHtml = selectedCars.map(carId => {
+      const c = cars.find(x => x.id === carId);
+      if (!c) return '';
+      return `
+          <div style="display:inline-block; width:46%; margin: 1%; text-align:center; background:white; border-radius:12px; overflow:hidden; box-shadow:0 6px 15px rgba(0,0,0,0.15); vertical-align:top;">
+          <img src="${getCarImage(c)}" style="width:100%; height:140px; object-fit:cover;" onerror="this.src='https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&q=80&w=400';" />
+          <div style="padding:15px; text-align:center;">
+            <div style="font-weight:900; font-size:15px; color:#1e293b;">${c.year} ${c.make} ${c.model}</div>
+            <div style="color:${config.accent}; font-size:13px; font-weight:bold; margin-top:4px;">${config.badgeText}</div>
+            <div style="color:#ea580c; font-size:18px; font-weight:900; margin-top:8px;">$${config.showPrice(c)} ${config.priceLabel}</div>
+          </div>
+        </a>
+      `;
+    }).join('');
+
+    return `
+      <!DOCTYPE html>
+      <html dir="rtl">
+      <head><meta charset="utf-8"></head>
+      <body style="margin:0; padding:0; background-color:#f1f5f9; font-family:Arial, sans-serif;">
+        <div style="max-width:600px; margin:0 auto; background-color:${config.bgBody}; overflow:hidden;">
+          <!-- Header -->
+          <div style="text-align:center; padding-top:20px; border-bottom:1px solid rgba(255,255,255,0.1); background-color:${config.bgTitle};">
+            <h1 style="color:${config.accent}; font-size:24px; letter-spacing:2px; margin-bottom:5px;">A U T O &nbsp; P R O</h1>
+            <p style="color:#e2e8f0; font-size:14px; letter-spacing:4px; margin-top:0;">A U C T I O N S</p>
+          </div>
+          
+          <div style="background-color:${config.bgTitle}; padding:30px 20px; text-align:center;">
+            <h2 style="color:white; margin:0; font-size:38px; font-weight:900; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);">${config.title}</h2>
+            <div style="width:50px; height:4px; background-color:${config.accent}; margin: 15px auto 0;"></div>
+          </div>
+          
+          <!-- Grid -->
+          <div style="padding:20px 10px; background-color:${config.bgBody}; text-align:center;">
+             ${carsHtml || '<div style="color:white; padding:20px; font-weight:bold;">لم يتم تحديد سيارات لعرضها في هذه الحملة.</div>'}
+          </div>
+          
+          <!-- Features -->
+          <div style="padding:25px 40px; color:#f8fafc; font-size:17px; font-weight:bold; line-height:2; text-align:right; background-color:${config.bgTitle}; border-top:2px solid rgba(255,255,255,0.1);" dir="rtl">
+            <ul style="margin:0; padding:0 20px 0 0;">
+              <li style="margin-bottom:12px;"><span style="color:${config.accent};">✓</span> توفير حقيقي وفريد في رسوم المزاد يصل إلى 40%.</li>
+              <li style="margin-bottom:12px;"><span style="color:${config.accent};">✓</span> سيارات فخمة ونظيفة مضمونة وحصرية لعملائنا الأعزاء.</li>
+              <li><span style="color:${config.accent};">✓</span> أسعار منافسة للسوق المحلي وشفافية مطلقة!</li>
+            </ul>
+          </div>
+          
+          <!-- CTA Button -->
+          <div style="text-align:center; padding:35px 20px; background-color:${config.bgBody};">
+             <a href="https://lyautopro.com/marketplace" style="display:inline-block; background-color:${config.accent}; color:${config.bgTitle}; padding:18px 36px; font-size:22px; font-weight:900; text-decoration:none; border-radius:10px; box-shadow:0 6px 15px rgba(0,0,0,0.4);">
+               ${config.buttonText}
+             </a>
+          </div>
+          
+          <!-- Personal Branding -->
+          <div style="background-color:#e6e8eb; text-align:center; border-top:6px solid ${config.accent}; overflow:hidden;">
+             <div style="padding: 40px 30px 10px 30px;">
+               <h3 style="color:#0f172a; font-size:26px; line-height:1.6; font-weight:900; margin:0; text-shadow:1px 1px 0px rgba(255,255,255,0.8);" dir="rtl">
+                 "نحن في أوتو برو نلتزم بتقديم أفضل تشكيلة سيارات مضمونة وبأسعار لا منافس لها."
+               </h3>
+             </div>
+             <img src="${window.location.origin}/new_ceo_photo.jpg" alt="CEO" style="width:100%; max-width:600px; height:auto; display:block; margin:0 auto -45px auto;" />
+          </div>
+          
+          <div style="background-color:#020617; padding:20px; text-align:center;">
+             <p style="color:#64748b; font-size:12px; margin:0;">حقوق النشر أوتو برو للمزادات 2026. المتبعة في السوق المحلي، ليبيا</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+  };
+
+  const handleSend = async () => {
+    if (selectedUsers.length === 0) return showAlert('يجب اختيار مستخدم واحد على الأقل', 'error');
+    if (!subject) return showAlert('يجب إدخال عنوان للإيميل', 'error');
+
+    setSending(true);
+    const emails = users.filter(u => selectedUsers.includes(u.id)).map(u => u.email).filter(Boolean);
+
+    try {
+      const res = await fetch('/api/admin/send-campaign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ emails, subject, html: generateHTML() })
+      });
+      if (res.ok) {
+        showAlert('تم إدراج الحملة للإرسال بنجاح!', 'success');
+        setSelectedUsers([]);
+      } else {
+        showAlert('فشل في إرسال الحملة', 'error');
+      }
+    } catch (e) {
+      showAlert('حدث خطأ في النظام', 'error');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6 animate-in fade-in duration-500" dir="rtl">
+
+      <div className="flex justify-between items-center bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+        <div>
+          <h2 className="text-2xl font-black text-slate-800 tracking-tight flex items-center gap-3">
+            <Mail className="w-8 h-8 text-indigo-500" />
+            التسويق والحملات البريدية
+          </h2>
+          <p className="text-slate-500 font-bold text-sm mt-1">تجهيز وإرسال إيميلات تسويقية احترافية للعملاء المسجلين.</p>
+        </div>
+        <button
+          onClick={handleSend}
+          disabled={sending || selectedUsers.length === 0}
+          className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-8 py-3 rounded-2xl font-black transition-all flex items-center gap-2 shadow-lg shadow-indigo-200"
+        >
+          {sending ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+          إرسال الحملة الآن ({selectedUsers.length})
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Left Side: Setup */}
+        <div className="space-y-6">
+          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+            <h3 className="font-black text-lg text-slate-800 mb-4 flex items-center gap-2">
+              <Users className="w-5 h-5 text-indigo-500" />
+              الجمهور المستهدف
+            </h3>
+            <div className="max-h-60 overflow-y-auto border border-slate-100 rounded-xl">
+              <table className="w-full text-right text-sm">
+                <thead className="bg-slate-50 sticky top-0">
+                  <tr>
+                    <th className="p-3">
+                      <input title="اختيار الكل" aria-label="اختيار الكل" type="checkbox" checked={selectedUsers.length === users.length && users.length > 0} onChange={toggleAllUsers} className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300" />
+                    </th>
+                    <th className="p-3 font-bold text-slate-600">الاسم</th>
+                    <th className="p-3 font-bold text-slate-600">الإيميل</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {users.map(u => (
+                    <tr key={u.id} className="hover:bg-slate-50">
+                      <td className="p-3">
+                        <input title="اختيار المستخدم" aria-label={`اختيار المستخدم ${u.firstName} `} type="checkbox" checked={selectedUsers.includes(u.id)} onChange={() => toggleUser(u.id)} className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300" />
+                      </td>
+                      <td className="p-3 font-bold text-slate-800">{u.firstName} {u.lastName}</td>
+                      <td className="p-3 text-slate-500">{u.email}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {users.length === 0 && <p className="text-slate-500 text-sm mt-4 text-center">جاري تحميل المشتركين...</p>}
+          </div>
+
+          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+            <h3 className="font-black text-lg text-slate-800 mb-4 flex items-center gap-2">
+              <Car className="w-5 h-5 text-emerald-500" />
+              ربط سيارات بالحملة (الحد الأقصى 6)
+            </h3>
+            <div className="space-y-5 max-h-[500px] overflow-y-auto pr-2 pb-2">
+              {[
+                { title: 'قريباً', list: cars.filter(c => c.status === 'upcoming' && !c.isBuyNow && c.marketType !== 'secondary').slice(0, 6) },
+                { title: 'المزادات المباشرة', list: cars.filter(c => (c.status === 'active' || c.status === 'live') && !c.isBuyNow && c.marketType !== 'secondary').slice(0, 6) },
+                { title: 'سوق العروض', list: cars.filter(c => c.status === 'offer_market' || c.isBuyNow || c.marketType === 'secondary').slice(0, 6) }
+              ].map(section => section.list.length > 0 && (
+                <div key={section.title} className="bg-slate-50 p-3 rounded-2xl border border-slate-100">
+                  <h4 className="font-black text-sm text-indigo-900 mb-3 flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
+                    {section.title}
+                  </h4>
+                  <div className="grid grid-cols-3 gap-3">
+                    {section.list.map(c => (
+                      <div
+                        key={c.id}
+                        onClick={() => toggleCar(c.id)}
+                        className={`cursor-pointer bg-white rounded-xl border-2 transition-all overflow-hidden relative group ${selectedCars.includes(c.id) ? 'border-indigo-500 ring-2 ring-indigo-200 shadow-md' : 'border-slate-200 hover:border-slate-300'}`}
+                      >
+                        <img alt={`سيارة ${c.make} ${c.model} `} src={getCarImage(c)} onError={(e) => { e.currentTarget.src = 'https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&q=80&w=400'; }} className="w-full h-20 object-cover" />
+                        <div className="p-2 text-center">
+                          <p className="font-bold text-xs truncate text-slate-800" dir="ltr">{c.year} {c.make}</p>
+                          <p className="text-emerald-600 font-bold text-xs mt-1">${c.buyNowPrice || c.currentBid || 0}</p>
+                        </div>
+                        {selectedCars.includes(c.id) && (
+                          <div className="absolute top-1 right-1 bg-indigo-500 text-white rounded-full p-1 shadow-sm">
+                            <CheckCircle2 className="w-3 h-3" />
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Right Side: Preview */}
+        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col">
+          <h3 className="font-black text-lg text-slate-800 mb-4 flex items-center gap-2">
+            <Eye className="w-5 h-5 text-orange-500" />
+            معاينة الإيميل (Live Preview)
+          </h3>
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            <div>
+              <label className="block text-sm font-black text-slate-700 mb-2">القالب (Template)</label>
+              <select
+                title="القالب"
+                aria-label="القالب"
+                value={templateType}
+                onChange={e => setTemplateType(e.target.value as any)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 font-bold text-slate-800 outline-none focus:border-indigo-500 transition-all cursor-pointer"
+              >
+                <option value="upcoming">سيارات قريباً (أزرق وذهبي)</option>
+                <option value="live_auction">المزادات المباشرة (أحمر ملكي)</option>
+                <option value="offer_market">سوق العروض (زمردي وبرتقالي)</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-black text-slate-700 mb-2">عنوان الإيميل (Subject)</label>
+              <input
+                title="عنوان الإيميل"
+                aria-label="عنوان الإيميل"
+                type="text"
+                value={subject}
+                onChange={e => setSubject(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 font-bold text-slate-800 outline-none focus:border-indigo-500 transition-all"
+              />
+            </div>
+          </div>
+          <div className="flex-1 bg-slate-100 rounded-2xl border-4 border-slate-300 overflow-hidden relative" dir="ltr">
+            <iframe
+              srcDoc={generateHTML()}
+              className="w-full h-[600px] border-none"
+              title="Email Preview"
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export const AdminDashboard = () => {
+  const INVOICE_STATUS_LABELS: any = {
+    unpaid: 'بانتظار الدفع',
+    pending: 'قيد المراجعة',
+    paid: 'تم الدفع',
+    release_issued: 'تم إصدار الإفراج',
+    delivered_to_buyer: 'تم التسليم للمشتري',
+    seller_paid: 'تم الدفع للبائع',
+    seller_paid_by_admin: 'تم الدفع للبائع'
+  };
+
+  const INVOICE_TYPE_LABELS: any = {
+    purchase: 'شراء سيارة',
+    shipping: 'شحن داخلي',
+    transport: 'نقل دولي',
+    customs: 'تخليص جمركي'
+  };
+
+  const { cars, addCar, deleteCar, stats, users, setUsers, addUser, showAlert, showConfirm, socket, messages, notifications, unreadCounts, markMessageAsRead, markNotificationAsRead, sendMessage, marketEstimates, addMarketEstimate, updateMarketEstimate, deleteMarketEstimate, exchangeRate, updateExchangeRate } = useStore();
   const [searchParams, setSearchParams] = useSearchParams();
   const view = searchParams.get('view') || 'overview';
+
+  const [estimateSearch, setEstimateSearch] = useState('');
+  const [showEstimateModal, setShowEstimateModal] = useState(false);
+  const [editingEstimate, setEditingEstimate] = useState<any>(null);
+  const [estimateForm, setEstimateForm] = useState({
+    make: '', makeEn: '', model: '', modelEn: '', year: 2024,
+    condition: 'مستعمل', transmission: 'اوتوماتيك', fuel: 'بنزين',
+    mileage: '1,000 - 9,999', price: '', city: 'طرابلس'
+  });
+
   const [filter, setFilter] = useState('all');
   const [showNotifications, setShowNotifications] = useState(false);
   const [showMessages, setShowMessages] = useState(false);
 
-  const [isScraping, setIsScraping] = useState(false);
+  // Accordion state for sidebar categories
+  const [openGroup, setOpenGroup] = useState<string>('INITIAL');
+
+  // Reply functionality state
+  const [replyingTo, setReplyingTo] = useState<string | null>(null);
+  const [replyMessage, setReplyMessage] = useState('');
+  const [replyRole, setReplyRole] = useState<'manager' | 'user' | 'employee' | 'merchant'>('user');
+
   const [scrapeProgress, setScrapeProgress] = useState(0);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [offerMarketCars, setOfferMarketCars] = useState<any[]>([]);
@@ -1002,6 +1840,8 @@ export const AdminDashboard = () => {
   const [fetchingMessages, setFetchingMessages] = useState(false);
   const [allTransactions, setAllTransactions] = useState<any[]>([]);
   const [allInvoices, setAllInvoices] = useState<any[]>([]);
+  const [adminInvoices, setAdminInvoices] = useState<any[]>([]);
+  const [showInvoiceConfirmModal, setShowInvoiceConfirmModal] = useState<{ isOpen: boolean; invoice: any; nextStatus: string }>({ isOpen: false, invoice: null, nextStatus: '' });
   const [rejectReason, setRejectReason] = useState('');
   // Auto-fetch data based on view
   useEffect(() => {
@@ -1024,6 +1864,10 @@ export const AdminDashboard = () => {
     if (view === 'financials' || view === 'financial_ledger') {
       fetch('/api/admin/all-transactions').then(res => res.json()).then(setAllTransactions);
       fetch('/api/admin/all-invoices').then(res => res.json()).then(setAllInvoices);
+    }
+    if (view === 'reports') {
+      fetch('/api/admin/reports-analytics').then(res => res.json()).then(setReportsAnalytics);
+      fetch('/api/libyan-market').then(res => res.json()).then(data => setLibyanMarketPrices(Array.isArray(data) ? data : []));
     }
   }, [view]);
 
@@ -1048,6 +1892,13 @@ export const AdminDashboard = () => {
   });
   const [calcInput, setCalcInput] = useState<number>(5000);
   const { currentUser } = useStore();
+  const [reportsAnalytics, setReportsAnalytics] = useState<any>({ activeUsers: 0, totalBids: 0, salesVol: 0, dbHitRate: 99.8, geoSalesRaw: [] });
+  const [libyanMarketPrices, setLibyanMarketPrices] = useState<any[]>([]);
+  const [showReportModal, setShowReportModal] = useState<any>(null);
+  const [showLibyanModal, setShowLibyanModal] = useState(false);
+  const [libyanModalForm, setLibyanModalForm] = useState({
+    id: '', condition: 'جديد', make: '', model: '', year: 2024, transmission: 'اوتوماتيك', fuel: 'بنزين', mileage: '0', priceLYD: ''
+  });
 
   useEffect(() => {
     // 1. Fetch System Summary for badges and Overview
@@ -1113,12 +1964,19 @@ export const AdminDashboard = () => {
         .then(data => setWithdrawalRequests(Array.isArray(data) ? data : []))
         .catch(err => console.error('Withdrawal requests fetch error:', err));
     }
-  }, [view, currentUser]);
+
+    if (view === 'document_cycle' && adminInvoices.length === 0) {
+      fetch('/api/admin/invoices')
+        .then(res => res.json())
+        .then(data => setAdminInvoices(Array.isArray(data) ? data : []))
+        .catch(err => console.error('Failed to fetch admin invoices:', err));
+    }
+  }, [view, currentUser, adminInvoices.length]);
 
   // ✅ PHASE 5: Approve/Reject withdrawal handlers
   const handleApproveWithdrawal = async (id: string) => {
     try {
-      const res = await fetch(`/api/admin/withdrawal-requests/${id}/approve`, {
+      const res = await fetch(`/ api / admin / withdrawal - requests / ${id}/approve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ note: withdrawalNote })
@@ -1198,6 +2056,11 @@ export const AdminDashboard = () => {
   };
 
   const [showAddCarModal, setShowAddCarModal] = useState(false);
+  const [showOpenSooqModal, setShowOpenSooqModal] = useState(false);
+  const [opensooqMake, setOpensooqMake] = useState('تويوتا');
+  const [opensooqModel, setOpensooqModel] = useState('كامري');
+  const [isScraping, setIsScraping] = useState(false);
+  const [scrapeResult, setScrapeResult] = useState<{ success: boolean; count?: number; error?: string } | null>(null);
   const [showAddUserModal, setShowAddUserModal] = useState(false);
   const [showEditUserModal, setShowEditUserModal] = useState(false);
   const [showMessageModal, setShowMessageModal] = useState(false);
@@ -1661,6 +2524,8 @@ export const AdminDashboard = () => {
 
   const renderContent = () => {
     switch (view) {
+      case 'marketing':
+        return <MarketingPanel />;
       case 'shipping_settings':
         return <ShippingSettingsPanel />;
       case 'footer_settings':
@@ -1924,6 +2789,8 @@ export const AdminDashboard = () => {
                               <div className="font-black text-slate-900 flex items-center gap-2">
                                 {user.firstName} {user.lastName}
                                 {user.isVip && <div className="w-4 h-4 bg-orange-500 rounded-lg flex items-center justify-center text-[8px] text-white">★</div>}
+                                {user.googleId && <img src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google" className="w-4 h-4 inline-block" title="مسجل عبر جوجل" />}
+                                <span title="مسجل عبر فيسبوك" className="inline-block"><svg className="w-4 h-4 text-[#1877F2] fill-current" viewBox="0 0 24 24"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.469h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.469h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" /></svg></span>
                               </div>
                               <div className="text-xs text-slate-400 font-bold">{user.email}</div>
                               <div className="text-[10px] text-slate-400 font-mono mt-0.5">{user.phone}</div>
@@ -1941,7 +2808,7 @@ export const AdminDashboard = () => {
                             {pendingUsers.some(p => p.id === user.id) ? (
                               <button
                                 onClick={() => {
-                                  if (window.confirm(`هل أنت متأكد من تفعيل حساب ${user.firstName}؟`)) handleApproveUser(user.id);
+                                  showConfirm(`هل أنت متأكد من تفعيل حساب ${user.firstName}؟`, () => handleApproveUser(user.id));
                                 }}
                                 className="px-3 py-1 bg-orange-100 text-orange-600 rounded-lg text-[9px] font-black hover:bg-orange-500 hover:text-white transition-all border border-orange-200"
                               >
@@ -1995,19 +2862,35 @@ export const AdminDashboard = () => {
                         {/* Actions */}
                         <td className="p-6">
                           <div className="flex items-center justify-center gap-2">
-                            <button aria-label="زر" title="زر"
+                            <button aria-label="تعديل المستخدم" title="تعديل المستخدم"
                               onClick={() => { setSelectedUser(user); setShowEditUserModal(true); }}
                               className="p-3 bg-white border border-slate-100 rounded-xl text-slate-400 hover:text-orange-500 hover:border-orange-200 shadow-sm transition-all"
                             >
                               <Edit className="w-4 h-4" />
                             </button>
-                            <button aria-label="زر" title="زر"
+                            <button aria-label="إرسال رسالة" title="إرسال رسالة"
                               onClick={() => { setSelectedUser(user); setShowMessageModal(true); }}
                               className="p-3 bg-white border border-slate-100 rounded-xl text-slate-400 hover:text-blue-500 hover:border-blue-200 shadow-sm transition-all"
                             >
                               <Mail className="w-4 h-4" />
                             </button>
-                            <button aria-label="زر" title="زر"
+                            <button aria-label="حذف المستخدم" title="حذف المستخدم"
+                              onClick={() => {
+                                showConfirm(`هل أنت متأكد من حذف حساب ${user.firstName} ${user.lastName} بشكل نهائي؟ لا يمكن التراجع عن هذا الإجراء وسيتم حذف كافة البيانات المرتبطة به.`, async () => {
+                                  try {
+                                    const res = await fetch(`/api/admin/users/${user.id}`, { method: 'DELETE' });
+                                    if (res.ok) {
+                                      setUsers(users.filter(u => u.id !== user.id));
+                                      showAlert('تم حذف المستخدم بنجاح', 'success');
+                                      // fetchStats();
+                                    } else {
+                                      showAlert('فشل في حذف المستخدم', 'error');
+                                    }
+                                  } catch (e) {
+                                    showAlert('حدث خطأ أثناء الاتصال بالخادم', 'error');
+                                  }
+                                });
+                              }}
                               className="p-3 bg-white border border-slate-100 rounded-xl text-slate-400 hover:text-red-500 hover:border-red-200 shadow-sm transition-all"
                             >
                               <Trash2 className="w-4 h-4" />
@@ -2089,14 +2972,14 @@ export const AdminDashboard = () => {
                       <td className="p-6">
                         <div className="flex justify-center gap-2">
                           <button
-                            onClick={async () => {
-                              if (window.confirm(`هل تؤكد استلام مبلغ $${tx.amount}؟ سيتم تفعيل القوة الشرائية فوراً.`)) {
+                            onClick={() => {
+                              showConfirm(`هل تؤكد استلام مبلغ $${tx.amount}؟ سيتم تفعيل القوة الشرائية فوراً.`, async () => {
                                 const res = await fetch(`/api/admin/approve-deposit/${tx.id}`, { method: 'POST' });
                                 if (res.ok) {
                                   setPendingDeposits(prev => prev.filter(p => p.id !== tx.id));
                                   showAlert('تم تأكيد الإيداع وتفعيل القوة الشرائية للمستخدم', 'success');
                                 }
-                              }
+                              });
                             }}
                             className="bg-slate-900 text-white px-6 py-2.5 rounded-xl font-black text-xs hover:bg-emerald-600 transition-all shadow-lg shadow-slate-900/10 active:scale-95"
                           >
@@ -2287,7 +3170,13 @@ export const AdminDashboard = () => {
           </div>
         );
 
-      case 'messages':
+      case 'messages': {
+        const combinedActivity = [
+          ...messages.map(m => ({ ...m, activityType: 'message', content: m.content || m.message, timestamp: m.timestamp })),
+          ...notifications.map(n => ({ ...n, activityType: 'notification', content: n.message, timestamp: n.timestamp })),
+          ...allSystemNotifications.map(n => ({ ...n, activityType: 'notification' }))
+        ].filter((v, i, a) => a.findIndex(t => (t.id === v.id)) === i).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
         return (
           <div className="space-y-6 animate-in fade-in duration-500">
             <div className="flex justify-between items-center mb-6">
@@ -2330,8 +3219,15 @@ export const AdminDashboard = () => {
                   { id: 'notification', label: 'التنبيهات', icon: Bell, color: 'text-purple-500' },
                   { id: 'bid', label: 'المزايدات', icon: Gavel, color: 'text-emerald-500' },
                   { id: 'win', label: 'عمليات الفوز', icon: Trophy, color: 'text-orange-500' },
+                  { id: 'registration', label: 'فريق التسجيل', icon: UserPlus, color: 'text-indigo-500' },
+                  { id: 'accounting', label: 'فريق المحاسبة', icon: Calculator, color: 'text-cyan-500' },
+                  { id: 'purchasing', label: 'فريق الشراء', icon: ShoppingCart, color: 'text-rose-500' },
+                  { id: 'transport', label: 'فريق النقل', icon: Truck, color: 'text-amber-600' },
+                  { id: 'clearance', label: 'فريق التخليص الجمركي', icon: ClipboardCheck, color: 'text-teal-500' },
+                  { id: 'shipping', label: 'فريق الشحن', icon: Ship, color: 'text-blue-600' },
+                  { id: 'complaints', label: 'فريق الشكاوي والجودة', icon: Shield, color: 'text-red-500' },
                 ].map(team => {
-                  const teamLogs = systemActivity.filter(l => team.id === 'all' || l.activityType === team.id || l.type === team.id);
+                  const teamLogs = combinedActivity.filter(l => team.id === 'all' || l.activityType === team.id || l.type === team.id || l.category === team.id);
                   const unreadCount = teamLogs.filter(l => !l.isRead).length;
 
                   return (
@@ -2377,7 +3273,7 @@ export const AdminDashboard = () => {
                 </div>
 
                 <div className="flex-grow overflow-y-auto">
-                  {systemActivity.filter(l => filter === 'all' || l.activityType === filter || l.type === filter).length === 0 ? (
+                  {combinedActivity.filter(l => filter === 'all' || l.activityType === filter || l.type === filter || l.category === filter).length === 0 ? (
                     <div className="h-full flex flex-col items-center justify-center p-12 text-center opacity-40">
                       <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mb-4">
                         <Zap className="w-10 h-10 text-slate-200" />
@@ -2386,13 +3282,25 @@ export const AdminDashboard = () => {
                     </div>
                   ) : (
                     <div className="divide-y divide-slate-50">
-                      {systemActivity
-                        .filter(l => filter === 'all' || l.activityType === filter || l.type === filter)
+                      {combinedActivity
+                        .filter(l => filter === 'all' || l.activityType === filter || l.type === filter || l.category === filter)
                         .map(log => (
                           <div
                             key={log.id}
-                            className={`p-6 hover:bg-slate-50 transition-all border-r-4 relative ${log.activityType === 'message' ? 'border-blue-500' : 'border-purple-500'}`}
+                            onClick={() => {
+                              if (!log.isRead) {
+                                if (log.activityType === 'message') {
+                                  markMessageAsRead(log.id);
+                                } else {
+                                  markNotificationAsRead(log.id);
+                                }
+                              }
+                            }}
+                            className={`p-6 hover:bg-slate-50 transition-all border-r-4 relative cursor-pointer ${log.activityType === 'message' ? 'border-blue-500' : 'border-purple-500'} ${!log.isRead ? 'bg-white' : 'bg-slate-50/30 grayscale-[20%]'}`}
                           >
+                            {!log.isRead && (
+                              <div className="absolute top-6 left-6 w-2 h-2 rounded-full bg-blue-500 animate-pulse"></div>
+                            )}
                             <div className="flex justify-between items-start mb-3">
                               <div className="flex items-center gap-3">
                                 <div className="w-12 h-12 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-600 font-black text-lg border-2 border-white shadow-sm overflow-hidden">
@@ -2406,7 +3314,7 @@ export const AdminDashboard = () => {
                                 </div>
                                 <div>
                                   <h4 className="font-black text-slate-900">
-                                    {log.activityType === 'message' ? `${log.senderFirstName} ${log.senderLastName}` : 'تنبيه النظام الذكي'}
+                                    {log.activityType === 'message' ? `${log.senderFirstName || 'مستخدم'} ${log.senderLastName || ''}` : 'تنبيه النظام الذكي'}
                                   </h4>
                                   <div className="flex items-center gap-2 mt-1">
                                     <span className={`text-[10px] px-2 py-0.5 rounded-md font-black ${log.activityType === 'message' ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'}`}>
@@ -2418,7 +3326,86 @@ export const AdminDashboard = () => {
                               </div>
                             </div>
                             <div className="bg-slate-50/50 rounded-2xl p-5 border border-slate-100/50">
-                              <p className="text-sm text-slate-600 leading-relaxed font-bold">{log.content || log.message}</p>
+                              <p className="text-sm text-slate-600 leading-relaxed font-bold whitespace-pre-wrap">{log.content || log.message}</p>
+
+                              {log.activityType === 'message' && (
+                                <div className="mt-4 pt-4 border-t border-slate-200/60">
+                                  {log.repliedAt ? (
+                                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
+                                      <div className="flex items-center gap-3">
+                                        <div className="bg-emerald-100 text-emerald-700 p-2 rounded-xl flex items-center justify-center shadow-sm">
+                                          <Reply className="w-4 h-4" />
+                                        </div>
+                                        <div>
+                                          <span className="text-sm font-black text-slate-800 block">تم الرد بواسطة: {log.repliedBy || 'عضو الفريق'}</span>
+                                        </div>
+                                      </div>
+
+                                      <div className="flex items-center gap-3">
+                                        {log.replyTimeMs && (
+                                          <div className="flex items-center gap-1.5 bg-blue-50 text-blue-700 px-3 py-1.5 rounded-xl border border-blue-100 shadow-sm" title="زمن الاستجابة">
+                                            <Clock className="w-4 h-4" />
+                                            <span className="text-xs font-black">
+                                              استغرق الرد: {log.replyTimeMs < 60000 ? 'أقل من دقيقة' : `${Math.round(log.replyTimeMs / 60000)} دقيقة`}
+                                            </span>
+                                          </div>
+                                        )}
+                                        <div className="flex items-center gap-1.5 bg-orange-50 text-orange-600 px-3 py-1.5 rounded-xl border border-orange-100 shadow-sm cursor-help" title="جودة الدعم مراقبة من قبل الإدارة">
+                                          <Eye className="w-4 h-4" />
+                                          <span className="text-[10px] font-black uppercase tracking-wider">مراقب من المدير</span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="mb-4 mt-2">
+                                      <button onClick={() => setReplyingTo(log.id)} className="flex items-center gap-2 text-blue-600 hover:text-blue-700 text-xs font-black bg-blue-50 hover:bg-blue-100 px-4 py-2 rounded-xl border border-blue-100 transition-colors shadow-sm">
+                                        <Reply className="w-4 h-4" />
+                                        الرد على الرسالة أو التوجيه
+                                      </button>
+                                    </div>
+                                  )}
+
+                                  {replyingTo === log.id && (
+                                    <div className="mt-4 p-5 bg-white border border-blue-100 rounded-2xl shadow-sm relative overflow-hidden">
+                                      <div className="absolute top-0 right-0 w-1 bg-blue-500 h-full"></div>
+                                      <div className="flex sm:flex-row flex-col gap-3 mb-4">
+                                        <div className="flex items-center gap-3">
+                                          <span className="text-xs font-bold text-slate-600 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-100">توجيه الرد إلى:</span>
+                                          <select title="توجيه الرد إلى" aria-label="توجيه الرد إلى" value={replyRole} onChange={(e: any) => setReplyRole(e.target.value)} className="text-xs p-2 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 font-bold text-slate-700 shadow-sm transition-all min-w-[200px]">
+                                            <option value="user">المستخدم / طالب الخدمة</option>
+                                            <option value="employee">الموظف المختص (داخلي)</option>
+                                            <option value="merchant">التاجر / البائع</option>
+                                            <option value="manager">الإدارة العليا للتصعيد</option>
+                                          </select>
+                                        </div>
+                                      </div>
+                                      <textarea
+                                        value={replyMessage}
+                                        onChange={e => setReplyMessage(e.target.value)}
+                                        className="w-full p-4 rounded-xl bg-slate-50 border border-slate-200 text-sm mb-4 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 min-h-[100px] transition-all"
+                                        placeholder="اكتب تفاصيل الرد أو ملاحظات التوجيه الداخلي هنا..."
+                                      />
+                                      <div className="flex gap-2 justify-end">
+                                        <button onClick={() => setReplyingTo(null)} className="px-5 py-2 text-xs font-black text-slate-500 hover:bg-slate-100 rounded-xl transition-colors">إلغاء</button>
+                                        <button onClick={() => {
+                                          sendMessage({
+                                            receiverId: replyRole === 'user' ? log.senderId : replyRole,
+                                            subject: 'رد على: ' + (log.subject || log.title || 'رسالة نظام'),
+                                            content: replyMessage,
+                                            category: log.category || 'general'
+                                          });
+                                          setReplyingTo(null);
+                                          setReplyMessage('');
+                                          showAlert('تم الإرسال والتوجيه بنجاح', 'success');
+                                        }} className="bg-blue-600 text-white px-6 py-2.5 text-xs font-black rounded-xl hover:bg-blue-700 shadow-lg shadow-blue-500/20 transition-all flex items-center gap-2">
+                                          <Send className="w-4 h-4" />
+                                          تأكيد وإرسال
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           </div>
                         ))}
@@ -2429,6 +3416,10 @@ export const AdminDashboard = () => {
             </div>
           </div>
         );
+      }
+
+      case 'manage_live_auctions':
+        return <ManageLiveAuctionsPanel currentUser={currentUser} />;
 
       case 'financials':
         return (
@@ -2483,45 +3474,66 @@ export const AdminDashboard = () => {
         );
 
       case 'logistics':
+        const delayedShipments = adminShipments.filter(s => s.status === 'customs' || s.status === 'shipping_requested');
+
         return (
           <div className="space-y-6 animate-in fade-in duration-500">
             <div className="flex justify-between items-center">
-              <h2 className="text-2xl font-bold text-slate-800">إدارة اللوجستيات والشحن 🚢</h2>
+              <div>
+                <h2 className="text-2xl font-bold text-slate-800">إدارة اللوجستيات والشحن 🚢</h2>
+                <p className="text-slate-500 text-sm mt-1">إدارة الشحنات، تحديث الحالات، ومراقبة التأخيرات.</p>
+              </div>
               <button aria-label="زر" title="زر"
                 onClick={() => fetch('/api/admin/shipments').then(r => r.json()).then(setAdminShipments)}
-                className="p-2 text-slate-500 hover:text-slate-800"
+                className="p-2 text-slate-500 hover:text-slate-800 bg-white rounded-xl shadow-sm border border-slate-100"
               >
                 <RefreshCw className="w-5 h-5" />
               </button>
             </div>
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+
+            {delayedShipments.length > 0 && (
+              <div className="bg-rose-50 border border-rose-200 p-5 rounded-2xl flex items-start gap-4">
+                <div className="p-2 bg-rose-500 text-white rounded-xl mt-1">
+                  <AlertTriangle className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="font-black text-rose-800 text-lg">تنبيه تأخير شحنات ({delayedShipments.length})</h3>
+                  <p className="text-sm font-bold text-rose-600 mt-1">
+                    توجد شحنات عالقة إما في التخليص الجمركي أو بانتظار الشحن. يرجى مراجعة البائع أو المخلص الجمركي.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-right">
-                  <thead className="bg-slate-50 text-slate-500 text-sm">
+                  <thead className="bg-slate-50 text-slate-500 text-sm border-b border-slate-100">
                     <tr>
-                      <th className="p-4 font-bold">السيارة / المشتري</th>
-                      <th className="p-4 font-bold">الحالة الحالية</th>
-                      <th className="p-4 font-bold">الموقع</th>
-                      <th className="p-4 font-bold">تحديث الحالة</th>
+                      <th className="p-6 font-black uppercase tracking-widest text-xs">السيارة / المشتري</th>
+                      <th className="p-6 font-black uppercase tracking-widest text-xs">الحالة الحالية</th>
+                      <th className="p-6 font-black uppercase tracking-widest text-xs">الموقع</th>
+                      <th className="p-6 font-black uppercase tracking-widest text-xs text-center">تحديث الحالة</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {adminShipments.map(ship => (
                       <tr key={ship.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="p-4">
-                          <div className="flex items-center gap-3">
-                            <img alt="صورة" src={ship.images?.[0]} className="w-12 h-12 rounded object-cover" />
+                        <td className="p-6">
+                          <div className="flex items-center gap-4">
+                            <img alt="صورة" src={ship.images?.[0]} className="w-14 h-14 rounded-xl object-cover border border-slate-200" />
                             <div>
-                              <div className="font-bold text-slate-900">{ship.make} {ship.model}</div>
-                              <div className="text-xs text-slate-500">{ship.firstName} {ship.lastName}</div>
+                              <div className="font-black text-slate-900">{ship.make} {ship.model}</div>
+                              <div className="text-xs font-bold text-slate-500 mt-1">{ship.firstName} {ship.lastName}</div>
                             </div>
                           </div>
                         </td>
-                        <td className="p-4">
-                          <span className={`px-3 py-1 rounded-full text-[10px] font-black ${ship.status === 'delivered' ? 'bg-green-100 text-green-700' :
+                        <td className="p-6">
+                          <span className={`px-4 py-1.5 rounded-full text-xs font-black flex items-center w-fit gap-1 ${ship.status === 'delivered' ? 'bg-green-100 text-green-700' :
                             ship.status === 'awaiting_payment' ? 'bg-yellow-100 text-yellow-700' :
-                              ship.status === 'shipping_requested' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'
+                              ship.status === 'customs' || ship.status === 'shipping_requested' ? 'bg-rose-100 text-rose-700' : 'bg-blue-100 text-blue-700'
                             }`}>
+                            {(ship.status === 'customs' || ship.status === 'shipping_requested') && <AlertTriangle className="w-3 h-3" />}
                             {(() => {
                               const labels: any = {
                                 'awaiting_payment': 'بانتظار الدفع',
@@ -2537,8 +3549,8 @@ export const AdminDashboard = () => {
                             })()}
                           </span>
                         </td>
-                        <td className="p-4 text-sm text-slate-600">{ship.currentLocation || 'قيد المعالجة'}</td>
-                        <td className="p-4">
+                        <td className="p-6 text-sm font-bold text-slate-600">{ship.currentLocation || 'قيد المعالجة'}</td>
+                        <td className="p-6 text-center">
                           <select
                             className="text-xs font-bold border rounded-lg p-2 outline-none focus:border-orange-500"
                             onChange={(e) => {
@@ -2677,7 +3689,7 @@ export const AdminDashboard = () => {
               </div>
             </div>
 
-            <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden">
+            <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden mb-8">
               <div className="p-6 border-b border-slate-100 flex justify-between items-center text-right">
                 <h3 className="font-black text-slate-800">سجل المعاملات المالية الموثق</h3>
                 <button onClick={() => fetch('/api/admin/all-transactions').then(res => res.json()).then(setAllTransactions)} className="text-blue-500 text-xs font-black">تحديث البيانات ↺</button>
@@ -2694,7 +3706,7 @@ export const AdminDashboard = () => {
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {allTransactions.length > 0 ? allTransactions.map(tx => (
-                    <tr key={tx.id} className="text-sm">
+                    <tr key={tx.id} className="text-sm hover:bg-slate-50 transition-colors">
                       <td className="p-4 font-bold text-slate-800">{tx.firstName} {tx.lastName || `#${tx.userId}`}</td>
                       <td className="p-4 font-bold text-slate-500">
                         {tx.type === 'deposit' ? 'إيداع عربون' : tx.type === 'commission' ? 'عمولة شراء' : 'دفع فاتورة'}
@@ -2712,6 +3724,105 @@ export const AdminDashboard = () => {
                   )}
                 </tbody>
               </table>
+            </div>
+
+            {/* Invoices Table */}
+            <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden">
+              <div className="p-6 border-b border-slate-100 flex justify-between items-center text-right">
+                <h3 className="font-black text-slate-800 flex items-center gap-2">
+                  <FileText className="w-5 h-5 text-blue-500" />
+                  الفواتير والمطالبات المالية
+                </h3>
+                <button onClick={() => fetch('/api/admin/all-invoices').then(res => res.json()).then(setAllInvoices)} className="text-blue-500 text-xs font-black">تحديث البيانات ↺</button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-right">
+                  <thead className="bg-slate-50 text-slate-400 text-[10px] font-black uppercase">
+                    <tr>
+                      <th className="p-4">الفاتورة / المشتري</th>
+                      <th className="p-4">السيارة</th>
+                      <th className="p-4">التاريخ والعمر</th>
+                      <th className="p-4">المبلغ</th>
+                      <th className="p-4">الحالة والمقروئية</th>
+                      <th className="p-4">إجراءات إدارية</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {allInvoices.length > 0 ? allInvoices.map(inv => (
+                      <tr key={inv.id} className="text-sm hover:bg-slate-50 transition-colors">
+                        <td className="p-4">
+                          <div className="font-bold text-slate-900 border-b border-slate-100 block pb-1 mb-1">
+                            INV-{inv.id.substring(0, 8)}...
+                            <span className="text-[9px] text-slate-400 font-bold mr-2 uppercase tracking-tight">({inv.type})</span>
+                          </div>
+                          <div className="text-xs text-slate-500">{inv.firstName} {inv.lastName}</div>
+                        </td>
+                        <td className="p-4 font-bold text-slate-600">
+                          {inv.make} {inv.model}
+                        </td>
+                        <td className="p-4">
+                          <div className="text-sm font-bold text-slate-800">{new Date(inv.timestamp).toLocaleDateString('ar-EG')}</div>
+                          {Math.floor((Date.now() - new Date(inv.timestamp).getTime()) / 86400000) > 0 && inv.status === 'unpaid' && (
+                            <div className="text-[10px] font-black mt-1 bg-rose-50 text-rose-600 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
+                               <AlertCircle className="w-3 h-3" /> تأخير {Math.floor((Date.now() - new Date(inv.timestamp).getTime()) / 86400000)} يوماً
+                            </div>
+                          )}
+                          {Math.floor((Date.now() - new Date(inv.timestamp).getTime()) / 86400000) === 0 && inv.status === 'unpaid' && (
+                            <div className="text-[10px] font-bold mt-1 text-slate-400">البيع اليوم</div>
+                          )}
+                        </td>
+                        <td className="p-4 font-black font-mono text-slate-900">
+                          ${(inv.amount || 0).toLocaleString()}
+                        </td>
+                        <td className="p-4">
+                          <div className="flex flex-col gap-1 items-start">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-black ${inv.status === 'paid' ? 'bg-green-50 text-green-600' : inv.status === 'pending' ? 'bg-slate-100 text-slate-500' : 'bg-orange-50 text-orange-600'}`}>
+                              {inv.status === 'paid' ? 'مدفوعة' : inv.status === 'pending' ? 'معلقة' : 'بانتظار التحصيل'}
+                            </span>
+                            {inv.isViewed === 1 && inv.status !== 'paid' && (
+                              <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-blue-50 text-blue-500 flex items-center gap-1">
+                                <Eye className="w-3 h-3" />
+                                تمت المشاهدة
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="p-4">
+                          {inv.status === 'unpaid' && (
+                            <button
+                              onClick={() => {
+                                showConfirm(`تأكيد استلام تحويل بقيمة $${inv.amount.toLocaleString()} واعتماد الفاتورة؟`, async () => {
+                                  try {
+                                    const res = await fetch(`/api/invoices/${inv.id}/pay`, { method: 'POST' });
+                                    if (res.ok) {
+                                      showAlert('تم اعتماد الدفع بنجاح وتسوية حساب البائع ✅', 'success');
+                                      fetch('/api/admin/all-invoices').then(r => r.json()).then(setAllInvoices);
+                                      fetch('/api/admin/shipments').then(r => r.json()).then(setAdminShipments);
+                                    } else {
+                                      showAlert('حدث خطأ في ترصيد الدفعة', 'error');
+                                    }
+                                  } catch (error) {
+                                    showAlert('التصال بالخادم فشل', 'error');
+                                  }
+                                });
+                              }}
+                              className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-black transition-all shadow-md flex items-center gap-2"
+                            >
+                              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                              تأكيد سداد وتحصيل
+                            </button>
+                          )}
+                          {inv.status === 'paid' && (
+                            <div className="text-xs font-bold text-slate-400">لا يوجد إجراء</div>
+                          )}
+                        </td>
+                      </tr>
+                    )) : (
+                      <tr><td colSpan={6} className="p-10 text-center text-slate-400 font-bold">لا توجد فواتير مسجلة</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         );
@@ -2849,8 +3960,8 @@ export const AdminDashboard = () => {
                         <td className="p-4">
                           <div className="flex gap-2">
                             <button
-                              onClick={async () => {
-                                if (window.confirm('هل أنت متأكد من قبول هذا العرض؟')) {
+                              onClick={() => {
+                                showConfirm('هل أنت متأكد من قبول هذا العرض؟', async () => {
                                   const res = await fetch(`/api/offers/${car.id}/accept`, {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
@@ -2863,15 +3974,15 @@ export const AdminDashboard = () => {
                                     const err = await res.json();
                                     showAlert(err.error || 'فشل قبول العرض');
                                   }
-                                }
+                                });
                               }}
                               className="px-3 py-1.5 bg-green-500 text-white rounded-lg text-xs font-bold hover:bg-green-600 transition-colors"
                             >
                               قبول العرض
                             </button>
                             <button
-                              onClick={async () => {
-                                if (window.confirm('هل أنت متأكد من رفض العرض؟ سيتم حذف العرض الحالي.')) {
+                              onClick={() => {
+                                showConfirm('هل أنت متأكد من رفض العرض؟ سيتم حذف العرض الحالي.', async () => {
                                   const res = await fetch(`/api/offers/${car.id}/reject`, {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
@@ -2884,15 +3995,15 @@ export const AdminDashboard = () => {
                                       .then(res => res.json())
                                       .then(setOfferMarketCars);
                                   }
-                                }
+                                });
                               }}
                               className="px-3 py-1.5 bg-red-50 text-red-600 rounded-lg text-xs font-bold hover:bg-red-100 transition-colors"
                             >
                               رفض
                             </button>
                             <button
-                              onClick={async () => {
-                                if (window.confirm('هل تريد إعادة إدراج السيارة للمزاد القادم؟')) {
+                              onClick={() => {
+                                showConfirm('هل تريد إعادة إدراج السيارة للمزاد القادم؟', async () => {
                                   const res = await fetch(`/api/cars/${car.id}/re-list`, {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
@@ -2902,7 +4013,7 @@ export const AdminDashboard = () => {
                                     showAlert('تم إعادة إدراج السيارة بنجاح', 'success');
                                     setOfferMarketCars(prev => prev.filter(c => c.id !== car.id));
                                   }
-                                }
+                                });
                               }}
                               className="px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs font-bold hover:bg-blue-100 transition-colors"
                             >
@@ -2961,6 +4072,8 @@ export const AdminDashboard = () => {
             </div>
           </div>
         );
+
+
 
       case 'system_global':
         return <SystemSettingsPanel />;
@@ -3149,13 +4262,15 @@ export const AdminDashboard = () => {
           <div className="space-y-6 animate-in fade-in duration-500">
             <div className="flex justify-between items-center">
               <h2 className="text-2xl font-bold text-slate-800">إدارة السيارات</h2>
-              <button
-                onClick={() => setShowAddCarModal(true)}
-                className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-orange-500/20"
-              >
-                <Plus className="w-5 h-5" />
-                إضافة سيارة يدوياً
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowAddCarModal(true)}
+                  className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-orange-500/20"
+                >
+                  <Plus className="w-5 h-5" />
+                  إضافة سيارة يدوياً
+                </button>
+              </div>
             </div>
 
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -3218,77 +4333,7 @@ export const AdminDashboard = () => {
           </div>
         );
 
-      case 'auctions':
-        return (
-          <div className="space-y-6 animate-in fade-in duration-500">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold text-slate-800">إدارة المزايدات وجلب البيانات</h2>
-            </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Scraper Control */}
-              <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
-                <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
-                  <RefreshCw className="w-5 h-5 text-orange-500" />
-                  نظام سحب البيانات (Scraper)
-                </h3>
-                <div className="space-y-4">
-                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                    <div className="flex justify-between items-center mb-2">
-                      <span className="font-bold text-slate-700">Copart API</span>
-                      <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded font-bold border border-green-200">Connected</span>
-                    </div>
-                    {isScraping ? (
-                      <div className="space-y-2">
-                        <div className="flex justify-between text-xs text-orange-600 font-bold">
-                          <span>جاري المزامنة...</span>
-                          <span>{scrapeProgress}%</span>
-                        </div>
-                        <div className="w-full bg-slate-200 rounded-full h-2">
-                          <div className="bg-orange-500 h-2 rounded-full transition-all duration-200" ref={(el) => { if (el) el.style.width = `${scrapeProgress}%`; }}></div>
-                        </div>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={startScraper}
-                        className="w-full bg-slate-900 hover:bg-slate-800 text-white py-2 rounded-lg text-sm font-bold transition-colors mt-2 shadow-lg shadow-slate-900/10"
-                      >
-                        بدء المزامنة اليدوية
-                      </button>
-                    )}
-                  </div>
-                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                    <div className="flex justify-between items-center mb-2">
-                      <span className="font-bold text-slate-700">IAAI Integration</span>
-                      <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded font-bold border border-yellow-200">Captcha Required</span>
-                    </div>
-                    <button className="w-full bg-white hover:bg-slate-50 text-slate-600 border border-slate-300 py-2 rounded-lg text-sm font-bold transition-colors mt-2">
-                      إدارة الاتصال
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Auction Settings */}
-              <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
-                <h3 className="text-lg font-bold text-slate-800 mb-4">إعدادات المزاد</h3>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl">
-                    <span className="text-slate-700 font-medium">وقت المزايدة الإضافي (ثواني)</span>
-                    <input type="number" defaultValue={15} className="w-20 p-2 border border-slate-300 rounded-lg text-center" />
-                  </div>
-                  <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl">
-                    <span className="text-slate-700 font-medium">الحد الأدنى للزيادة ($)</span>
-                    <input type="number" defaultValue={100} className="w-20 p-2 border border-slate-300 rounded-lg text-center" />
-                  </div>
-                  <button className="w-full bg-orange-500 text-white py-3 rounded-xl font-bold hover:bg-orange-600 transition-colors">
-                    حفظ الإعدادات
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        );
 
       case 'inspections':
         return (
@@ -3358,7 +4403,14 @@ export const AdminDashboard = () => {
                         <td className="p-6 font-black text-slate-400 line-through decoration-red-500/50">${(car.reservePrice || 0).toLocaleString()}</td>
                         <td className="p-6">
                           <div className="font-black text-xl text-emerald-600">${(car.currentBid || 0).toLocaleString()}</div>
-                          <div className="text-[10px] text-emerald-500 font-bold">بانتظار قرار الإدارة</div>
+                          <div className={`text-[10px] font-bold ${car.status === 'pending_approval' ? 'text-amber-500' : 'text-emerald-500'}`}>
+                            {car.status === 'pending_approval' ? 'بانتظار موافقة البائع' : 'بانتظار قرار الإدارة'}
+                          </div>
+                          {car.sellerCounterPrice && (
+                            <div className="text-[10px] mt-1 text-orange-600 font-bold bg-orange-50 px-2 py-1 rounded inline-block">
+                              عرض البائع: ${car.sellerCounterPrice.toLocaleString()}
+                            </div>
+                          )}
                         </td>
                         <td className="p-6 text-sm text-amber-600 font-bold">
                           {car.offerMarketEndTime ? new Date(car.offerMarketEndTime).toLocaleString('ar-LY') : 'تنتهي قريباً'}
@@ -3366,28 +4418,28 @@ export const AdminDashboard = () => {
                         <td className="p-6">
                           <div className="flex justify-center gap-2">
                             <button
-                              onClick={async () => {
-                                if (window.confirm('هل تريد قبول أعلى عرض وإتمام البيع؟')) {
+                              onClick={() => {
+                                showConfirm('هل تريد قبول أعلى عرض وإتمام البيع؟', async () => {
                                   const res = await fetch(`/api/offers/${car.id}/accept`, { method: 'POST' });
                                   if (res.ok) {
                                     showAlert('تم قبول العرض والبيع بنجاح!', 'success');
                                     setOfferMarketCars(prev => prev.filter(c => c.id !== car.id));
                                   }
-                                }
+                                });
                               }}
                               className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-black hover:bg-slate-800 transition-all"
                             >
                               قبول البيع
                             </button>
                             <button
-                              onClick={async () => {
-                                if (window.confirm('هل تريد رفض العروض وإعادة السيارة للمزاد؟')) {
+                              onClick={() => {
+                                showConfirm('هل تريد رفض العروض وإعادة السيارة للمزاد؟', async () => {
                                   const res = await fetch(`/api/offers/${car.id}/reject`, { method: 'POST' });
                                   if (res.ok) {
                                     showAlert('تم رفض العروض وإعادة السيارة للجدولة', 'info');
                                     setOfferMarketCars(prev => prev.filter(c => c.id !== car.id));
                                   }
-                                }
+                                });
                               }}
                               className="px-4 py-2 bg-rose-50 text-rose-600 border border-rose-100 rounded-xl text-xs font-black hover:bg-rose-100 transition-all"
                             >
@@ -3414,24 +4466,215 @@ export const AdminDashboard = () => {
         );
 
       case 'reports':
+        // Live data driven from reportsAnalytics state
+        const activeBiddersCount = reportsAnalytics?.totalBids || 0;
+        const liveUsersCount = reportsAnalytics?.activeUsers || 0;
+
         return (
           <div className="space-y-6 animate-in fade-in duration-500 text-right" dir="rtl">
-            <h2 className="text-2xl font-black text-slate-800">التقارير التحليلية والذكاء التسويقي 📈</h2>
+            <div className="flex justify-between items-center bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+              <div>
+                <h2 className="text-2xl font-black text-slate-800">التقارير التحليلية والذكاء التسويقي 📈</h2>
+                <p className="text-slate-500 text-sm mt-1">نظرة شاملة لأداء المنصة ومؤشرات السوق</p>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowOpenSooqModal(true)}
+                  className="bg-indigo-50 text-indigo-600 hover:bg-indigo-100 px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 border border-indigo-100 transition-all shadow-sm"
+                >
+                  <Download className="w-5 h-5" />
+                  استيراد تقارير السوق المفتوح
+                </button>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {[
-                { title: 'تحليل المبيعات الجغرافي', icon: Globe, val: '$450k', color: 'blue' },
-                { title: 'كفاءة سحب البيانات', icon: RefreshCw, val: '99.2%', color: 'emerald' },
-                { title: 'معدل نمو المستخدمين', icon: TrendingUp, val: '+12%', color: 'orange' },
-              ].map((report, i) => (
-                <div key={i} className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm group hover:border-orange-500 transition-all">
-                  <div className={`w-12 h-12 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center mb-6`}>
-                    <report.icon className="w-6 h-6" />
+              {/* Geographical Sales Analysis */}
+              <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm group hover:border-blue-500 transition-all">
+                <div className="flex justify-between items-start mb-6">
+                  <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center">
+                    <Globe className="w-6 h-6" />
                   </div>
-                  <h3 className="text-lg font-black text-slate-800 mb-1">{report.title}</h3>
-                  <div className="text-3xl font-black text-slate-900 mb-4">{report.val}</div>
-                  <button className="w-full py-3 bg-slate-50 text-slate-600 rounded-xl font-black text-xs hover:bg-slate-900 hover:text-white transition-all">تحميل Report PDF</button>
                 </div>
-              ))}
+                <h3 className="text-lg font-black text-slate-800 mb-1">تحليل الدفع والمبيعات</h3>
+                <div className="text-4xl font-black text-slate-900 mb-6 font-mono">${(reportsAnalytics?.salesVol || 0).toLocaleString()}</div>
+                <button onClick={() => setShowReportModal({ type: 'geo', title: 'تقرير الدفع والمبيعات', data: reportsAnalytics.geoSalesRaw })} className="w-full py-3.5 bg-slate-50 text-slate-600 rounded-2xl font-black text-xs hover:bg-blue-600 hover:text-white transition-all shadow-inner">
+                  عرض التقرير المفصل
+                </button>
+              </div>
+
+              {/* Data Extraction Efficiency */}
+              <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm group hover:border-emerald-500 transition-all">
+                <div className="flex justify-between items-start mb-6">
+                  <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center">
+                    <RefreshCw className="w-6 h-6" />
+                  </div>
+                </div>
+                <h3 className="text-lg font-black text-slate-800 mb-1">كفاءة محرك المزامنة</h3>
+                <div className="text-4xl font-black text-slate-900 mb-6 font-mono">{reportsAnalytics?.dbHitRate || 99}%</div>
+                <button onClick={() => setShowReportModal({ type: 'sync', title: 'تقرير المحرك المزامنة', data: reportsAnalytics.dbHitRate })} className="w-full py-3.5 bg-slate-50 text-slate-600 rounded-2xl font-black text-xs hover:bg-emerald-600 hover:text-white transition-all shadow-inner">
+                  عرض التقرير المفصل
+                </button>
+              </div>
+
+              {/* User Growth Rate */}
+              <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm group hover:border-orange-500 transition-all">
+                <div className="flex justify-between items-start mb-6">
+                  <div className="w-12 h-12 bg-blue-50 text-blue-500 text-blue-600 rounded-2xl flex items-center justify-center">
+                    <TrendingUp className="w-6 h-6" />
+                  </div>
+                </div>
+                <h3 className="text-lg font-black text-slate-800 mb-1">عدد الأعضاء النشطين</h3>
+                <div className="text-4xl font-black text-slate-900 mb-6 font-mono">{liveUsersCount}</div>
+                <button onClick={() => setShowReportModal({ type: 'users', title: 'تقرير الأعضاء', data: liveUsersCount })} className="w-full py-3.5 bg-slate-50 text-slate-600 rounded-2xl font-black text-xs hover:bg-orange-600 hover:text-white transition-all shadow-inner">
+                  عرض التقرير المفصل
+                </button>
+              </div>
+            </div>
+
+            {/* Additional Stats Section */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+              <div className="bg-gradient-to-br from-slate-900 to-slate-800 p-8 rounded-[2.5rem] shadow-xl text-white relative overflow-hidden group">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl -mr-20 -mt-20 group-hover:bg-emerald-500/20 transition-all duration-700"></div>
+                <div className="relative z-10 flex items-center justify-between">
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-3 h-3 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(16,185,129,0.8)]"></div>
+                      <h3 className="text-slate-300 font-bold">مستخدم متواجد لايف</h3>
+                    </div>
+                    <div className="text-5xl font-black text-white font-mono mt-2">{liveUsersCount}</div>
+                    <p className="text-xs text-emerald-400 mt-3 font-bold bg-emerald-500/10 inline-block px-3 py-1 rounded-full">+15% عن الأسبوع الماضي</p>
+                  </div>
+                  <div className="w-20 h-20 bg-white/5 backdrop-blur-sm rounded-3xl border border-white/10 flex items-center justify-center rotate-12 group-hover:rotate-0 transition-transform duration-500">
+                    <Users className="w-10 h-10 text-emerald-400" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-gradient-to-br from-indigo-900 to-indigo-800 p-8 rounded-[2.5rem] shadow-xl text-white relative overflow-hidden group">
+                <div className="absolute top-0 left-0 w-64 h-64 bg-orange-500/10 rounded-full blur-3xl -ml-20 -mt-20 group-hover:bg-orange-500/20 transition-all duration-700"></div>
+                <div className="relative z-10 flex items-center justify-between">
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-3 h-3 bg-orange-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(249,115,22,0.8)]"></div>
+                      <h3 className="text-indigo-200 font-bold">مزايد يزايد على سيارات</h3>
+                    </div>
+                    <div className="text-5xl font-black text-white font-mono mt-2">{activeBiddersCount}</div>
+                    <p className="text-xs text-orange-400 mt-3 font-bold bg-orange-500/10 inline-block px-3 py-1 rounded-full">+24% نشاط المزايدة</p>
+                  </div>
+                  <div className="w-20 h-20 bg-white/5 backdrop-blur-sm rounded-3xl border border-white/10 flex items-center justify-center -rotate-12 group-hover:rotate-0 transition-transform duration-500">
+                    <Gavel className="w-10 h-10 text-orange-400" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm mt-8 overflow-hidden">
+              <div className="p-6 border-b border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-slate-50">
+                <div className="flex flex-col md:flex-row items-start md:items-center gap-4 w-full md:w-auto">
+                  <h3 className="text-lg font-black text-slate-800 flex items-center gap-3">
+                    <Car className="w-6 h-6 text-indigo-500" />
+                    تقارير أسواق السيارات (ليبيا المتوقع)
+                  </h3>
+                  <div className="flex flex-row-reverse items-center gap-2 bg-slate-100 p-1.5 rounded-xl border border-slate-200 shadow-inner">
+                    <span className="text-xs font-bold text-slate-600 px-2 flex items-center gap-1">
+                      <DollarSign className="w-3 h-3 text-emerald-600" />
+                      سعر الصرف (د.ل):
+                    </span>
+                    <input 
+                      type="number" 
+                      step="0.01"
+                      className="w-20 text-center font-mono font-black text-indigo-700 bg-white border border-slate-300 rounded-lg p-1.5 outline-none focus:border-indigo-500 shadow-sm"
+                      value={exchangeRate || 7.00}
+                      onChange={async (e) => {
+                        const val = Number(e.target.value);
+                        await updateExchangeRate(val);
+                      }}
+                    />
+                  </div>
+                  <div className="relative w-full md:w-64">
+                    <input aria-label="مدخل" title="مدخل"
+                      type="text"
+                      placeholder="بحث بالماركة، الموديل، السنة..."
+                      value={estimateSearch}
+                      onChange={(e) => setEstimateSearch(e.target.value)}
+                      className="pr-10 pl-4 py-2 border border-slate-200 rounded-xl text-sm focus:border-indigo-500 outline-none w-full bg-white shadow-sm"
+                    />
+                    <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 w-full md:w-auto">
+                  <span className="text-xs font-bold text-slate-500 bg-white px-3 py-1.5 rounded-full border border-slate-100 shadow-sm hidden md:flex">تحديث: اليوم</span>
+                  <button onClick={() => {
+                    setLibyanModalForm({ id: '', condition: 'جديد', make: '', model: '', year: 2024, transmission: 'اوتوماتيك', fuel: 'بنزين', mileage: '0', priceLYD: '' });
+                    setShowLibyanModal(true);
+                  }} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-colors w-full md:w-auto shadow-md">
+                    <Plus className="w-4 h-4" />
+                    إضافة تسعيرة جديدة
+                  </button>
+                </div>
+              </div>
+              <div className="p-0 overflow-x-auto">
+                <table className="w-full text-sm text-right">
+                  <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+                    <tr>
+                      <th className="px-6 py-4">الماركة والموديل</th>
+                      <th className="px-6 py-4">السنة</th>
+                      <th className="px-6 py-4 flex justify-center">الحالة</th>
+                      <th className="px-6 py-4">الوقود وناقل الحركة</th>
+                      <th className="px-6 py-4 text-center">الممشى</th>
+                      <th className="px-6 py-4">متوسط السعر</th>
+                      <th className="px-6 py-4 text-left">إجراءات</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {libyanMarketPrices.filter(e =>
+                      !estimateSearch ||
+                      e.make?.toLowerCase().includes(estimateSearch.toLowerCase()) ||
+                      e.model?.toLowerCase().includes(estimateSearch.toLowerCase()) ||
+                      e.year?.toString().includes(estimateSearch)
+                    ).slice(0, 50).map((car: any, idx) => (
+                      <tr key={car.id || idx} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-6 py-4">
+                          <div className="font-black text-slate-800 text-base">{car.make} {car.model}</div>
+                        </td>
+                        <td className="px-6 py-4 font-bold text-slate-700">{car.year}</td>
+                        <td className="px-6 py-4 text-center">
+                          <span className={`text-xs px-3 py-1 font-bold rounded-full border ${car.condition === 'جديد' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-blue-50 text-blue-600 border-blue-100'}`}>
+                            {car.condition}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="text-slate-700 font-medium">{car.fuel}</div>
+                          <div className="text-xs text-slate-400">{car.transmission}</div>
+                        </td>
+                        <td className="px-6 py-4 text-slate-500 font-mono text-center" dir="ltr">{car.mileage}</td>
+                        <td className="px-6 py-4 font-mono font-black text-indigo-600 text-lg" dir="ltr">
+                          {Number(car.priceLYD).toLocaleString()} د.ل
+                        </td>
+                        <td className="px-6 py-4 text-left space-x-2 space-x-reverse whitespace-nowrap">
+                          <button onClick={() => {
+                            showConfirm('هل أنت متأكد من حذف هذا السعر؟', async () => {
+                              try {
+                                const res = await fetch(`/api/libyan-market/${car.id}`, { method: 'DELETE' });
+                                if (res.ok) {
+                                  showAlert('تم الحذف بنجاح', 'success');
+                                  setLibyanMarketPrices(prev => prev.filter(c => c.id !== car.id));
+                                }
+                              } catch(e) { showAlert('حدث خطأ أثناء الحذف', 'error'); }
+                            });
+                          }} title="حذف التسعيرة" aria-label="حذف التسعيرة" className="p-2 text-rose-500 hover:bg-rose-50 border border-transparent hover:border-rose-100 rounded-lg transition-all inline-block">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {libyanMarketPrices.length === 0 && (
+                      <tr><td colSpan={7} className="px-6 py-12 text-center text-slate-400">لا توجد تسعيرات متوفرة</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         );
@@ -3621,6 +4864,150 @@ export const AdminDashboard = () => {
           </div>
         );
 
+      case 'document_cycle':
+        return (
+          <div className="p-6 md:p-8 animate-in fade-in duration-300 relative min-h-[600px]" dir="rtl">
+            <div className="flex justify-between items-center mb-8">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 bg-indigo-500 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-500/20">
+                  <FileText className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-black text-slate-800">إدارة دورة مستندات السيارات المُباعة</h2>
+                  <p className="text-slate-500 text-sm mt-1">
+                    تابع حالة الدفع، إصدار كروت الإفراج، واستلام السيارات.
+                    <span className="font-bold text-indigo-600 mr-2">
+                      ({adminInvoices.filter(i => i.status !== 'seller_paid_by_admin').length} إجراءات معلقة)
+                    </span>
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => fetch('/api/admin/invoices').then(r => r.json()).then(d => setAdminInvoices(Array.isArray(d) ? d : []))}
+                className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-xl font-bold text-sm flex items-center gap-2 transition-colors"
+              >
+                <RefreshCw className="w-4 h-4" /> تحديث بيانات المستندات
+              </button>
+            </div>
+
+            {adminInvoices.length === 0 ? (
+              <div className="bg-white rounded-[2rem] border border-slate-100 p-12 text-center shadow-sm">
+                <FileText className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+                <h3 className="text-xl font-bold text-slate-800">لا توجد فواتير أو مستندات حالياً</h3>
+              </div>
+            ) : (
+              <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+                <table className="w-full text-right text-sm">
+                  <thead className="bg-slate-50 text-slate-500 border-b border-slate-100">
+                    <tr>
+                      <th className="p-4 font-black">السيارة والفاتورة</th>
+                      <th className="p-4 font-black">المشتري (Buyer)</th>
+                      <th className="p-4 font-black">المبلغ وتاريخ البيع</th>
+                      <th className="p-4 font-black text-center">حالة المستند</th>
+                      <th className="p-4 w-56 font-black text-center">الإجراء القادم المتاح للإدارة</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {adminInvoices.map((inv: any) => (
+                      <tr key={inv.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="p-4 align-top">
+                          <div className="font-black text-slate-800 mb-1">{inv.year} {inv.make} {inv.model}</div>
+                          <div className="text-xs text-slate-500 font-mono mb-2">Lot: {inv.lotNumber} | VIN: {inv.vin}</div>
+                          <div className="text-xs inline-flex items-center gap-1 bg-slate-100 px-2 py-1 rounded text-slate-600 font-bold border border-slate-200">
+                            <span className="text-indigo-600">ID:</span> {inv.id}
+                          </div>
+                        </td>
+
+                        <td className="p-4 align-top">
+                          <div className="font-bold text-slate-700">{inv.buyerFirstName} {inv.buyerLastName}</div>
+                          <div className="text-xs text-slate-500 mt-1">{inv.buyerPhone || 'لا يوجد رقم'}</div>
+                        </td>
+
+                        <td className="p-4 align-top left-to-right-num">
+                          <div className="font-black text-lg text-emerald-600">${Number(inv.amount || 0).toLocaleString()}</div>
+                          <div className="text-xs text-slate-400 mt-1" dir="ltr">{new Date(inv.timestamp).toLocaleDateString('ar-EG')}</div>
+                        </td>
+
+                        <td className="p-4 align-top text-center">
+                          <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border
+                            ${inv.status === 'unpaid' ? 'bg-rose-50 text-rose-700 border-rose-100' :
+                              inv.status === 'pending' ? 'bg-amber-50 text-amber-700 border-amber-100' :
+                                inv.status === 'paid' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
+                                  inv.status === 'release_issued' ? 'bg-blue-50 text-blue-700 border-blue-100' :
+                                    inv.status === 'delivered_to_buyer' ? 'bg-purple-50 text-purple-700 border-purple-100' :
+                                      'bg-green-50 text-green-700 border-green-100'}
+                          `}>
+                            {INVOICE_STATUS_LABELS[inv.status] || inv.status}
+                          </span>
+                        </td>
+
+                        <td className="p-4 align-top text-center space-y-2 relative">
+                          {inv.status === 'unpaid' && (
+                            <button
+                              onClick={() => setShowInvoiceConfirmModal({ isOpen: true, invoice: inv, nextStatus: 'paid' })}
+                              className="w-full bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white border border-emerald-200 py-2 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-2"
+                            >
+                              <CheckCircle2 className="w-4 h-4" /> تأكيد دفع المشتري
+                            </button>
+                          )}
+
+                          {inv.status === 'paid' && (
+                            <div className="space-y-2 border border-blue-100 rounded-xl p-2 bg-blue-50/30">
+                              <label className="text-[10px] font-bold text-blue-800 text-center block">رابط كرت الإفراج (Release Card URL)</label>
+                              <input
+                                type="url"
+                                placeholder="https://..."
+                                className="w-full text-xs border border-blue-200 rounded p-1.5 focus:border-blue-500 outline-none text-left"
+                                dir="ltr"
+                                value={inv._newUrl || inv.releaseCardUrl || ''}
+                                onChange={e => {
+                                  // Update the local state for this specific invoice so the user can type the URL before conforming
+                                  setAdminInvoices(prev => prev.map(i => i.id === inv.id ? { ...i, _newUrl: e.target.value } : i))
+                                }}
+                              />
+                              <button
+                                disabled={!(inv._newUrl || inv.releaseCardUrl)}
+                                onClick={() => setShowInvoiceConfirmModal({ isOpen: true, invoice: inv, nextStatus: 'release_issued' })}
+                                className="w-full bg-blue-500 text-white hover:bg-blue-600 py-2 rounded-lg text-xs font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-sm"
+                              >
+                                <UploadCloud className="w-4 h-4" /> إصدار الإفراج
+                              </button>
+                            </div>
+                          )}
+
+                          {inv.status === 'release_issued' && (
+                            <button
+                              onClick={() => setShowInvoiceConfirmModal({ isOpen: true, invoice: inv, nextStatus: 'delivered_to_buyer' })}
+                              className="w-full bg-purple-100 text-purple-700 border border-purple-200 hover:bg-purple-600 hover:text-white py-2 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-2"
+                            >
+                              <Car className="w-4 h-4" /> تأكيد استلام السيارة
+                            </button>
+                          )}
+
+                          {inv.status === 'delivered_to_buyer' && (
+                            <button
+                              onClick={() => setShowInvoiceConfirmModal({ isOpen: true, invoice: inv, nextStatus: 'seller_paid_by_admin' })}
+                              className="w-full bg-orange-100 text-orange-700 border border-orange-200 hover:bg-orange-600 hover:text-white py-2 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-2"
+                            >
+                              <DollarSign className="w-4 h-4" /> تحويل الأرباح للبائع
+                            </button>
+                          )}
+
+                          {inv.status === 'seller_paid_by_admin' && (
+                            <div className="w-full text-center text-xs font-bold text-green-600 bg-green-50 py-2 rounded-xl border border-green-100">
+                              الدورة مكتملة ✔️
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        );
+
       default:
         return null;
     }
@@ -3635,58 +5022,129 @@ export const AdminDashboard = () => {
             <Car className="w-7 h-7" />
           </div>
           <div>
-            <h1 className="text-xl font-black tracking-tight leading-none text-white">ليبيا أوتو برو</h1>
+            <h1 className="text-xl font-black tracking-tight leading-none text-white">ليبيا AUTO PRO</h1>
             <span className="text-[10px] font-black text-orange-500 uppercase tracking-widest">إدارة المنصة (Admin)</span>
           </div>
         </div>
 
-        <nav className="flex-grow space-y-1.5 px-1">
+        <nav className="flex-grow space-y-1.5 px-1 pr-2">
           {[
-            { id: 'overview', label: 'الرئيسية (الإحصائيات)', icon: Store },
-            { id: 'financial_approvals', label: 'تأمينات المزايدة', icon: Wallet, badge: pendingDeposits.length },
-            { id: 'user_management', label: 'إدارة المشتركين', icon: Users, badge: pendingUsers.length },
-            { id: 'cars', label: 'إدارة السيارات', icon: Car },
-            { id: 'auctions', label: 'المزادات المباشرة', icon: Gavel },
-            { id: 'inventory_review', label: 'مراجعة السيارات', icon: ShieldCheck, badge: adminPendingCars.length },
-            { id: 'kyc_review', label: 'مراجعة التوثيق KYC', icon: ShieldCheck, badge: kycUsers.filter(u => u.kycStatus === 'pending').length || undefined },
-            { id: 'withdrawal_requests', label: 'طلبات سحب البائعين', icon: CreditCard, badge: withdrawalRequests.filter(w => w.status === 'pending').length || undefined },
-            { id: 'payment_requests', label: 'طلبات الدفع (المشترون) 💳', icon: CreditCard },
-            { id: 'logistics', label: 'اللوجستيات والشحن', icon: Truck, badge: adminShipments.length },
-            { id: 'shipping_settings', label: 'أسعار الشحن 🚢', icon: Ship },
-            { id: 'calculator', label: 'حاسبة التكلفة 🧮', icon: Calculator },
-            { id: 'inspections', label: 'طلبات الفحص', icon: Shield },
-            { id: 'reports', label: 'تقارير السوق', icon: BookOpen },
-            { id: 'marketplace_management', label: 'سوق العروض', icon: Handshake },
-            { id: 'messages', label: 'مركز الرسائل', icon: MessageSquare, badge: messages.filter(m => !m.isRead).length },
-            { id: 'financial_ledger', label: 'الرقابة المالية', icon: DollarSign },
-            { id: 'offices', label: 'إدارة المكاتب', icon: Building2 },
-            { id: 'system_global', label: 'إعدادات المنصة ⚙️', icon: Settings },
-            { id: 'system', label: 'إعدادات الفروع والعناوين', icon: MapPin },
-            { id: 'footer_settings', label: 'إعدادات الفوتر 🦶', icon: Settings },
-          ].map((item) => (
-            <button
-              key={item.id}
-              onClick={() => setSearchParams({ view: item.id })}
-              className={`w-full group flex items-center justify-between p-4 rounded-2xl transition-all duration-300 ${view === item.id
-                ? 'bg-orange-500 text-white shadow-xl shadow-orange-500/20 scale-[1.02]'
-                : 'text-slate-400 hover:bg-slate-800/50 hover:text-white'
-                }`}
-            >
-              <div className="flex items-center gap-3">
-                <item.icon className={`w-5 h-5 transition-transform group-hover:scale-110 ${view === item.id ? 'text-white' : 'text-slate-500'}`} />
-                <span className="text-sm font-black">{item.label}</span>
+            {
+              group: 'Overview & Reports',
+              label: 'نظرة عامة وتقارير',
+              icon: Store,
+              items: [
+                { id: 'overview', label: 'الرئيسية (الإحصائيات)', icon: Store },
+                { id: 'reports', label: 'تقارير السوق', icon: BookOpen },
+                { id: 'messages', label: 'مركز الرسائل', icon: MessageSquare, badge: messages.filter(m => !m.isRead).length },
+              ]
+            },
+            {
+              group: 'User Management',
+              label: 'إدارة المستخدمين',
+              icon: Users,
+              items: [
+                { id: 'user_management', label: 'إدارة المشتركين', icon: Users, badge: pendingUsers.length },
+                { id: 'kyc_review', label: 'مراجعة التوثيق KYC', icon: ShieldCheck, badge: kycUsers.filter(u => u.kycStatus === 'pending').length || undefined },
+              ]
+            },
+            {
+              group: 'Vehicles & Auctions',
+              label: 'السيارات والمزادات',
+              icon: Car,
+              items: [
+                { id: 'cars', label: 'إدارة السيارات', icon: Car },
+                { id: 'inventory_review', label: 'مراجعة السيارات', icon: ShieldCheck, badge: adminPendingCars.length },
+                { id: 'manage_live_auctions', label: 'إدارة مزاداتنا الحية', icon: Gavel },
+                { id: 'marketplace_management', label: 'سوق العروض', icon: Handshake },
+                { id: 'inspections', label: 'طلبات الفحص', icon: Shield },
+              ]
+            },
+            {
+              group: 'Finance & Billing',
+              label: 'المالية والفواتير',
+              icon: Wallet,
+              items: [
+                { id: 'financial_approvals', label: 'تأمينات المزايدة', icon: Wallet, badge: pendingDeposits.length },
+                { id: 'payment_requests', label: 'طلبات الدفع (المشترون) 💳', icon: CreditCard },
+                { id: 'withdrawal_requests', label: 'طلبات سحب البائعين', icon: CreditCard, badge: withdrawalRequests.filter(w => w.status === 'pending').length || undefined },
+                { id: 'document_cycle', label: 'دورة المستندات والفواتير', icon: FileText, badge: adminInvoices.filter(i => i.status !== 'seller_paid_by_admin').length || undefined },
+                { id: 'financial_ledger', label: 'الرقابة المالية', icon: DollarSign },
+              ]
+            },
+            {
+              group: 'Platform Settings',
+              label: 'إعدادات المنصة',
+              icon: Settings,
+              items: [
+                { id: 'system_global', label: 'إعدادات المنصة ⚙️', icon: Settings },
+                { id: 'marketing', label: 'التسويق والحملات 📧', icon: Mail },
+                { id: 'logistics', label: 'اللوجستيات والشحن', icon: Truck, badge: adminShipments.length },
+                { id: 'shipping_settings', label: 'أسعار الشحن 🚢', icon: Ship },
+                { id: 'calculator', label: 'حاسبة التكلفة 🧮', icon: Calculator },
+                { id: 'offices', label: 'إدارة المكاتب', icon: Building2 },
+                { id: 'system', label: 'إعدادات الفروع والعناوين', icon: MapPin },
+                { id: 'footer_settings', label: 'إعدادات الفوتر 🦶', icon: Settings },
+              ]
+            }
+          ].map((category) => {
+            const isActiveGroup = category.items.some(item => item.id === view);
+            const isOpen = openGroup === category.group || (openGroup === 'INITIAL' && isActiveGroup);
+
+            // Auto open group on first load if an item is selected
+            if (openGroup === 'INITIAL' && isActiveGroup) {
+              setTimeout(() => setOpenGroup(category.group), 0);
+            }
+
+            return (
+              <div key={category.group} className="mb-2">
+                <button
+                  onClick={() => setOpenGroup(isOpen ? '' : category.group)}
+                  className="w-full flex items-center justify-between p-3 rounded-2xl transition-all duration-300 text-slate-300 hover:bg-slate-800/50 hover:text-white"
+                >
+                  <div className="flex items-center gap-3">
+                    <category.icon className="w-5 h-5 text-slate-500" />
+                    <span className="text-sm font-black">{category.label}</span>
+                  </div>
+                  <div className={`transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`}>
+                    <svg className="w-4 h-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
+                </button>
+
+                {/* Accordion Content */}
+                <div className={`overflow-hidden transition-all duration-300 ease-in-out ${isOpen ? 'max-h-[800px] opacity-100 mt-1' : 'max-h-0 opacity-0'}`}>
+                  <div className="pl-4 pr-6 space-y-1 relative before:absolute before:right-8 before:top-2 before:bottom-2 before:w-px before:bg-slate-800">
+                    {category.items.map((item) => (
+                      <button
+                        key={item.id}
+                        onClick={() => setSearchParams({ view: item.id })}
+                        className={`w-full group flex items-center justify-between py-2.5 px-3 rounded-xl transition-all duration-300 relative z-10 ${view === item.id
+                          ? 'bg-orange-500/10 text-orange-500'
+                          : 'text-slate-400 hover:bg-slate-800/50 hover:text-white'
+                          }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className={`w-1.5 h-1.5 rounded-full ${view === item.id ? 'bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.8)]' : 'bg-slate-600 group-hover:bg-slate-400'}`}></div>
+                          <span className="text-sm font-bold">{item.label}</span>
+                        </div>
+                        {item.badge ? (
+                          <span className={`px-2 py-0.5 rounded-lg text-[9px] font-black transition-colors ${view === item.id ? 'bg-orange-500 text-white' : 'bg-red-500/20 text-red-500'
+                            }`}>
+                            {item.badge}
+                          </span>
+                        ) : null}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
-              {item.badge ? (
-                <span className={`px-2 py-0.5 rounded-lg text-[9px] font-black transition-colors ${view === item.id ? 'bg-white text-orange-600' : 'bg-red-500 text-white'
-                  }`}>
-                  {item.badge}
-                </span>
-              ) : null}
-            </button>
-          ))}
+            );
+          })}
         </nav>
 
-        <div className="mt-auto pt-6 space-y-2">
+        <div className="mt-auto pt-6 border-t border-slate-800 space-y-2">
           <button
             onClick={() => window.location.href = '/'}
             className="w-full flex items-center gap-3 p-4 text-slate-400 hover:text-white transition-colors text-sm font-bold"
@@ -3718,7 +5176,7 @@ export const AdminDashboard = () => {
 
           <div className="flex items-center gap-4">
             <div className="relative group">
-              <input aria-label="مدخل" title="مدخل" placeholder="تحديد"
+              <input aria-label="البحث عن العناصر" title="البحث الحاضر" placeholder="بحث..."
                 type="text"
                 className="bg-white border border-slate-200 rounded-2xl px-12 py-3.5 text-sm font-bold w-72 focus:ring-2 focus:ring-orange-500/20 outline-none transition-all shadow-sm group-hover:shadow-md text-right"
                 dir="rtl"
@@ -3729,6 +5187,8 @@ export const AdminDashboard = () => {
             <div className="flex bg-white p-1.5 rounded-2xl border border-slate-100 shadow-sm gap-1">
               <div className="relative">
                 <button
+                  title="الاشعارات"
+                  aria-label="عرض الاشعارات"
                   onClick={() => { setShowNotifications(!showNotifications); setShowMessages(false); }}
                   className={`p-2.5 rounded-xl transition-all relative ${showNotifications ? 'bg-orange-50 text-orange-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
                 >
@@ -3744,6 +5204,8 @@ export const AdminDashboard = () => {
 
               <div className="relative">
                 <button
+                  title="الرسائل"
+                  aria-label="عرض الرسائل"
                   onClick={() => { setShowMessages(!showMessages); setShowNotifications(false); }}
                   className={`p-2.5 rounded-xl transition-all relative ${showMessages ? 'bg-orange-50 text-orange-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
                 >
@@ -3775,7 +5237,7 @@ export const AdminDashboard = () => {
 
       {/* Modals & Overlays */}
       <div className="fixed bottom-10 left-10 z-50">
-        <button aria-label="زر" title="زر"
+        <button aria-label="إضافة سيارة جديدة" title="إضافة سيارة"
           onClick={() => setShowAddCarModal(true)}
           className="w-16 h-16 bg-slate-900 text-white rounded-3xl flex items-center justify-center shadow-2xl shadow-slate-900/40 hover:scale-110 active:scale-95 transition-all group"
         >
@@ -3784,206 +5246,196 @@ export const AdminDashboard = () => {
       </div>
 
       {showAddCarModal && (
-        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center z-[100] p-4 overflow-y-auto">
-          <div className="bg-white rounded-[3rem] shadow-2xl w-full max-w-4xl p-10 animate-in zoom-in-95 duration-300 relative my-10 border border-slate-100">
-            <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-orange-500 via-slate-900 to-emerald-500"></div>
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center z-[100] overflow-y-auto">
+          <div className="w-full h-full relative p-4 md:p-8">
+            <button
+              title="إغلاق"
+              aria-label="إغلاق النافذة الاضافية"
+              onClick={() => setShowAddCarModal(false)}
+              className="absolute top-6 left-6 z-50 p-3 bg-slate-900/50 hover:bg-rose-500 text-white rounded-full transition-all shadow-xl"
+            >
+              <X className="w-6 h-6" />
+            </button>
+            <UnifiedCarForm
+              isSubmitting={false}
+              onCancel={() => setShowAddCarModal(false)}
+              onSubmit={async (data, images, media) => {
+                try {
+                  const uploadedImages = [];
+                  if (images && images.length > 0) {
+                    const formData = new FormData();
+                    images.forEach(img => formData.append('images', img));
+                    const imgRes = await fetch('/api/upload/images', { method: 'POST', body: formData });
+                    if (imgRes.ok) {
+                      const imgData = await imgRes.json();
+                      if (imgData.urls) uploadedImages.push(...imgData.urls);
+                    } else {
+                      const errData = await imgRes.json();
+                      throw new Error(errData.error || 'Failed to upload images');
+                    }
+                  }
 
-            <div className="flex justify-between items-start mb-10">
+                  let engineVideoUrl = '';
+                  let engineAudioUrl = '';
+                  let inspectionPdf = '';
+                  if (media) {
+                    const mediaData = new FormData();
+                    mediaData.append('media', media);
+                    const mediaRes = await fetch('/api/upload/media', { method: 'POST', body: mediaData });
+                    if (mediaRes.ok) {
+                      const mediaJson = await mediaRes.json();
+                      if (media.type.startsWith('video/')) engineVideoUrl = mediaJson.url;
+                      else if (media.type.startsWith('audio/')) engineAudioUrl = mediaJson.url;
+                      else if (media.type === 'application/pdf') inspectionPdf = mediaJson.url;
+                    } else {
+                      const errData = await mediaRes.json();
+                      throw new Error(errData.error || 'Failed to upload media');
+                    }
+                  }
+
+                  const car = {
+                    id: Date.now().toString(),
+                    lotNumber: Math.floor(Math.random() * 100000000).toString(),
+                    vin: data.vin || ('1G1' + Math.random().toString(36).substring(7).toUpperCase()),
+                    make: data.make,
+                    model: data.model,
+                    year: data.year,
+                    odometer: data.odometer,
+                    actualOdometer: data.actualOdometer,
+                    engine: data.engine,
+                    cylinders: data.cylinders,
+                    transmission: data.transmission,
+                    drive: data.drive,
+                    fuelType: data.fuelType,
+                    auctionLane: data.auctionLane,
+                    showroomName: data.showroomName,
+                    startingBid: data.startingBid,
+                    reservePrice: data.reservePrice,
+                    saleStatus: data.saleStatus,
+                    locationDetails: data.locationDetails,
+                    exchangeRate: data.exchangeRate,
+                    minPrice: data.minPrice,
+                    specialNote: data.specialNote,
+                    images: uploadedImages.length > 0 ? uploadedImages : ['https://images.unsplash.com/photo-1583121274602-3e2820c69888?auto=format&fit=crop&q=80&w=800'],
+                    engineVideoUrl,
+                    engineAudioUrl,
+                    inspectionPdf,
+                    status: 'upcoming' as const,
+                    acceptOffers: true,
+                    currency: 'USD',
+                    location: data.locationDetails || 'Unknown Location', // Added location
+                    currentBid: 0 // Added currentBid
+                  };
+
+                  await addCar(car);
+                  setShowAddCarModal(false);
+                  showAlert('تم إضافة السيارة بنجاح إلى النظام', 'success');
+                } catch (err) {
+                  showAlert('حدث خطأ أثناء رفع الملفات أو حفظ السيارة', 'error');
+                }
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      {showOpenSooqModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden" dir="rtl">
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+              <h3 className="text-xl font-black text-slate-800 flex items-center gap-2">
+                <Download className="w-6 h-6 text-indigo-500" />
+                استيراد من السوق المفتوح
+              </h3>
+              <button
+                title="إغلاقنافذة الاستيراد"
+                aria-label="إغلاقنافذة الاستيراد"
+                onClick={() => { setShowOpenSooqModal(false); setScrapeResult(null); setIsScraping(false); }}
+                className="p-2 hover:bg-slate-200 rounded-full transition-colors"
+                disabled={isScraping}
+              >
+                <X className="w-5 h-5 text-slate-500" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              {scrapeResult && (
+                <div className={`p-4 rounded-xl text-sm font-bold ${scrapeResult.success ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
+                  {scrapeResult.success ? `تم استيراد ${scrapeResult.count} سيارة بنجاح!` : `خطأ: ${scrapeResult.error}`}
+                </div>
+              )}
+
               <div>
-                <h3 className="text-3xl font-black text-slate-900 flex items-center gap-3">
-                  <div className="p-3 bg-orange-50 rounded-2xl text-orange-600 shadow-inner">
-                    <Plus className="w-8 h-8" />
-                  </div>
-                  إدراج سيارة جديدة في المزاد
-                </h3>
-                <p className="text-slate-400 font-bold mt-2 mr-14">أدخل تفاصيل المركبة بدقة لضمان ثقة المزايدين (نفس معايير التاجر).</p>
-              </div>
-              <button aria-label="زر" title="زر"
-                onClick={() => setShowAddCarModal(false)}
-                className="p-4 bg-slate-50 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-2xl transition-all"
-              >
-                <Trash2 className="w-6 h-6" />
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-h-[60vh] overflow-y-auto px-4">
-              {/* Column 1: Identity */}
-              <div className="space-y-4">
-                <h4 className="font-black text-slate-900 border-r-4 border-orange-500 pr-3 mb-4">هوية المركبة</h4>
-                <div>
-                  <label className="block text-[10px] font-black text-slate-400 mb-1 uppercase">الشركة (Make)</label>
-                  <input type="text" value={newCar.make} onChange={e => setNewCar({ ...newCar, make: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-sm font-bold outline-none focus:ring-2 focus:ring-orange-500/20 focus:bg-white transition-all" placeholder="Mercedes, BMW..." />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-black text-slate-400 mb-1 uppercase">الموديل (Model)</label>
-                  <input type="text" value={newCar.model} onChange={e => setNewCar({ ...newCar, model: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-sm font-bold outline-none focus:ring-2 focus:ring-orange-500/20 focus:bg-white transition-all" placeholder="S-Class, X7..." />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-black text-slate-400 mb-1 uppercase">الفئة (Trim)</label>
-                  <input type="text" value={newCar.trim} onChange={e => setNewCar({ ...newCar, trim: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-sm font-bold placeholder:opacity-30" placeholder="Limited, AMG, SE..." />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-400 mb-1 uppercase">سنة الصنع</label>
-                    <input aria-label="مدخل" title="مدخل" placeholder="تحديد" type="number" value={newCar.year} onChange={e => setNewCar({ ...newCar, year: Number(e.target.value) })}
-                      className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-sm font-bold" />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-400 mb-1 uppercase">الموقع</label>
-                    <input type="text" value={newCar.location} onChange={e => setNewCar({ ...newCar, location: e.target.value })}
-                      className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-sm font-bold" placeholder="دبي..." />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-[10px] font-black text-slate-400 mb-1 uppercase">رقم الـ VIN</label>
-                  <input type="text" value={newCar.vin} onChange={e => setNewCar({ ...newCar, vin: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-sm font-mono font-bold uppercase" placeholder="Enter VIN..." />
-                </div>
+                <label className="block text-sm font-bold text-slate-700 mb-2">الماركة (Make)</label>
+                <input
+                  type="text"
+                  value={opensooqMake}
+                  onChange={e => setOpensooqMake(e.target.value)}
+                  disabled={isScraping}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:outline-none focus:border-indigo-500 font-bold disabled:opacity-50"
+                  placeholder="مثال: تويوتا, هونداي"
+                />
               </div>
 
-              {/* Column 2: Specs */}
-              <div className="space-y-4">
-                <h4 className="font-black text-slate-900 border-r-4 border-slate-900 pr-3 mb-4">المواصفات الفنية</h4>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-400 mb-1 uppercase">المسافة</label>
-                    <input aria-label="مدخل" title="مدخل" placeholder="تحديد" type="number" value={newCar.odometer} onChange={e => setNewCar({ ...newCar, odometer: Number(e.target.value) })}
-                      className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-sm font-bold" />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-400 mb-1 uppercase">الوحدة</label>
-                    <select value={newCar.mileageUnit} onChange={e => setNewCar({ ...newCar, mileageUnit: e.target.value as any })} title="وحدة المسافة" aria-label="وحدة المسافة"
-                      className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-sm font-bold">
-                      <option value="mi">ميل (mi)</option>
-                      <option value="km">كيلومتر (km)</option>
-                    </select>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-400 mb-1 uppercase">المحرك</label>
-                    <input type="text" value={newCar.engineSize} onChange={e => setNewCar({ ...newCar, engineSize: e.target.value })}
-                      className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-sm font-bold" placeholder="4.0L V8..." />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-400 mb-1 uppercase">القوة (HP)</label>
-                    <input type="text" value={newCar.horsepower} onChange={e => setNewCar({ ...newCar, horsepower: e.target.value })}
-                      className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-sm font-bold" placeholder="500 hp..." />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-400 mb-1 uppercase">ناقل الحركة</label>
-                    <select value={newCar.transmission} onChange={e => setNewCar({ ...newCar, transmission: e.target.value as any })} title="نوع الناقل" aria-label="نوع الناقل"
-                      className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-sm font-bold">
-                      <option value="automatic">أوتوماتيك</option>
-                      <option value="manual">يدوي</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-400 mb-1 uppercase">الدفع</label>
-                    <select value={newCar.drive} onChange={e => setNewCar({ ...newCar, drive: e.target.value as any })} title="نظام الدفع" aria-label="نظام الدفع"
-                      className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-sm font-bold">
-                      <option value="AWD">AWD</option>
-                      <option value="FWD">FWD</option>
-                      <option value="RWD">RWD</option>
-                    </select>
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-[10px] font-black text-slate-400 mb-1 uppercase">نوع الوقود</label>
-                  <select value={newCar.fuelType} onChange={e => setNewCar({ ...newCar, fuelType: e.target.value as any })} title="نوع الوقود" aria-label="نوع الوقود"
-                    className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-sm font-bold">
-                    <option value="gasoline">بنزين</option>
-                    <option value="diesel">ديزل</option>
-                    <option value="hybrid">هايبرد</option>
-                    <option value="electric">كهربائية</option>
-                  </select>
-                </div>
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-2">الموديل (Model)</label>
+                <input
+                  type="text"
+                  value={opensooqModel}
+                  onChange={e => setOpensooqModel(e.target.value)}
+                  disabled={isScraping}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:outline-none focus:border-indigo-500 font-bold disabled:opacity-50"
+                  placeholder="مثال: كامري, النترا"
+                />
               </div>
 
-              {/* Column 3: Aesthetics & Status */}
-              <div className="space-y-4">
-                <h4 className="font-black text-slate-900 border-r-4 border-emerald-500 pr-3 mb-4">المظهر والحالة</h4>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-400 mb-1 uppercase">اللون الخارجي</label>
-                    <input aria-label="مدخل" title="مدخل" placeholder="تحديد" type="text" value={newCar.exteriorColor} onChange={e => setNewCar({ ...newCar, exteriorColor: e.target.value })}
-                      className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-sm font-bold" />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-400 mb-1 uppercase">اللون الداخلي</label>
-                    <input aria-label="مدخل" title="مدخل" placeholder="تحديد" type="text" value={newCar.interiorColor} onChange={e => setNewCar({ ...newCar, interiorColor: e.target.value })}
-                      className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-sm font-bold" />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-400 mb-1 uppercase">الضرر الأساسي</label>
-                    <input type="text" value={newCar.primaryDamage} onChange={e => setNewCar({ ...newCar, primaryDamage: e.target.value })}
-                      className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-sm font-bold" placeholder="None, Front..." />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-400 mb-1 uppercase">الضرر الثانوي</label>
-                    <input aria-label="مدخل" title="مدخل" placeholder="تحديد" type="text" value={newCar.secondaryDamage} onChange={e => setNewCar({ ...newCar, secondaryDamage: e.target.value })}
-                      className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-sm font-bold" />
-                  </div>
-                </div>
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="col-span-1">
-                    <label className="block text-[10px] font-black text-slate-400 mb-1 uppercase">المفاتيح</label>
-                    <select value={newCar.keys} onChange={e => setNewCar({ ...newCar, keys: e.target.value as any })} title="حالة المفاتيح" aria-label="حالة المفاتيح"
-                      className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-sm font-bold">
-                      <option value="yes">نعم</option>
-                      <option value="no">لا</option>
-                    </select>
-                  </div>
-                  <div className="col-span-2">
-                    <label className="block text-[10px] font-black text-slate-400 mb-1 uppercase">تعمل وتتحرك</label>
-                    <select value={newCar.runsDrives} onChange={e => setNewCar({ ...newCar, runsDrives: e.target.value as any })} title="حالة المحرك" aria-label="حالة المحرك"
-                      className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-sm font-bold">
-                      <option value="yes">نعم (Runs & Drives)</option>
-                      <option value="starts">تشغيل فقط (Starts)</option>
-                      <option value="no">لا تعمل</option>
-                    </select>
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-[10px] font-black text-slate-400 mb-1 uppercase text-center bg-slate-900 text-white rounded-lg py-1 mb-2">السعر الاحتياطي (Reserve Price $)</label>
-                  <input type="number" value={newCar.reservePrice} onChange={e => setNewCar({ ...newCar, reservePrice: Number(e.target.value) })}
-                    className="w-full bg-slate-100 border-2 border-slate-900 rounded-xl p-3 text-2xl font-black text-center outline-none" placeholder="0" />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-black text-slate-400 mb-1 uppercase">ملاحظات إضافية</label>
-                  <textarea value={newCar.notes} onChange={e => setNewCar({ ...newCar, notes: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-100 rounded-xl p-3 text-sm font-bold h-20 resize-none" placeholder="وصف حالة المركبة بالتفصيل..." />
-                </div>
+              <div className="bg-blue-50 text-blue-800 text-xs p-3 rounded-lg flex items-start gap-2 mt-4">
+                <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                <span>سيتم استخراج بيانات السيارات وإدخالها مباشرة إلى قاعدة البيانات ويمكنك مراجعتها في القائمة.</span>
               </div>
             </div>
 
-            <div className="mt-10 pt-10 border-t border-slate-100 flex gap-4">
+            <div className="p-6 border-t border-slate-100 flex justify-end gap-3 bg-slate-50">
               <button
-                onClick={handleAddCar}
-                className="flex-[2] bg-slate-900 text-white py-5 rounded-2xl font-black text-lg hover:bg-slate-800 transition-all shadow-xl shadow-slate-900/20 active:scale-95 flex items-center justify-center gap-3"
+                onClick={() => { setShowOpenSooqModal(false); setScrapeResult(null); }}
+                className="px-6 py-2.5 rounded-xl font-bold text-slate-600 hover:bg-slate-200 transition-colors"
+                disabled={isScraping}
               >
-                تحديث وحفظ السيارة في النظام
-                <CheckCircle2 className="w-6 h-6 text-emerald-500" />
+                إلغاء
               </button>
               <button
-                onClick={() => setShowAddCarModal(false)}
-                className="flex-1 bg-slate-100 text-slate-600 py-5 rounded-2xl font-black text-lg hover:bg-slate-200 transition-all flex items-center justify-center gap-2"
+                onClick={async () => {
+                  setIsScraping(true);
+                  setScrapeResult(null);
+                  try {
+                    const res = await fetch('/api/admin/scrape-opensooq', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ make: opensooqMake, model: opensooqModel })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                      setScrapeResult({ success: true, count: data.count });
+                      setTimeout(() => window.location.reload(), 1500);
+                    } else {
+                      setScrapeResult({ success: false, error: data.error || 'فشل الاستيراد' });
+                    }
+                  } catch (e) {
+                    setScrapeResult({ success: false, error: 'تعذر الاتصال بالخادم. حاول مجدداً.' });
+                  } finally {
+                    setIsScraping(false);
+                  }
+                }}
+                disabled={isScraping || !opensooqMake || !opensooqModel}
+                className="px-6 py-2.5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-xl font-bold transition-colors disabled:opacity-50 flex items-center gap-2"
               >
-                تجاهل التعديلات
-                <Edit className="w-5 h-5 text-slate-400" />
+                {isScraping ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
+                {isScraping ? 'جاري الاستيراد...' : 'بدء الاستيراد'}
               </button>
             </div>
           </div>
         </div>
       )}
-      Joe
+
       {/* Edit User Modal */}
       {showEditUserModal && selectedUser && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
@@ -3993,7 +5445,7 @@ export const AdminDashboard = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-sm font-bold text-slate-700 mb-2">الاسم الأول</label>
-                <input aria-label="مدخل" title="مدخل" placeholder="تحديد"
+                <input aria-label="الاسم الأول" title="الاسم الأول" placeholder="تعديل الاسم الأول"
                   type="text"
                   value={selectedUser.firstName}
                   onChange={e => setSelectedUser({ ...selectedUser, firstName: e.target.value })}
@@ -4002,7 +5454,7 @@ export const AdminDashboard = () => {
               </div>
               <div>
                 <label className="block text-sm font-bold text-slate-700 mb-2">البريد الإلكتروني</label>
-                <input aria-label="مدخل" title="مدخل" placeholder="تحديد"
+                <input aria-label="البريد الإلكتروني" title="البريد الإلكتروني" placeholder="تعديل البريد الإلكتروني"
                   type="email"
                   value={selectedUser.email}
                   onChange={e => setSelectedUser({ ...selectedUser, email: e.target.value })}
@@ -4011,7 +5463,7 @@ export const AdminDashboard = () => {
               </div>
               <div>
                 <label className="block text-sm font-bold text-slate-700 mb-2">رقم الهاتف</label>
-                <input aria-label="مدخل" title="مدخل" placeholder="تحديد"
+                <input aria-label="رقم الهاتف" title="رقم الهاتف" placeholder="تعديل رقم الهاتف"
                   type="tel"
                   value={selectedUser.phone}
                   onChange={e => setSelectedUser({ ...selectedUser, phone: e.target.value })}
@@ -4020,7 +5472,7 @@ export const AdminDashboard = () => {
               </div>
               <div>
                 <label className="block text-sm font-bold text-slate-700 mb-2">الاسم الأخير</label>
-                <input aria-label="مدخل" title="مدخل" placeholder="تحديد"
+                <input aria-label="الاسم الأخير" title="الاسم الأخير" placeholder="تعديل الاسم الأخير"
                   type="text"
                   value={selectedUser.lastName}
                   onChange={e => setSelectedUser({ ...selectedUser, lastName: e.target.value })}
@@ -4029,7 +5481,7 @@ export const AdminDashboard = () => {
               </div>
               <div>
                 <label className="block text-sm font-bold text-slate-700 mb-2">الدور</label>
-                <select aria-label="تحديد" title="تحديد"
+                <select aria-label="تحديد دور المستخدم" title="دور المستخدم"
                   value={selectedUser.role}
                   onChange={e => setSelectedUser({ ...selectedUser, role: e.target.value })}
                   className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm text-slate-900 outline-none focus:border-orange-500 focus:bg-white transition-colors appearance-none"
@@ -4040,9 +5492,30 @@ export const AdminDashboard = () => {
                   <option value="admin">مسؤول</option>
                 </select>
               </div>
+
+              {(selectedUser.role === 'admin' || selectedUser.role === 'manager') && (
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">فريق الدعم (اختياري)</label>
+                  <select aria-label="تحديد فريق الدعم" title="فريق الدعم"
+                    value={selectedUser.supportTeam || ''}
+                    onChange={e => setSelectedUser({ ...selectedUser, supportTeam: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm text-slate-900 outline-none focus:border-orange-500 focus:bg-white transition-colors appearance-none"
+                  >
+                    <option value="">بدون فريق (عام)</option>
+                    <option value="registration">فريق التسجيل</option>
+                    <option value="accounting">فريق المحاسبة</option>
+                    <option value="purchasing">فريق الشراء</option>
+                    <option value="transport">فريق النقل</option>
+                    <option value="clearance">فريق التخليص الجمركي</option>
+                    <option value="shipping">فريق الشحن</option>
+                    <option value="complaints">فريق الشكاوي والجودة</option>
+                  </select>
+                </div>
+              )}
+
               <div>
                 <label className="block text-sm font-bold text-slate-700 mb-2">الحالة</label>
-                <select aria-label="تحديد" title="تحديد"
+                <select aria-label="حالة المستخدم" title="حالة المستخدم"
                   value={selectedUser.status}
                   onChange={e => setSelectedUser({ ...selectedUser, status: e.target.value })}
                   className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm text-slate-900 outline-none focus:border-orange-500 focus:bg-white transition-colors appearance-none"
@@ -4053,7 +5526,7 @@ export const AdminDashboard = () => {
               </div>
               <div>
                 <label className="block text-sm font-bold text-slate-700 mb-2">العربون (Deposit)</label>
-                <input aria-label="مدخل" title="مدخل" placeholder="تحديد"
+                <input aria-label="عربون المستخدم" title="العربون" placeholder="تعديل العربون"
                   type="number"
                   value={selectedUser.deposit}
                   onChange={e => setSelectedUser({ ...selectedUser, deposit: Number(e.target.value) })}
@@ -4062,7 +5535,7 @@ export const AdminDashboard = () => {
               </div>
               <div>
                 <label className="block text-sm font-bold text-slate-700 mb-2">نسبة العمولة (%)</label>
-                <input aria-label="مدخل" title="مدخل" placeholder="تحديد"
+                <input aria-label="نسبة عمولة المستخدم" title="العمولة" placeholder="تعديل نسبة العمولة"
                   type="number"
                   value={selectedUser.commission}
                   onChange={e => setSelectedUser({ ...selectedUser, commission: Number(e.target.value) })}
@@ -4071,7 +5544,7 @@ export const AdminDashboard = () => {
               </div>
               <div className="md:col-span-2">
                 <label className="block text-sm font-bold text-slate-700 mb-2">البلد / الفرع التابع له</label>
-                <select aria-label="تحديد" title="تحديد"
+                <select aria-label="البلد والفرع للمستخدم" title="البلد"
                   value={selectedUser.country}
                   onChange={e => setSelectedUser({ ...selectedUser, country: e.target.value })}
                   className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm text-slate-900 outline-none focus:border-orange-500 focus:bg-white transition-all appearance-none"
@@ -4112,6 +5585,8 @@ export const AdminDashboard = () => {
                 <label className="block text-sm text-slate-500 mb-1">الموضوع</label>
                 <input
                   type="text"
+                  aria-label="موضوع الرسالة"
+                  title="موضوع الرسالة"
                   value={messageForm.subject}
                   onChange={e => setMessageForm({ ...messageForm, subject: e.target.value })}
                   className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-900 focus:border-orange-500 outline-none"
@@ -4121,6 +5596,8 @@ export const AdminDashboard = () => {
               <div>
                 <label className="block text-sm text-slate-500 mb-1">نص الرسالة</label>
                 <textarea
+                  aria-label="نص الرسالة"
+                  title="نص الرسالة"
                   value={messageForm.content}
                   onChange={e => setMessageForm({ ...messageForm, content: e.target.value })}
                   className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-900 focus:border-orange-500 outline-none h-32 resize-none"
@@ -4156,7 +5633,7 @@ export const AdminDashboard = () => {
               {/* Row 1 */}
               <div>
                 <label className="block text-sm font-bold text-slate-700 mb-2">الاسم الأول</label>
-                <input aria-label="مدخل" title="مدخل" placeholder="تحديد"
+                <input aria-label="الاسم الأول" title="الاسم الأول" placeholder="إدخال الاسم الأول"
                   type="text"
                   value={newUser.firstName}
                   onChange={e => setNewUser({ ...newUser, firstName: e.target.value })}
@@ -4165,7 +5642,7 @@ export const AdminDashboard = () => {
               </div>
               <div>
                 <label className="block text-sm font-bold text-slate-700 mb-2">البريد الإلكتروني</label>
-                <input aria-label="مدخل" title="مدخل" placeholder="تحديد"
+                <input aria-label="البريد الإلكتروني" title="البريد الإلكتروني" placeholder="إدخال البريد الإلكتروني"
                   type="email"
                   value={newUser.email}
                   onChange={e => setNewUser({ ...newUser, email: e.target.value })}
@@ -4368,6 +5845,242 @@ export const AdminDashboard = () => {
               >
                 Cancel
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Invoice Confirmation Modal */}
+      {showInvoiceConfirmModal.isOpen && (
+        <ConfirmModal
+          isOpen={true}
+          title="تأكيد التحديث"
+          message={`هل أنت متأكد من تغيير حالة الفاتورة لسيارة ${showInvoiceConfirmModal.invoice.make} ${showInvoiceConfirmModal.invoice.model} إلى ${INVOICE_STATUS_LABELS[showInvoiceConfirmModal.nextStatus]}؟`}
+          onConfirm={async () => {
+            const { invoice, nextStatus } = showInvoiceConfirmModal;
+            try {
+              const res = await fetch(`/api/admin/invoices/${invoice.id}/status`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: nextStatus, releaseCardUrl: invoice._newUrl || invoice.releaseCardUrl })
+              });
+              if (res.ok) {
+                setAdminInvoices(prev => prev.map(i => i.id === invoice.id ? { ...i, status: nextStatus, releaseCardUrl: invoice._newUrl || i.releaseCardUrl } : i));
+                showAlert('تم تحديث الفاتورة بنجاح', 'success');
+              } else {
+                showAlert('فشل التحديث', 'error');
+              }
+            } catch (err) {
+              showAlert('حدث خطأ في تحديث الفاتورة', 'error');
+            }
+            setShowInvoiceConfirmModal({ isOpen: false, invoice: null, nextStatus: '' });
+          }}
+          onCancel={() => setShowInvoiceConfirmModal({ isOpen: false, invoice: null, nextStatus: '' })}
+          confirmText="تحديث الحالة"
+        />
+      )}
+
+      {/* Estimate Modal */}
+      {showEstimateModal && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-200">
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+              <h3 className="text-xl font-black text-slate-800 flex items-center gap-3">
+                {editingEstimate ? <Edit className="w-6 h-6 text-indigo-500" /> : <Plus className="w-6 h-6 text-emerald-500" />}
+                {editingEstimate ? 'تعديل بيانات التسعيرة' : 'إضافة تسعيرة جديدة'}
+              </h3>
+              <button
+                title="إغلاق النموذج"
+                aria-label="إغلاق النموذج"
+                onClick={() => setShowEstimateModal(false)}
+                className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-full transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4" dir="rtl">
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">الماركة (عربي)</label>
+                  <input type="text" value={estimateForm.make} onChange={e => setEstimateForm({ ...estimateForm, make: e.target.value })} className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:border-indigo-500" placeholder="مثال: تويوتا" />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">الماركة (إنجليزي)</label>
+                  <input type="text" value={estimateForm.makeEn} onChange={e => setEstimateForm({ ...estimateForm, makeEn: e.target.value })} className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:border-indigo-500" placeholder="مثال: Toyota" dir="ltr" />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">الموديل (عربي)</label>
+                  <input type="text" value={estimateForm.model} onChange={e => setEstimateForm({ ...estimateForm, model: e.target.value })} className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:border-indigo-500" placeholder="مثال: كامري" />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">الموديل (إنجليزي)</label>
+                  <input type="text" value={estimateForm.modelEn} onChange={e => setEstimateForm({ ...estimateForm, modelEn: e.target.value })} className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:border-indigo-500" placeholder="مثال: Camry" dir="ltr" />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">سنة الصنع</label>
+                  <input title="سنة الصنع" aria-label="سنة الصنع" type="number" value={estimateForm.year} onChange={e => setEstimateForm({ ...estimateForm, year: parseInt(e.target.value) || 2024 })} className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:border-indigo-500" dir="ltr" />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">حالة السيارة</label>
+                  <select title="حالة السيارة" aria-label="حالة السيارة" value={estimateForm.condition} onChange={e => setEstimateForm({ ...estimateForm, condition: e.target.value })} className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:border-indigo-500">
+                    <option value="جديد">جديد</option>
+                    <option value="مستعمل">مستعمل</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">ناقل الحركة</label>
+                  <select title="ناقل الحركة" aria-label="ناقل الحركة" value={estimateForm.transmission} onChange={e => setEstimateForm({ ...estimateForm, transmission: e.target.value })} className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:border-indigo-500">
+                    <option value="اوتوماتيك">أوتوماتيك</option>
+                    <option value="عادي">عادي (مانيوال)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">نوع الوقود</label>
+                  <select title="نوع الوقود" aria-label="نوع الوقود" value={estimateForm.fuel} onChange={e => setEstimateForm({ ...estimateForm, fuel: e.target.value })} className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:border-indigo-500">
+                    <option value="بنزين">بنزين</option>
+                    <option value="ديزل">ديزل</option>
+                    <option value="هايبرد">هايبرد</option>
+                    <option value="كهرباء">كهرباء</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">الممشى (كم)</label>
+                  <input type="text" value={estimateForm.mileage} onChange={e => setEstimateForm({ ...estimateForm, mileage: e.target.value })} className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:border-indigo-500" placeholder="مثال: 10,000 - 19,999" dir="ltr" />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">المدينة</label>
+                  <input type="text" value={estimateForm.city} onChange={e => setEstimateForm({ ...estimateForm, city: e.target.value })} className="w-full border border-slate-300 rounded-lg p-2.5 outline-none focus:border-indigo-500" placeholder="مثال: طرابلس" />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-bold text-slate-700 mb-2">متوسط السعر (حسب السوق الموازي)</label>
+                  <div className="relative">
+                    <input type="text" value={estimateForm.price} onChange={e => setEstimateForm({ ...estimateForm, price: e.target.value })} className="w-full border border-slate-300 rounded-lg p-3 outline-none focus:border-indigo-500 pl-10 text-lg font-mono font-bold" placeholder="مثال: 85,000" dir="ltr" />
+                    <DollarSign className="w-5 h-5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-slate-100 flex justify-end gap-3 bg-slate-50">
+              <button
+                onClick={() => setShowEstimateModal(false)}
+                className="px-6 py-2.5 rounded-xl font-bold text-slate-600 hover:bg-slate-200 transition-colors"
+              >
+                إلغاء
+              </button>
+              <button
+                onClick={async () => {
+                  if (!estimateForm.make || !estimateForm.model || !estimateForm.price) {
+                    showAlert('يرجى تعبئة الحقول الأساسية', 'error');
+                    return;
+                  }
+                  let success = false;
+                  if (editingEstimate) {
+                    success = await updateMarketEstimate(editingEstimate.id, estimateForm);
+                  } else {
+                    success = await addMarketEstimate(estimateForm);
+                  }
+                  if (success) {
+                    showAlert(editingEstimate ? 'تم التعديل بنجاح' : 'تمت الإضافة بنجاح', 'success');
+                    setShowEstimateModal(false);
+                  } else {
+                    showAlert('حدث خطأ أثناء حفظ التسعيرة', 'error');
+                  }
+                }}
+                className="px-6 py-2.5 rounded-xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-md transition-colors flex items-center gap-2"
+              >
+                <Check className="w-4 h-4" />
+                {editingEstimate ? 'حفظ التغييرات' : 'إضافة التسعيرة'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Libyan Market Admin Modal */}
+      {showLibyanModal && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-xl overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-200">
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+              <h3 className="text-xl font-black text-slate-800 flex items-center gap-3">
+                <Car className="w-6 h-6 text-indigo-500" />
+                إضافة تسعيرة جديدة
+              </h3>
+              <button onClick={() => setShowLibyanModal(false)} className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-full transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 grid grid-cols-2 gap-4" dir="rtl">
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-2">الحالة</label>
+                <select value={libyanModalForm.condition} onChange={e => setLibyanModalForm({ ...libyanModalForm, condition: e.target.value })} className="w-full border rounded-lg p-2.5 outline-none focus:border-indigo-500">
+                  <option value="جديد">جديد</option>
+                  <option value="مستعمل">مستعمل</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-2">الماركة</label>
+                <input type="text" value={libyanModalForm.make} onChange={e => setLibyanModalForm({ ...libyanModalForm, make: e.target.value })} className="w-full border rounded-lg p-2.5 outline-none focus:border-indigo-500" placeholder="تويوتا" />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-2">الموديل</label>
+                <input type="text" value={libyanModalForm.model} onChange={e => setLibyanModalForm({ ...libyanModalForm, model: e.target.value })} className="w-full border rounded-lg p-2.5 outline-none focus:border-indigo-500" placeholder="كامري" />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-2">السنة</label>
+                <input type="number" value={libyanModalForm.year} onChange={e => setLibyanModalForm({ ...libyanModalForm, year: Number(e.target.value) })} className="w-full border rounded-lg p-2.5 outline-none focus:border-indigo-500" placeholder="2024" dir="ltr" />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-2">السعر بالدينار</label>
+                <input type="number" value={libyanModalForm.priceLYD} onChange={e => setLibyanModalForm({ ...libyanModalForm, priceLYD: e.target.value })} className="w-full border rounded-lg p-2.5 outline-none focus:border-indigo-500 font-mono" placeholder="75000" dir="ltr" />
+              </div>
+            </div>
+            <div className="p-4 bg-slate-50 border-t flex justify-end gap-2 text-sm font-bold">
+              <button onClick={() => setShowLibyanModal(false)} className="px-5 py-2 rounded-xl text-slate-500 hover:bg-slate-200 transition-colors">إلغاء</button>
+              <button onClick={async () => {
+                if(!libyanModalForm.make || !libyanModalForm.model) {
+                  showAlert('يرجى تعبئة الحقول الأساسية', 'error'); return;
+                }
+                try {
+                  const res = await fetch('/api/libyan-market', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(libyanModalForm) });
+                  if (res.ok) {
+                    showAlert('تمت الإضافة بنجاح', 'success');
+                    setShowLibyanModal(false);
+                    fetch('/api/libyan-market').then(r => r.json()).then(setLibyanMarketPrices);
+                  }
+                } catch(e) { showAlert('حدث خطأ أثناء الاتصال بالخادم', 'error'); }
+              }} className="px-5 py-2 flex gap-2 items-center rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-md transition-colors"><Check className="w-4 h-4" />حفظ البيانات</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Report PDF Modal Overlay */}
+      {showReportModal && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-200" dir="rtl">
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+              <h3 className="text-xl font-black text-slate-800 flex items-center gap-2">
+                <FileText className="w-6 h-6 text-indigo-500" />
+                {showReportModal.title}
+              </h3>
+              <button onClick={() => setShowReportModal(null)} className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-full transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-8 text-center bg-slate-50 text-indigo-900 font-bold overflow-y-auto max-h-60 rounded-lg m-4 border flex items-center justify-center whitespace-pre-wrap font-mono relative">
+               <div className="bg-indigo-50 absolute inset-0 opacity-50 blur-xl"></div>
+               <span className="relative z-10 text-xl">{JSON.stringify(showReportModal.data, null, 2)}</span>
+            </div>
+            <div className="p-4 bg-slate-50 border-t flex justify-end gap-2 text-sm font-bold">
+               <button onClick={() => {
+                 showAlert('تم تحميل التقرير (محاكاة)', 'success');
+                 setShowReportModal(null);
+               }} className="px-5 py-2 flex items-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-md transition-colors">
+                 <Download className="w-4 h-4" />
+                 تحميل PDF
+               </button>
             </div>
           </div>
         </div>

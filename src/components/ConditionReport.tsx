@@ -121,7 +121,7 @@ const decodeVin = (vin: string): VinResult => {
 const StarRating = ({ value, onChange }: { value: number; onChange: (v: number) => void }) => (
     <div className="flex gap-1">
         {[1, 2, 3, 4, 5].map(star => (
-            <button key={star} type="button" onClick={() => onChange(star)}
+            <button key={star} aria-label={`تقييم ${star} نجوم`} title={`${star} نجوم`} type="button" onClick={() => onChange(star)}
                 className={`text-2xl transition-transform hover:scale-110 ${star <= value ? 'text-yellow-400' : 'text-slate-200'}`}>★</button>
         ))}
     </div>
@@ -162,10 +162,10 @@ export const ConditionReportForm: React.FC<{
                 </div>
                 {!readOnly && (
                     <div className="flex gap-2">
-                        <button onClick={() => window.print()} className="flex items-center gap-2 px-4 py-2 border border-slate-200 rounded-xl text-sm font-black text-slate-600 hover:bg-slate-50 transition-colors">
+                        <button aria-label="طباعة التقرير" title="طباعة" onClick={() => window.print()} className="flex items-center gap-2 px-4 py-2 border border-slate-200 rounded-xl text-sm font-black text-slate-600 hover:bg-slate-50 transition-colors">
                             <Printer className="w-4 h-4" /> طباعة
                         </button>
-                        <button onClick={handleSave}
+                        <button aria-label="حفظ التقرير" title="حفظ" onClick={handleSave}
                             className={`flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-black transition-all shadow-lg ${saved ? 'bg-green-500 text-white shadow-green-500/20' : 'bg-orange-500 text-white hover:bg-orange-600 shadow-orange-500/20'}`}>
                             <Save className="w-4 h-4" /> {saved ? 'تم الحفظ ✅' : 'حفظ التقرير'}
                         </button>
@@ -180,7 +180,7 @@ export const ConditionReportForm: React.FC<{
                     <p className="font-black text-slate-700 text-sm mb-3">التقييم الإجمالي</p>
                     <div className="flex gap-2 flex-wrap">
                         {GRADES.map(g => (
-                            <button key={g.value} disabled={readOnly} onClick={() => setReport(r => ({ ...r, overallGrade: g.value }))}
+                            <button key={g.value} aria-label={`تقييم إجمالي ${g.label}`} title={g.label} disabled={readOnly} onClick={() => setReport(r => ({ ...r, overallGrade: g.value }))}
                                 className={`w-12 h-12 rounded-xl font-black text-lg transition-all ${report.overallGrade === g.value ? `${g.color} text-white shadow-lg scale-110` : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}>
                                 {g.value}
                             </button>
@@ -196,7 +196,7 @@ export const ConditionReportForm: React.FC<{
                     <p className="font-black text-slate-700 text-sm mb-3">مستوى الضرر</p>
                     <div className="flex gap-2 flex-wrap">
                         {DAMAGE_LEVELS.map(d => (
-                            <button key={d.value} disabled={readOnly} onClick={() => setReport(r => ({ ...r, damageLevel: d.value as any }))}
+                            <button key={d.value} aria-label={`مستوى الضرر ${d.label}`} title={d.label} disabled={readOnly} onClick={() => setReport(r => ({ ...r, damageLevel: d.value as any }))}
                                 className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all border ${report.damageLevel === d.value ? `${d.color} text-white border-transparent shadow-lg` : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'}`}>
                                 {d.label}
                             </button>
@@ -216,7 +216,7 @@ export const ConditionReportForm: React.FC<{
                     <div>
                         <label className="block text-[11px] font-black text-slate-400 uppercase mb-1.5">عداد المسافة</label>
                         <div className="flex gap-1">
-                            <input type="number" disabled={readOnly} className={`${inp} rounded-r-none`} value={report.odometer}
+                            <input type="number" aria-label="عداد المسافة" disabled={readOnly} className={`${inp} rounded-r-none`} value={report.odometer}
                                 onChange={e => setReport(r => ({ ...r, odometer: +e.target.value }))} title="عداد المسافة" placeholder="عداد المسافة" />
                             <select disabled={readOnly} className={`${inp} rounded-l-none w-16`} value={report.odometerUnit}
                                 onChange={e => setReport(r => ({ ...r, odometerUnit: e.target.value as any }))} title="وحدة القياس" aria-label="وحدة القياس">
@@ -245,7 +245,7 @@ export const ConditionReportForm: React.FC<{
                     </div>
                     <div>
                         <label className="block text-[11px] font-black text-slate-400 uppercase mb-1.5">اسم المفتش</label>
-                        <input type="text" disabled={readOnly} className={inp} placeholder="اسم المفتش"
+                        <input aria-label="اسم المفتش" title="اسم المفتش" type="text" disabled={readOnly} className={inp} placeholder="اسم المفتش"
                             value={report.inspectorName}
                             onChange={e => setReport(r => ({ ...r, inspectorName: e.target.value }))} />
                     </div>
@@ -259,7 +259,7 @@ export const ConditionReportForm: React.FC<{
                     const sec = report.sections[key];
                     return (
                         <div key={key} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                            <button onClick={() => setOpenSection(openSection === key ? null : key)}
+                            <button aria-label={openSection === key ? 'طي القسم' : 'توسيع القسم'} title={label} onClick={() => setOpenSection(openSection === key ? null : key)}
                                 className="w-full flex items-center justify-between p-4 hover:bg-slate-50 transition-colors">
                                 <div className="flex items-center gap-3">
                                     <div className="w-9 h-9 bg-orange-50 rounded-xl flex items-center justify-center">
@@ -285,7 +285,7 @@ export const ConditionReportForm: React.FC<{
                                     </div>
                                     <div>
                                         <label className="block text-[11px] font-black text-slate-400 uppercase mb-1.5">نوع الضرر</label>
-                                        <input type="text" disabled={readOnly} className={inp} placeholder="مثال: خدش على الركن الأمامي..."
+                                        <input aria-label="نوع الضرر" title="نوع الضرر" type="text" disabled={readOnly} className={inp} placeholder="مثال: خدش على الركن الأمامي..."
                                             value={sec.damage} onChange={e => updateSection(key, 'damage', e.target.value)} />
                                     </div>
                                     <div>
@@ -328,7 +328,7 @@ export const VinDecoder: React.FC = () => {
                     <Search className="w-6 h-6 text-orange-500" /> فك شفرة رقم الهيكل (VIN Decoder)
                 </h3>
                 <div className="flex gap-3">
-                    <input type="text" className={inp} maxLength={17} placeholder="أدخل رقم الهيكل — 17 حرف"
+                    <input aria-label="رقم الهيكل" title="رقم الهيكل" type="text" className={inp} maxLength={17} placeholder="أدخل رقم الهيكل — 17 حرف"
                         value={vin} onChange={e => setVin(e.target.value.toUpperCase())}
                         onKeyDown={e => e.key === 'Enter' && decode()} />
                     <button onClick={decode}

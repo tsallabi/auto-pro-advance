@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Mail, Lock, User, Phone, Shield, ArrowRight, ArrowLeft, X, Building2, CreditCard, MapPin, FileText, CheckCircle2, AlertCircle, Car } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
-
+import { useGoogleLogin } from '@react-oauth/google';
+import FacebookLogin from 'react-facebook-login/dist/facebook-login-render-props';
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -32,6 +33,115 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   const { setCurrentUser, showAlert, branchConfig } = useStore();
 
   if (!isOpen) return null;
+
+  const handleGoogleSuccess = async (tokenResponse: any) => {
+    try {
+      const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
+      });
+      const userInfo = await userInfoRes.json();
+
+      const res = await fetch('/api/auth/oauth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider: 'google',
+          providerId: userInfo.sub,
+          email: userInfo.email,
+          firstName: userInfo.given_name || userInfo.name?.split(' ')[0] || 'مستخدم',
+          lastName: userInfo.family_name || userInfo.name?.split(' ').slice(1).join(' ') || 'جوجل',
+          avatar: userInfo.picture
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        if (data.status === 'pending_approval') {
+          showAlert('حسابك الآن قيد المراجعة بواسطة الإدارة.', 'info');
+        } else {
+          showAlert('تم تسجيل الدخول بنجاح.', 'success');
+        }
+        setCurrentUser(data);
+        onClose();
+      } else {
+        setError(data.error || 'فشل تسجيل الدخول بواسطة جوجل');
+      }
+    } catch (e) {
+      setError('فشل الاتصال بالخادم');
+    }
+  };
+
+  const loginWithGoogle = useGoogleLogin({
+    onSuccess: handleGoogleSuccess,
+    onError: () => setError('فشل تسجيل الدخول بواسطة جوجل'),
+  });
+
+  const handleFacebookResponse = async (response: any) => {
+    if (!response.accessToken) return;
+    try {
+      const res = await fetch('/api/auth/oauth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider: 'facebook',
+          providerId: response.id,
+          email: response.email,
+          firstName: response.first_name || response.name?.split(' ')[0] || 'مستخدم',
+          lastName: response.last_name || response.name?.split(' ').slice(1).join(' ') || 'فيسبوك',
+          avatar: response.picture?.data?.url
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        if (data.status === 'pending_approval') {
+          showAlert('حسابك الآن قيد المراجعة بواسطة الإدارة.', 'info');
+        } else {
+          showAlert('تم تسجيل الدخول بنجاح.', 'success');
+        }
+        setCurrentUser(data);
+        onClose();
+      } else {
+        setError(data.error || 'فشل تسجيل الدخول بواسطة فيسبوك');
+      }
+    } catch (e) {
+      setError('فشل الاتصال بالخادم');
+    }
+  };
+
+  const renderOAuthButtons = () => (
+    <div className="space-y-3 mb-6">
+      <button
+        type="button"
+        onClick={() => loginWithGoogle()}
+        className="w-full bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 py-3 rounded-2xl font-bold shadow-sm transition-all flex items-center justify-center gap-3"
+      >
+        <img src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google" className="w-5 h-5" />
+        المتابعة باستخدام جوجل
+      </button>
+
+      <FacebookLogin
+        appId={(import.meta as any).env?.VITE_FACEBOOK_APP_ID || "1694689404604812"} // Fallback or empty if not provided
+        autoLoad={false}
+        fields="name,email,picture,first_name,last_name"
+        callback={handleFacebookResponse}
+        render={(renderProps: any) => (
+          <button
+            type="button"
+            onClick={renderProps.onClick}
+            className="w-full bg-[#1877F2] hover:bg-[#166FE5] text-white py-3 rounded-2xl font-bold shadow-lg shadow-blue-500/20 transition-all flex items-center justify-center gap-3"
+          >
+            <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.469h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.469h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" /></svg>
+            المتابعة باستخدام فيسبوك
+          </button>
+        )}
+      />
+
+      <div className="flex items-center gap-3 pt-3">
+        <div className="flex-1 h-px bg-slate-100"></div>
+        <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">أو بالبريد الإلكتروني</span>
+        <div className="flex-1 h-px bg-slate-100"></div>
+      </div>
+    </div>
+  );
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -116,7 +226,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-in fade-in duration-300">
       <div className="bg-white w-full max-w-lg rounded-[2rem] shadow-2xl overflow-hidden relative animate-in zoom-in-95 duration-300 max-h-[90vh] overflow-y-auto">
-        <button aria-label="زر" title="زر" 
+        <button title="إغلاق" aria-label="إغلاق النافذة"
           onClick={() => { onClose(); resetForm(); }}
           className="absolute top-5 left-5 p-2 text-slate-400 hover:text-slate-600 transition-colors z-10 bg-white/80 backdrop-blur rounded-full"
         >
@@ -178,7 +288,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                 <Car className="w-8 h-8 text-white" />
               </div>
               <h2 className="text-3xl font-black text-slate-900 mb-2">تسجيل الدخول</h2>
-              <p className="text-slate-500 font-medium">مرحباً بك مجدداً في عائلة {branchConfig?.name || 'ليبيا أوتو برو'}</p>
+              <p className="text-slate-500 font-medium">مرحباً بك مجدداً في عائلة {branchConfig?.name || 'ليبيا AUTO PRO'}</p>
             </div>
 
             {error && (
@@ -187,6 +297,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                 <AlertCircle className="w-4 h-4" />
               </div>
             )}
+
+            {renderOAuthButtons()}
 
             <form onSubmit={handleLogin} className="space-y-4">
               <div>
@@ -202,12 +314,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                 <label className={labelClass}>كلمة المرور</label>
                 <div className="relative">
                   <Lock className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                  <input type="password" required className={inputClass} placeholder="أدخل كلمة المرور"
+                  <input aria-label="كلمة المرور" title="كلمة المرور" type="password" required className={inputClass} placeholder="أدخل كلمة المرور"
                     value={formData.password} onChange={e => setFormData({ ...formData, password: e.target.value })} />
                 </div>
               </div>
 
-              <button type="submit" disabled={loading}
+              <button aria-label="تسجيل الدخول" title="دخول" type="submit" disabled={loading}
                 className="w-full bg-orange-500 hover:bg-orange-600 text-white py-3.5 rounded-2xl font-black shadow-lg shadow-orange-500/20 transition-all flex items-center justify-center gap-2 mt-6">
                 {loading ? 'جاري الدخول...' : 'دخول'}
                 <ArrowRight className="w-5 h-5" />
@@ -215,7 +327,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
             </form>
 
             <div className="mt-8 text-center">
-              <button onClick={() => { setIsLogin(false); setStep(1); setError(''); }}
+              <button aria-label="التسجيل الآن" title="تسجيل حساب جديد" onClick={() => { setIsLogin(false); setStep(1); setError(''); }}
                 className="text-sm font-bold text-slate-500 hover:text-orange-500 transition-colors">
                 ليس لديك حساب؟ <span className="text-orange-500 underline">سجّل الآن</span>
               </button>
@@ -281,13 +393,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
               </div>
             )}
 
+            {renderOAuthButtons()}
+
             <form onSubmit={handleRegisterStep1} className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className={labelClass}>الاسم الأول</label>
                   <div className="relative">
                     <User className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <input type="text" required className={inputClass} placeholder="محمد"
+                    <input aria-label="الاسم الأول" title="الاسم الأول" type="text" required className={inputClass} placeholder="محمد"
                       value={formData.firstName} onChange={e => setFormData({ ...formData, firstName: e.target.value })} />
                   </div>
                 </div>
@@ -295,7 +409,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                   <label className={labelClass}>اسم العائلة</label>
                   <div className="relative">
                     <User className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <input type="text" required className={inputClass} placeholder="العربي"
+                    <input aria-label="اسم العائلة" title="اسم العائلة" type="text" required className={inputClass} placeholder="العربي"
                       value={formData.lastName} onChange={e => setFormData({ ...formData, lastName: e.target.value })} />
                   </div>
                 </div>
@@ -314,9 +428,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                 <label className={labelClass}>رقم الهاتف</label>
                 <div className="relative">
                   <Phone className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                  <input type="tel" required className={inputClass} placeholder="+966 5xx xxx xxxx"
+                  <input aria-label="رقم الهاتف" title="رقم الهاتف" type="tel" required className={inputClass} placeholder="+966 5xx xxx xxxx"
                     value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} />
                 </div>
+                <p className="text-[10px] text-orange-600 font-bold mt-2 bg-orange-50 p-2 rounded-lg border border-orange-100 flex items-center gap-1.5">
+                  <AlertCircle className="w-3 h-3 flex-shrink-0" />
+                  يرجى كتابة الإيميل ورقم الهاتف (واتساب) بشكل صحيح لتصلك تنبيهات العروض والفواتير الهامة فوراً.
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -324,7 +442,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                   <label className={labelClass}>كلمة المرور</label>
                   <div className="relative">
                     <Lock className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <input type="password" required className={inputClass} placeholder="6 أحرف على الأقل"
+                    <input aria-label="كلمة المرور" title="كلمة المرور" type="password" required className={inputClass} placeholder="6 أحرف على الأقل"
                       value={formData.password} onChange={e => setFormData({ ...formData, password: e.target.value })} />
                   </div>
                 </div>
@@ -332,7 +450,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                   <label className={labelClass}>تأكيد كلمة المرور</label>
                   <div className="relative">
                     <Lock className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <input type="password" required className={inputClass} placeholder="أعد الإدخال"
+                    <input aria-label="تأكيد كلمة المرور" title="تأكيد كلمة المرور" type="password" required className={inputClass} placeholder="أعد الإدخال"
                       value={formData.confirmPassword} onChange={e => setFormData({ ...formData, confirmPassword: e.target.value })} />
                   </div>
                 </div>
@@ -340,14 +458,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
 
               <div>
                 <label className={labelClass}>نوع الحساب</label>
-                <select aria-label="تحديد" title="تحديد"  className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl py-3 px-4 outline-none focus:border-orange-500 transition-all text-sm text-slate-900 font-bold"
+                <select aria-label="نوع الحساب" title="نوع الحساب" className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl py-3 px-4 outline-none focus:border-orange-500 transition-all text-sm text-slate-900 font-bold"
                   value={formData.role} onChange={e => setFormData({ ...formData, role: e.target.value })}>
                   <option value="buyer">🛒 مشتري (Buyer)</option>
                   <option value="seller">🏪 بائع / معرض (Seller)</option>
                 </select>
               </div>
 
-              <button type="submit"
+              <button aria-label="التالي للتحقق" title="التالي" type="submit"
                 className="w-full bg-slate-900 hover:bg-slate-800 text-white py-3.5 rounded-2xl font-black shadow-xl transition-all flex items-center justify-center gap-2 mt-2">
                 التالي - التحقق والهوية
                 <ArrowLeft className="w-5 h-5" />
@@ -355,7 +473,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
             </form>
 
             <div className="mt-6 text-center">
-              <button onClick={() => { setIsLogin(true); setStep(1); setError(''); }}
+              <button aria-label="تسجيل الدخول" title="تسجيل الدخول" onClick={() => { setIsLogin(true); setStep(1); setError(''); }}
                 className="text-sm font-bold text-slate-500 hover:text-orange-500 transition-colors">
                 لديك حساب بالفعل؟ <span className="text-orange-500 underline">سجّل دخولك</span>
               </button>
@@ -398,7 +516,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                 <label className={labelClass}>رقم الهوية الوطنية / الإقامة *</label>
                 <div className="relative">
                   <CreditCard className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                  <input type="text" required className={inputClass} placeholder="10XXXXXXXX"
+                  <input aria-label="رقم الهوية الوطنية" title="رقم الهوية" type="text" required className={inputClass} placeholder="10XXXXXXXX"
                     value={formData.nationalId} onChange={e => setFormData({ ...formData, nationalId: e.target.value })} />
                 </div>
               </div>
@@ -407,7 +525,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                 <label className={labelClass}>البلد *</label>
                 <div className="relative">
                   <MapPin className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                  <select aria-label="تحديد" title="تحديد"  className={inputClass + " pr-11"} required
+                  <select aria-label="البلد" title="البلد" className={inputClass + " pr-11"} required
                     value={formData.country} onChange={e => setFormData({ ...formData, country: e.target.value })}>
                     <option value="">اختر البلد</option>
                     <option value="SA">🇸🇦 المملكة العربية السعودية</option>
@@ -429,7 +547,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                 <label className={labelClass}>العنوان *</label>
                 <div className="relative">
                   <MapPin className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                  <input type="text" required className={inputClass} placeholder="المدينة - الحي - الشارع"
+                  <input aria-label="العنوان" title="العنوان" type="text" required className={inputClass} placeholder="المدينة - الحي - الشارع"
                     value={formData.address1} onChange={e => setFormData({ ...formData, address1: e.target.value })} />
                 </div>
               </div>
@@ -438,7 +556,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                 <label className={labelClass}>رقم IBAN البنكي *</label>
                 <div className="relative">
                   <Building2 className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                  <input type="text" required className={inputClass} placeholder="SA00 0000 0000 0000 0000 0000"
+                  <input aria-label="رقم ﺍﻻﻳﺒﺎﻥ" title="رقم الآيبان البنكي" type="text" required className={inputClass} placeholder="SA00 0000 0000 0000 0000 0000"
                     value={formData.iban} onChange={e => setFormData({ ...formData, iban: e.target.value.toUpperCase() })} />
                 </div>
               </div>
@@ -453,7 +571,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                     <label className={labelClass}>اسم الشركة / المعرض</label>
                     <div className="relative">
                       <Building2 className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                      <input type="text" className={inputClass} placeholder="اسم المعرض أو الشركة"
+                      <input aria-label="اسم الشركة أو المعرض" title="اسم الشركة" type="text" className={inputClass} placeholder="اسم المعرض أو الشركة"
                         value={formData.companyName} onChange={e => setFormData({ ...formData, companyName: e.target.value })} />
                     </div>
                   </div>
@@ -462,7 +580,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                       <label className={labelClass}>السجل التجاري</label>
                       <div className="relative">
                         <FileText className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                        <input type="text" className={inputClass} placeholder="رقم السجل"
+                        <input aria-label="السجل التجاري" title="السجل التجاري" type="text" className={inputClass} placeholder="رقم السجل"
                           value={formData.commercialRegister} onChange={e => setFormData({ ...formData, commercialRegister: e.target.value })} />
                       </div>
                     </div>
@@ -470,7 +588,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                       <label className={labelClass}>رخصة المعرض</label>
                       <div className="relative">
                         <FileText className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                        <input type="text" className={inputClass} placeholder="رقم الرخصة"
+                        <input aria-label="رخصة المعرض" title="رخصة المعرض" type="text" className={inputClass} placeholder="رقم الرخصة"
                           value={formData.showroomLicense} onChange={e => setFormData({ ...formData, showroomLicense: e.target.value })} />
                       </div>
                     </div>
@@ -479,12 +597,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
               )}
 
               <div className="flex gap-3 mt-4">
-                <button type="button" onClick={() => setStep(1)}
+                <button aria-label="الرجوع للخطوة السابقة" title="رجوع" type="button" onClick={() => setStep(1)}
                   className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-3.5 rounded-2xl font-black transition-all flex items-center justify-center gap-2">
                   <ArrowRight className="w-5 h-5" />
                   رجوع
                 </button>
-                <button type="submit" disabled={loading}
+                <button aria-label="إرسال طلب الانضمام" title="إرسال" type="submit" disabled={loading}
                   className="flex-[2] bg-orange-500 hover:bg-orange-600 text-white py-3.5 rounded-2xl font-black shadow-lg shadow-orange-500/20 transition-all flex items-center justify-center gap-2">
                   {loading ? 'جاري إرسال الطلب...' : 'إرسال طلب الانضمام'}
                   <CheckCircle2 className="w-5 h-5" />
