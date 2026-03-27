@@ -19,7 +19,7 @@ interface LiveAuctionProps {
 export const LiveAuction: React.FC<LiveAuctionProps> = ({ car, upcomingCars, onBack }) => {
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const { socket, currentUser, placeBid, showAlert, exchangeRate, marketEstimates } = useStore();
+  const { socket, currentUser, placeBid, showAlert, exchangeRate, marketEstimates, branchConfig } = useStore();
   const [currentBid, setCurrentBid] = useState(car.currentBid || 0);
   const [bidders, setBidders] = useState(12);
   const [timeLeft, setTimeLeft] = useState(15);
@@ -433,6 +433,41 @@ export const LiveAuction: React.FC<LiveAuctionProps> = ({ car, upcomingCars, onB
                     )}
                   </div>
                 )}
+
+                {/* ── Libyan Market Estimate / Profit Box ── */}
+                {estimate && estPriceValue > 0 && (() => {
+                  const breakdown = calculateTotalCost(
+                    currentBid || 0,
+                    VehicleType.SEDAN,
+                    MOCK_LOCATIONS[0],
+                    'LIBYA',
+                    'KHOMS',
+                    0
+                  );
+                  const totalLandedLYD = breakdown.total * (exchangeRate || 7);
+                  const savingOrProfit = estPriceValue - totalLandedLYD;
+                  const isProfitable = savingOrProfit > 0;
+                  return (
+                    <div className={`mb-6 p-4 rounded-2xl border ${isProfitable ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-slate-800/50 border-slate-700'} flex items-center gap-4 animate-in fade-in duration-500`}>
+                      <div className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 ${isProfitable ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-700 text-slate-400'}`}>
+                        <CalcIcon className="w-6 h-6" />
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="text-sm font-bold text-slate-300">السعر التقريبي في السوق الليبي</h4>
+                        <div className="flex items-baseline gap-2 mt-1">
+                          <span className="text-xl font-black text-white">{estPriceValue.toLocaleString()} د.ل</span>
+                          <span className="text-xs text-slate-400 border border-slate-600 px-2 py-0.5 rounded-full capitalize">{estimate.condition}</span>
+                        </div>
+                      </div>
+                      <div className={`text-left pl-4 border-l ${isProfitable ? 'border-emerald-500/30' : 'border-slate-700'}`}>
+                        <div className="text-[10px] uppercase font-bold tracking-widest text-slate-400 mb-1">الربح/التوفير المتوقع</div>
+                        <div className={`text-xl font-black font-mono tracking-tight ${isProfitable ? 'text-emerald-400' : 'text-slate-400'}`} dir="ltr">
+                          {isProfitable ? '+' : ''}{savingOrProfit.toLocaleString()}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <button
