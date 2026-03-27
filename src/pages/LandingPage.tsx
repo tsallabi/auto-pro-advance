@@ -334,12 +334,12 @@ export const LandingPage = () => {
                     <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/black-linen-2.png')] opacity-30"></div>
                     <div className="relative z-10 max-w-3xl mx-auto space-y-10">
                         <div className="w-20 h-2 bg-orange-600 mx-auto rounded-full"></div>
-                        <h2 className="text-5xl lg:text-7xl font-black text-white leading-tight">{t('landingPage.footer.ready')} <br /><span className="text-orange-500">{t('landingPage.footer.future')}</span></h2>
+                        <h2 className="text-5xl lg:text-7xl font-black text-white leading-tight">{t('footer.ready')} <br /><span className="text-orange-500">{t('footer.future')}</span></h2>
                         <div className="flex flex-col sm:flex-row gap-6 justify-center pt-6">
-                            <button onClick={() => navigate('/auth?mode=register')} className="bg-white text-slate-900 px-16 py-6 rounded-[2rem] font-black text-2xl hover:bg-orange-500 hover:text-white transition-all shadow-2xl">{t('landingPage.footer.createAccount')}</button>
+                            <button onClick={() => navigate('/auth?mode=register')} className="bg-white text-slate-900 px-16 py-6 rounded-[2rem] font-black text-2xl hover:bg-orange-500 hover:text-white transition-all shadow-2xl">{t('footer.createAccount')}</button>
                             <button onClick={() => navigate('/marketplace')} className="bg-transparent border-2 border-white/20 text-white px-16 py-6 rounded-[2rem] font-black text-2xl hover:bg-white/10 transition-all">{t('landingPage.browseCars')}</button>
                         </div>
-                        <p className="text-slate-500 font-bold text-sm tracking-[0.2em] uppercase">{t('landingPage.footer.note')}</p>
+                        <p className="text-slate-500 font-bold text-sm tracking-[0.2em] uppercase">{t('footer.note')}</p>
                     </div>
                 </div>
             </section >

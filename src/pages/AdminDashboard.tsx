@@ -2227,7 +2227,7 @@ export const AdminDashboard = () => {
   const [showReportModal, setShowReportModal] = useState<any>(null);
   const [showLibyanModal, setShowLibyanModal] = useState(false);
   const [libyanModalForm, setLibyanModalForm] = useState({
-    id: '', condition: 'جديد', make: '', model: '', year: 2024, transmission: 'اوتوماتيك', fuel: 'بنزين', mileage: '0', priceLYD: ''
+    id: '', condition: 'جديد', make: '', makeEn: '', model: '', modelEn: '', year: 2024, transmission: 'اوتوماتيك', fuel: 'بنزين', mileage: '0', priceLYD: ''
   });
 
   useEffect(() => {
@@ -6496,12 +6496,20 @@ export const AdminDashboard = () => {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-bold text-slate-700 mb-2">الماركة</label>
+                <label className="block text-sm font-bold text-slate-700 mb-2">الماركة (عربي)</label>
                 <input type="text" value={libyanModalForm.make} onChange={e => setLibyanModalForm({ ...libyanModalForm, make: e.target.value })} className="w-full border rounded-lg p-2.5 outline-none focus:border-indigo-500" placeholder="تويوتا" />
               </div>
               <div>
-                <label className="block text-sm font-bold text-slate-700 mb-2">الموديل</label>
+                <label className="block text-sm font-bold text-slate-700 mb-2">الماركة (English)</label>
+                <input type="text" value={libyanModalForm.makeEn || ''} onChange={e => setLibyanModalForm({ ...libyanModalForm, makeEn: e.target.value })} className="w-full border rounded-lg p-2.5 outline-none focus:border-indigo-500" placeholder="Toyota" dir="ltr" />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-2">الموديل (عربي)</label>
                 <input type="text" value={libyanModalForm.model} onChange={e => setLibyanModalForm({ ...libyanModalForm, model: e.target.value })} className="w-full border rounded-lg p-2.5 outline-none focus:border-indigo-500" placeholder="كامري" />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-2">الموديل (English)</label>
+                <input type="text" value={libyanModalForm.modelEn || ''} onChange={e => setLibyanModalForm({ ...libyanModalForm, modelEn: e.target.value })} className="w-full border rounded-lg p-2.5 outline-none focus:border-indigo-500" placeholder="Camry" dir="ltr" />
               </div>
               <div>
                 <label className="block text-sm font-bold text-slate-700 mb-2">السنة</label>

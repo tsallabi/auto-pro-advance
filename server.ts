@@ -1249,13 +1249,12 @@ async function startServer() {
 
   app.post("/api/libyan-market", (req, res) => {
     try {
-      const { condition, make, model, year, transmission, fuel, mileage, priceLYD } = req.body;
-      const id = require('crypto').randomBytes(8).toString('hex');
+      const { condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, city } = req.body;
       const priceStr = Number(priceLYD).toLocaleString('en-US');
-      db.prepare("INSERT INTO market_estimates (id, condition, make, model, year, transmission, fuel, mileage, price) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").run(
-        id, condition, make, model, year, transmission, fuel, mileage, priceStr
+      const info = db.prepare("INSERT INTO market_estimates (condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, price, city) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run(
+        condition, make, makeEn || '', model, modelEn || '', year, transmission || 'اوتوماتيك', fuel || 'بنزين', mileage || '0', priceStr, city || 'طرابلس'
       );
-      res.json({ success: true, id });
+      res.json({ success: true, id: info.lastInsertRowid });
     } catch (err: any) {
       res.status(500).json({ error: "Failed to save market estimate", details: err.message });
     }
@@ -1263,10 +1262,10 @@ async function startServer() {
 
   app.put("/api/libyan-market/:id", (req, res) => {
     try {
-      const { condition, make, model, year, transmission, fuel, mileage, priceLYD } = req.body;
+      const { condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, city } = req.body;
       const priceStr = Number(priceLYD).toLocaleString('en-US');
-      db.prepare("UPDATE market_estimates SET condition = ?, make = ?, model = ?, year = ?, transmission = ?, fuel = ?, mileage = ?, price = ? WHERE id = ?").run(
-        condition, make, model, year, transmission, fuel, mileage, priceStr, req.params.id
+      db.prepare("UPDATE market_estimates SET condition = ?, make = ?, makeEn = ?, model = ?, modelEn = ?, year = ?, transmission = ?, fuel = ?, mileage = ?, price = ?, city = ? WHERE id = ?").run(
+        condition, make, makeEn || '', model, modelEn || '', year, transmission || 'اوتوماتيك', fuel || 'بنزين', mileage || '0', priceStr, city || 'طرابلس', req.params.id
       );
       res.json({ success: true });
     } catch (err: any) {
