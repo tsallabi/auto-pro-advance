@@ -4981,6 +4981,7 @@ export const AdminDashboard = () => {
                 <table className="w-full text-sm text-right">
                   <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
                     <tr>
+                      <th className="px-6 py-4 text-center">#</th>
                       <th className="px-6 py-4">الماركة والموديل</th>
                       <th className="px-6 py-4">السنة</th>
                       <th className="px-6 py-4 flex justify-center">الحالة</th>
@@ -4996,8 +4997,11 @@ export const AdminDashboard = () => {
                       e.make?.toLowerCase().includes(estimateSearch.toLowerCase()) ||
                       e.model?.toLowerCase().includes(estimateSearch.toLowerCase()) ||
                       e.year?.toString().includes(estimateSearch)
-                    ).slice(0, 50).map((car: any, idx) => (
+                    ).map((car: any, idx) => (
                       <tr key={car.id || idx} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-6 py-4 text-center font-mono font-bold text-slate-400">
+                          {idx + 1}
+                        </td>
                         <td className="px-6 py-4">
                           <div className="font-black text-slate-800 text-base">{car.make} {car.model}</div>
                           <div className="text-[11px] font-bold text-slate-400 font-mono tracking-wider mt-0.5 uppercase" dir="ltr">{car.makeEn} {car.modelEn}</div>

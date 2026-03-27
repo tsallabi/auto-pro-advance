@@ -1232,12 +1232,16 @@ async function startServer() {
   // Start the heartbeat timer for live auctions
   setInterval(tickAuctions, 1000);
 
-  // API Routes
   
   app.get("/api/libyan-market", (req, res) => {
     try {
-      const prices = db.prepare("SELECT * FROM libyan_market_prices ORDER BY id DESC").all();
-      res.json(prices);
+      const prices: any[] = db.prepare("SELECT * FROM market_estimates ORDER BY id DESC").all();
+      // Map it to ensure UI compatibility
+      const mappedPrices = prices.map(row => ({
+        ...row,
+        priceLYD: parseFloat(String(row.price).replace(/,/g, '') || '0'),
+      }));
+      res.json(mappedPrices);
     } catch (err: any) {
       res.status(500).json({ error: "Failed to fetch market prices", details: err.message });
     }
@@ -1247,8 +1251,9 @@ async function startServer() {
     try {
       const { condition, make, model, year, transmission, fuel, mileage, priceLYD } = req.body;
       const id = require('crypto').randomBytes(8).toString('hex');
-      db.prepare("INSERT INTO libyan_market_prices (id, condition, make, model, year, transmission, fuel, mileage, priceLYD) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").run(
-        id, condition, make, model, year, transmission, fuel, mileage, priceLYD
+      const priceStr = Number(priceLYD).toLocaleString('en-US');
+      db.prepare("INSERT INTO market_estimates (id, condition, make, model, year, transmission, fuel, mileage, price) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").run(
+        id, condition, make, model, year, transmission, fuel, mileage, priceStr
       );
       res.json({ success: true, id });
     } catch (err: any) {
@@ -1259,8 +1264,9 @@ async function startServer() {
   app.put("/api/libyan-market/:id", (req, res) => {
     try {
       const { condition, make, model, year, transmission, fuel, mileage, priceLYD } = req.body;
-      db.prepare("UPDATE libyan_market_prices SET condition = ?, make = ?, model = ?, year = ?, transmission = ?, fuel = ?, mileage = ?, priceLYD = ? WHERE id = ?").run(
-        condition, make, model, year, transmission, fuel, mileage, priceLYD, req.params.id
+      const priceStr = Number(priceLYD).toLocaleString('en-US');
+      db.prepare("UPDATE market_estimates SET condition = ?, make = ?, model = ?, year = ?, transmission = ?, fuel = ?, mileage = ?, price = ? WHERE id = ?").run(
+        condition, make, model, year, transmission, fuel, mileage, priceStr, req.params.id
       );
       res.json({ success: true });
     } catch (err: any) {
@@ -1270,7 +1276,7 @@ async function startServer() {
 
   app.delete("/api/libyan-market/:id", (req, res) => {
     try {
-      db.prepare("DELETE FROM libyan_market_prices WHERE id = ?").run(req.params.id);
+      db.prepare("DELETE FROM market_estimates WHERE id = ?").run(req.params.id);
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ error: "Failed to delete market estimate", details: err.message });
