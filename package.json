@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
+    "start": "tsx server.ts",
     "build": "vite build --emptyOutDir",
     "preview": "vite preview",
     "clean": "rm -rf dist",
@@ -46,6 +47,7 @@
     "react-router-dom": "^7.13.0",
     "recharts": "^3.7.0",
     "socket.io": "^4.8.3",
+    "tsx": "^4.21.0",
     "vite": "^6.2.0"
   },
   "devDependencies": {
@@ -62,7 +64,6 @@
     "autoprefixer": "^10.4.21",
     "socket.io-client": "^4.8.3",
     "tailwindcss": "^4.1.14",
-    "tsx": "^4.21.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
   }
