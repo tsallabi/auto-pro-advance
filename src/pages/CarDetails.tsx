@@ -2,7 +2,7 @@ import React from 'react';
 import { useLocation, useNavigate, useParams, Navigate } from 'react-router-dom';
 import {
   ChevronLeft, Calendar, Gauge, MapPin, Shield, Info, FileText,
-  Hash, Calculator as CalcIcon, Gavel, Clock, Tag, AlertTriangle, TrendingUp, X, CheckCircle2
+  Hash, Calculator as CalcIcon, Gavel, Clock, Tag, AlertTriangle, TrendingUp, X, CheckCircle2, ArrowUp
 } from 'lucide-react';
 import { calculateTotalCost, MOCK_LOCATIONS } from '../services/calculatorService';
 import { VehicleType } from '../types/calculator';
@@ -173,31 +173,35 @@ export const CarDetails = () => {
     return calculateTotalCost(calcBid, VehicleType.SEDAN, loc, 'LIBYA', 'KHOMS', 10);
   }, [car]);
 
-  const [libyanPrices, setLibyanPrices] = React.useState<any[]>([]);
-
-  React.useEffect(() => {
-    fetch('/api/libyan-market')
-      .then(r => r.json())
-      .then(setLibyanPrices)
-      .catch(console.error);
-  }, []);
-
+  // Calculate estimate based on global marketEstimates using same matching logic as CarCard and LiveAuction
   const estimate = React.useMemo(() => {
-    if (!car || !libyanPrices?.length) return null;
-    return libyanPrices.find(e => {
-      const carMake = String(car.make || car.Make || '').toLowerCase().trim();
-      const carModel = String(car.model || car['Model Group'] || '').toLowerCase().trim();
-
-      const eMake = String(e.make || '').toLowerCase().trim();
-      const eModel = String(e.model || '').toLowerCase().trim();
+    if (!car || !marketEstimates?.length) return null;
+    return marketEstimates.find(est => {
+      const cleanString = (s: string) => String(s || '').toLowerCase().trim().replace(/[-\s]/g, '');
+      const cMake = cleanString(car.make);
+      const cModel = cleanString(car.model);
+      const eMake = cleanString(est.make);
+      const eMakeEn = cleanString(est.makeEn);
+      const eModel = cleanString(est.model);
+      const eModelEn = cleanString(est.modelEn);
       
-      const makeMatches = carMake.includes(eMake) || eMake.includes(carMake);
-      const modelMatches = carModel.includes(eModel) || eModel.includes(carModel);
-      const yearMatches = e.year === Number(car.year || car.Year);
-
-      return makeMatches && modelMatches && yearMatches;
+      const makeMatch = cMake.includes(eMake) || cMake.includes(eMakeEn) || eMakeEn.includes(cMake);
+      const modelMatch = cModel.includes(eModel) || cModel.includes(eModelEn) || eModelEn.includes(cModel);
+      
+      if (!makeMatch) return false;
+      if (!modelMatch) return false;
+      return Math.abs((car.year || 0) - (est.year || 0)) <= 2;
     });
-  }, [car, libyanPrices]);
+  }, [car, marketEstimates]);
+
+  const parseEstPrice = (p: any) => {
+    const parts = String(p).split('-');
+    if (parts.length > 1) {
+        return Math.floor((Number(parts[0].replace(/[^0-9]/g, '')) + Number(parts[1].replace(/[^0-9]/g, ''))) / 2);
+    }
+    return Number(String(p).replace(/[^0-9]/g, ''));
+  };
+  const estPriceValue = estimate ? parseEstPrice(estimate.price) : 0;
 
   // Extract images from car data (handles arrays from server or strings from CSV)
   const allImages = React.useMemo(() => {
@@ -559,53 +563,58 @@ export const CarDetails = () => {
               </div>
             )}
 
-            {/* Estimated Market Price Widget */}
-            {estimate && (
-              <div className="bg-gradient-to-br from-indigo-50 to-white border border-indigo-100/50 rounded-2xl p-6 mt-6 shadow-sm relative overflow-hidden group">
-                <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full blur-3xl -mr-10 -mt-10 transition-transform group-hover:scale-150 duration-700"></div>
-                <div className="relative flex flex-col gap-4">
-                  <div className="flex items-center gap-4">
-                    <div className="flex-shrink-0 w-12 h-12 bg-white rounded-xl shadow-sm border border-indigo-50 flex items-center justify-center">
-                      <TrendingUp className="w-6 h-6 text-indigo-500" />
-                    </div>
-                    <div className="flex-1">
-                      <div className="text-xs font-bold text-indigo-400 mb-1 flex items-center gap-1.5 uppercase tracking-wider">
-                        متوسط السعر بالسوق الموازي (ليبيا)
-                      </div>
-                      <div className="flex items-end gap-3">
-                        <div className="text-2xl font-black text-indigo-900 font-mono tracking-tight">{estimate.priceLYD.toLocaleString('en-US')} د.ل</div>
-                        <div className="text-lg font-bold text-slate-500 font-mono tracking-tight pb-[2px]">
-                          (${Math.round(estimate.priceLYD / (exchangeRate || 7)).toLocaleString('en-US')})
-                        </div>
-                        <div className="text-sm font-bold text-slate-400 mb-1">({estimate.condition})</div>
-                      </div>
-                    </div>
-                    <div className="text-left hidden sm:block">
-                      <div className="text-[10px] font-bold text-slate-400 bg-white px-2 py-1 rounded-md border border-slate-100 shadow-sm inline-block">تحديث: اليوم</div>
-                    </div>
+          </div>
+          
+          {/* Estimated Market Price Widget (Moved outside dark box) */}
+          <div className="bg-gradient-to-br from-indigo-50 to-white border border-indigo-100/50 rounded-[2rem] p-8 shadow-md relative overflow-hidden group mt-6">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full blur-3xl -mr-10 -mt-10 transition-transform group-hover:scale-150 duration-700"></div>
+            <div className="relative flex flex-col gap-6">
+              <div className="flex items-center gap-4">
+                <div className="flex-shrink-0 w-16 h-16 bg-white rounded-2xl shadow-sm border border-indigo-50 flex items-center justify-center relative">
+                  <div className="absolute inset-0 bg-indigo-500/10 rounded-2xl animate-pulse"></div>
+                  <ArrowUp className="w-8 h-8 text-indigo-500 relative z-10" />
+                </div>
+                <div className="flex-1">
+                  <div className="text-sm font-bold text-indigo-500 mb-1 flex items-center gap-1.5 uppercase tracking-wider">
+                    السعر المتوقع بالسوق (ليبيا)
                   </div>
-                  
-                  {/* Profit Margin Box */}
-                  {calculationResult && (
-                    <div className="mt-2 bg-emerald-50 border border-emerald-100 rounded-xl p-4 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center">
-                          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                        </div>
-                        <span className="font-bold text-emerald-800 text-sm">هامش الربح المتوقع</span>
-                      </div>
-                      <div className="text-left font-black text-emerald-600 font-mono text-xl" dir="ltr">
-                        {(() => {
-                          const totalCostLYD = Math.round(calculationResult.total * (exchangeRate || 7));
-                          const profit = estimate.priceLYD - totalCostLYD;
-                          return profit > 0 ? `+${profit.toLocaleString('en-US')} LYD` : `${profit.toLocaleString('en-US')} LYD`;
-                        })()}
+                  {estimate ? (
+                    <div className="flex items-end gap-3">
+                      <div className="text-4xl font-black text-indigo-900 font-mono tracking-tight text-shadow-sm">{estPriceValue.toLocaleString('en-US')} د.ل</div>
+                      <div className="text-xl font-bold text-slate-500 font-mono tracking-tight pb-[2px]">
+                        (${Math.round(estPriceValue / (exchangeRate || 7)).toLocaleString('en-US')})
                       </div>
                     </div>
+                  ) : (
+                    <div className="text-xl font-bold text-slate-400 mt-2">لا تتوفر بيانات كافية عن سعر هذا الموديل حالياً في ليبيا</div>
                   )}
                 </div>
               </div>
-            )}
+              
+              {/* Profit Margin Box */}
+              {calculationResult && (
+                <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center">
+                      <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                    </div>
+                    <div>
+                      <div className="font-bold text-emerald-800 text-lg">توفير الزبون (الربح المتوقع)</div>
+                      <div className="text-emerald-600/80 text-xs mt-1">يُحسب بناءً على التكلفة الإجمالية الواصلة لميناء الخمس</div>
+                    </div>
+                  </div>
+                  <div className="text-left font-black text-emerald-600 font-mono text-3xl" dir="ltr">
+                    {(() => {
+                      if (!estimate) return <span className="text-sm text-emerald-600/50 font-sans tracking-normal font-bold">غير متاح</span>;
+                      
+                      const totalCostLYD = Math.floor(calculationResult.total * (exchangeRate || 7));
+                      const profit = estPriceValue - totalCostLYD;
+                      return profit > 0 ? `+${profit.toLocaleString('en-US')} د.ل` : `${profit.toLocaleString('en-US')} د.ل`;
+                    })()}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Full Details Table */}

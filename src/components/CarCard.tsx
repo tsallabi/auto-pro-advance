@@ -1,8 +1,10 @@
 import React from 'react';
 import { Car } from '../types';
-import { Clock, MapPin, AlertTriangle, ShieldCheck, Heart } from 'lucide-react';
+import { ArrowUp, CheckCircle2, Clock, MapPin, AlertTriangle, ShieldCheck, Heart } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { useTranslation } from 'react-i18next';
+import { calculateTotalCost, MOCK_LOCATIONS } from '../services/calculatorService';
+import { VehicleType } from '../types/calculator';
 
 interface CarCardProps {
   car: Car;
@@ -12,7 +14,7 @@ interface CarCardProps {
 
 export const CarCard: React.FC<CarCardProps> = ({ car, onClick, onJoinLive }) => {
   const { t } = useTranslation();
-  const { watchlist, toggleWatchlist, exchangeRate, users } = useStore();
+  const { watchlist, toggleWatchlist, exchangeRate, users, marketEstimates } = useStore();
   const isLive = car.status === 'live';
   const isFavorite = watchlist.some((w) => w.carId === car.id);
 
@@ -24,6 +26,33 @@ export const CarCard: React.FC<CarCardProps> = ({ car, onClick, onJoinLive }) =>
     e.stopPropagation();
     toggleWatchlist(car.id);
   };
+
+  // Find local market estimate (matched make, model, year ±1)
+  const estimate = marketEstimates?.find(est => {
+    const cleanString = (s: string) => String(s || '').toLowerCase().trim().replace(/[-\s]/g, '');
+    const cMake = cleanString(car.make);
+    const cModel = cleanString(car.model);
+    const eMake = cleanString(est.make);
+    const eMakeEn = cleanString(est.makeEn);
+    const eModel = cleanString(est.model);
+    const eModelEn = cleanString(est.modelEn);
+    
+    const makeMatch = cMake.includes(eMake) || cMake.includes(eMakeEn) || eMakeEn.includes(cMake);
+    const modelMatch = cModel.includes(eModel) || cModel.includes(eModelEn) || eModelEn.includes(cModel);
+    
+    if (!makeMatch) return false;
+    if (!modelMatch) return false;
+    return Math.abs((car.year || 0) - (est.year || 0)) <= 2;
+  });
+
+  const parseEstPrice = (p: any) => {
+    const parts = String(p).split('-');
+    if (parts.length > 1) {
+        return Math.floor((Number(parts[0].replace(/[^0-9]/g, '')) + Number(parts[1].replace(/[^0-9]/g, ''))) / 2);
+    }
+    return Number(String(p).replace(/[^0-9]/g, ''));
+  };
+  const estPriceValue = estimate ? parseEstPrice(estimate.price) : 0;
 
   return (
     <div
@@ -123,6 +152,38 @@ export const CarCard: React.FC<CarCardProps> = ({ car, onClick, onJoinLive }) =>
               <span title="معرض غير موثق" className="flex items-center"><AlertTriangle className="w-3.5 h-3.5 text-red-500" /></span>
             )}
           </span>
+        </div>
+
+        {/* Market Estimate Widget */}
+        <div className="bg-indigo-50/80 border border-indigo-100 rounded-xl p-3 mb-4 flex flex-col gap-2 relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-16 h-16 bg-indigo-500/5 rounded-full blur-xl -mr-8 -mt-8"></div>
+          <div className="flex items-center justify-between relative z-10">
+             <div className="flex items-center gap-1.5">
+               <ArrowUp className="w-4 h-4 text-indigo-500" />
+               <span className="text-[10px] font-bold text-indigo-600 tracking-wider">السعر في ليبيا</span>
+             </div>
+             <div className="font-mono font-black text-slate-800 text-sm">
+               {estimate ? `${estPriceValue.toLocaleString('en-US')} د.ل` : <span className="text-[11px] text-slate-400 font-sans tracking-normal font-bold">غير متوفر</span>}
+             </div>
+          </div>
+          
+          <div className="flex items-center justify-between bg-emerald-50 rounded-lg p-2 border border-emerald-100/50 relative z-10">
+             <div className="flex items-center gap-1.5">
+               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+               <span className="text-[10px] font-bold text-emerald-600">توفير الزبون</span>
+             </div>
+             <div className="font-mono font-black text-emerald-600 text-[13px]" dir="ltr">
+                {(() => {
+                      if (!estimate) return <span className="text-[10px] text-emerald-600/50 font-sans tracking-normal font-bold">بيانات غير كافية</span>;
+                      
+                      const loc = MOCK_LOCATIONS.find(l => (car.location || '').includes(l.state)) || MOCK_LOCATIONS[0];
+                      const landingResult = calculateTotalCost(car.currentBid || car.startingBid || 0, VehicleType.SEDAN, loc, 'LIBYA', 'KHOMS', 10);
+                      const totalCostLYD = Math.floor(landingResult.total * (exchangeRate || 7));
+                      const profit = estPriceValue - totalCostLYD;
+                      return profit > 0 ? `+${profit.toLocaleString('en-US')} د.ل` : `${profit.toLocaleString('en-US')} د.ل`;
+                })()}
+             </div>
+          </div>
         </div>
 
         {/* Specs Grid */}

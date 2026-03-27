@@ -6,7 +6,7 @@ import {
   Database, RefreshCw, AlertTriangle, CheckCircle2, Car, DollarSign, Users,
   Plus, Trash2, Edit, Building2, FileText, Mail, Wallet, Truck, ShieldCheck,
   Store, Gavel, List, File, History, HelpCircle, Settings, Filter, MessageSquare, MoreVertical,
-  UploadCloud, Globe, Search, ShoppingCart, Ship, Check, Reply, Link as LinkIcon, Calculator, Info,
+  Code2, UploadCloud, Globe, Search, ShoppingCart, Ship, Check, Reply, Link as LinkIcon, Calculator, Info,
   Shield, BookOpen, TrendingUp, Bell, Handshake, CreditCard, MapPin, Clock, X, XCircle, Map, Zap, Trophy, Eye, UserPlus, ClipboardCheck, Download, Share2, Send, AlertCircle
 } from 'lucide-react';
 
@@ -379,13 +379,20 @@ const ExternalLogsViewer: React.FC = () => {
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [testing, setTesting] = useState(false);
+  const [trialEmail, setTrialEmail] = useState('tsallabi@yahoo.ca');
+  const [trialPhone, setTrialPhone] = useState('00353894435368');
 
   const fetchLogs = async () => {
     try {
       const res = await fetch('/api/admin/external-notifications');
       const data = await res.json();
       setLogs(Array.isArray(data) ? data : []);
-    } catch (e) { console.error(e); } finally { setLoading(false); }
+    } catch (e) {
+      console.error('Failed to fetch logs', e);
+      setLogs([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -395,23 +402,33 @@ const ExternalLogsViewer: React.FC = () => {
   }, []);
 
   const handleTest = async () => {
+    if (!trialEmail && !trialPhone) {
+      alert('الرجاء إدخال إيميل أو رقم هاتف للتجربة');
+      return;
+    }
+
     setTesting(true);
     try {
       const res = await fetch('/api/admin/external-notifications/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: 'tsallabi@yahoo.ca', phone: '00353894435368' })
+        body: JSON.stringify({ email: trialEmail, phone: trialPhone })
       });
+      
+      const data = await res.json();
+      
       if (res.ok) {
-        alert('✅ تم إرسال رسائل التجربة بنجاح للمستخدم (tsallabi@yahoo.ca | 00353894435368)');
+        const emailRes = data.results.find((r: any) => r.type === 'email');
+        const waRes = data.results.find((r: any) => r.type === 'whatsapp');
+
+        let msg = 'نتائج التجربة:\n';
+        if (emailRes) msg += `📧 البريد الإلكتروني: ${emailRes.status === 'success' ? '✅ تم بنجاح' : `❌ فشل (${emailRes.message})`}\n`;
+        if (waRes) msg += `💬 الواتساب: ${waRes.status === 'success' ? '✅ تم بنجاح' : `❌ فشل (${waRes.message})`}\n`;
+
+        alert(msg);
         fetchLogs();
       } else {
-        let msg = res.status.toString();
-        try {
-          const errData = await res.json();
-          msg = errData.error || msg;
-        } catch (e) { }
-        alert(`❌ فشل الاتصال بالخادم. \nتأكد أنك قمت بإعادة تشغيل السيرفر (npm run dev)، الخطأ: ${msg}`);
+        alert(`❌ فشل الاتصال بالخادم. الخطأ: ${data.error || 'Unknown error'}`);
       }
     } catch (e) {
       alert('❌ فشل إرسال التجربة، السيرفر لا يستجيب');
@@ -421,51 +438,80 @@ const ExternalLogsViewer: React.FC = () => {
   };
 
   return (
-    <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-8 mt-8">
-      <div className="flex justify-between items-center mb-6">
-        <h3 className="font-black text-lg text-slate-800 flex items-center gap-2">
-          <Share2 className="w-5 h-5 text-indigo-500" />
-          سجل الإشعارات الخارجية (Email / WhatsApp)
-        </h3>
-        <button
-          onClick={handleTest}
-          disabled={testing}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl font-bold transition-all flex items-center gap-2 disabled:opacity-50"
-        >
-          {testing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-          إرسال رسالة تجريبية الآن
-        </button>
+    <div className="bg-white rounded-[2.5rem] border border-slate-200 shadow-xl p-8 mt-12 overflow-hidden relative">
+      <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-50/50 rounded-full -mr-16 -mt-16"></div>
+      
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-8 gap-6 relative z-10">
+        <div>
+          <h3 className="font-black text-2xl text-slate-800 flex items-center gap-3">
+            <Share2 className="w-8 h-8 text-indigo-500" />
+            سجل الإشعارات الخارجية (Email / WhatsApp)
+          </h3>
+          <p className="text-slate-500 font-bold text-sm mt-1">متابعة حالة الرسائل الصادرة من النظام لحظياً.</p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-4 bg-slate-50 p-4 rounded-3xl border border-slate-100">
+          <div className="space-y-1">
+            <label className="text-[10px] font-black text-slate-400 mr-2 uppercase tracking-tight">إيميل التجربة</label>
+            <input 
+              type="text" 
+              value={trialEmail} 
+              onChange={e => setTrialEmail(e.target.value)}
+              placeholder="example@mail.com"
+              className="bg-white border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold w-48 focus:border-indigo-500 outline-none transition-all"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[10px] font-black text-slate-400 mr-2 uppercase tracking-tight">رقم واتساب التجربة</label>
+            <input 
+              type="text" 
+              value={trialPhone} 
+              onChange={e => setTrialPhone(e.target.value)}
+              placeholder="00218..."
+              className="bg-white border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold w-48 focus:border-indigo-500 outline-none transition-all"
+              dir="ltr"
+            />
+          </div>
+          <button
+            onClick={handleTest}
+            disabled={testing}
+            className="self-end bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-2xl font-black transition-all flex items-center gap-2 disabled:opacity-50 shadow-lg shadow-indigo-100 mt-2 lg:mt-0"
+          >
+            {testing ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+            إرسال تجربة الآن
+          </button>
+        </div>
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-slate-200">
-        <table className="w-full text-right text-sm">
-          <thead className="bg-slate-50 border-b border-slate-200">
+      <div className="overflow-x-auto rounded-[2rem] border border-slate-100 shadow-inner">
+        <table className="w-full text-right text-sm min-w-[900px]">
+          <thead className="bg-slate-50/50 border-b border-slate-100 text-slate-400 uppercase tracking-widest text-[10px] font-black">
             <tr>
-              <th className="p-4 font-bold text-slate-600">التاريخ</th>
-              <th className="p-4 font-bold text-slate-600">النوع</th>
-              <th className="p-4 font-bold text-slate-600">المستلم (جهة الاتصال)</th>
-              <th className="p-4 font-bold text-slate-600">العنوان</th>
-              <th className="p-4 font-bold text-slate-600">الحالة</th>
+              <th className="p-5">التاريخ والوقت</th>
+              <th className="p-5">النوع</th>
+              <th className="p-5">المستلم (جهة الاتصال)</th>
+              <th className="p-5">العنوان / التفاصيل</th>
+              <th className="p-5">حالة الإرسال</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-slate-50">
             {logs.length === 0 ? (
-              <tr><td colSpan={5} className="p-8 text-center text-slate-400">لا توجد إشعارات سابقة</td></tr>
+              <tr><td colSpan={5} className="p-12 text-center text-slate-400 font-bold">لا توجد إشعارات سابقة في السجل حالياً</td></tr>
             ) : logs.map((log: any) => (
-              <tr key={log.id} className="hover:bg-slate-50 transition-colors">
-                <td className="p-4 text-slate-500">{new Date(log.timestamp).toLocaleString('ar-LY')}</td>
-                <td className="p-4">
+              <tr key={log.id} className="hover:bg-slate-50/50 transition-colors group">
+                <td className="p-5 text-slate-500 font-mono text-xs">{log.timestamp ? new Date(log.timestamp).toLocaleString('ar-LY') : '-'}</td>
+                <td className="p-5">
                   {log.type === 'email'
-                    ? <span className="inline-flex items-center gap-1 bg-blue-100 text-blue-700 px-2 py-1 rounded font-bold"><Mail className="w-3 h-3" /> إيميل</span>
-                    : <span className="inline-flex items-center gap-1 bg-green-100 text-green-700 px-2 py-1 rounded font-bold"><MessageSquare className="w-3 h-3" /> واتساب</span>}
+                    ? <span className="inline-flex items-center gap-2 bg-blue-50 text-blue-600 px-3 py-1.5 rounded-xl font-black text-[10px] uppercase border border-blue-100"><Mail className="w-3.5 h-3.5" /> EMails</span>
+                    : <span className="inline-flex items-center gap-2 bg-emerald-50 text-emerald-600 px-3 py-1.5 rounded-xl font-black text-[10px] uppercase border border-emerald-100"><MessageSquare className="w-3.5 h-3.5" /> WhatsApp</span>}
                 </td>
-                <td className="p-4 font-bold text-slate-800" dir="ltr">{log.contact}</td>
-                <td className="p-4 text-slate-600 max-w-xs truncate">{log.title}</td>
-                <td className="p-4">
-                  {log.status === 'sent' || log.status.includes('sent_') ? (
-                    <span className="text-emerald-500 font-bold flex items-center gap-1"><CheckCircle2 className="w-4 h-4" /> تم الإرسال</span>
+                <td className="p-5 font-black text-slate-800" dir="ltr">{log.contact}</td>
+                <td className="p-5 text-slate-600 font-bold text-xs">{log.title}</td>
+                <td className="p-5">
+                  {(log.status === 'sent' || (log.status && typeof log.status === 'string' && log.status.includes('sent_'))) ? (
+                    <span className="text-emerald-500 font-black flex items-center gap-2 bg-emerald-50 px-3 py-1.5 rounded-xl w-fit border border-emerald-100 active:scale-95 transition-transform"><CheckCircle2 className="w-4 h-4" /> تم الإرسال بنجاح</span>
                   ) : (
-                    <span className="text-red-500 font-bold flex items-center gap-1"><XCircle className="w-4 h-4" /> فشل الإرسال</span>
+                    <span className="text-rose-500 font-black flex items-center gap-2 bg-rose-50 px-3 py-1.5 rounded-xl w-fit border border-rose-100"><XCircle className="w-4 h-4" /> فشل الإرسال</span>
                   )}
                 </td>
               </tr>
@@ -495,11 +541,12 @@ const SystemSettingsPanel: React.FC = () => {
         return res.json();
       })
       .then(data => {
-        setSettings(data);
+        setSettings(Array.isArray(data) ? data : []);
         setLoading(false);
       })
       .catch(e => {
         console.error('Failed to load settings', e);
+        setSettings([]);
         setLoading(false);
       });
   }, []);
@@ -1055,6 +1102,9 @@ const PaymentRequestsPanel: React.FC = () => {
   const [filter, setFilter] = React.useState<'all' | 'pending' | 'topup' | 'withdrawal'>('pending');
   const [actionLoading, setActionLoading] = React.useState<string | null>(null);
   const [note, setNote] = React.useState<Record<string, string>>({});
+  const [showTopupModal, setShowTopupModal] = React.useState(false);
+  const [topupForm, setTopupForm] = React.useState({ email: '', amount: 0, note: '' });
+  const { showAlert, currentUser } = useStore();
 
   const load = async () => {
     try {
@@ -1079,6 +1129,31 @@ const PaymentRequestsPanel: React.FC = () => {
       if (res.ok) load();
     } catch { }
     setActionLoading(null);
+  };
+
+  const handleManualTopup = async () => {
+    if (!topupForm.email || topupForm.amount <= 0) {
+      showAlert('الرجاء إدخال البريد الإلكتروني والمبلغ بصورة صحيحة');
+      return;
+    }
+    try {
+      const res = await fetch('/api/admin/manual-topup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...topupForm, adminId: currentUser?.id })
+      });
+      if (res.ok) {
+        showAlert('تم شحن المحفظة بنجاح ✅', 'success');
+        setShowTopupModal(false);
+        setTopupForm({ email: '', amount: 0, note: '' });
+        load();
+      } else {
+        const d = await res.json();
+        showAlert(d.error || 'فشل شحن المحفظة');
+      }
+    } catch {
+      showAlert('خطأ في الاتصال');
+    }
   };
 
   const filtered = requests.filter(r => {
@@ -1121,19 +1196,64 @@ const PaymentRequestsPanel: React.FC = () => {
       </div>
 
       {/* Filter tabs */}
-      <div className="flex gap-2 bg-slate-100 p-1.5 rounded-2xl w-fit">
-        {([['pending', '⏳ معلقة'], ['topup', '⬆️ شحن'], ['withdrawal', '⬇️ سحب'], ['all', 'الكل']] as const).map(([k, l]) => (
-          <button key={k} onClick={() => setFilter(k as any)}
-            className={`px-4 py-2 rounded-xl text-sm font-black transition-all ${filter === k ? 'bg-white shadow text-slate-900' : 'text-slate-500'}`}>
-            {l}
-            {k === 'pending' && requests.filter(r => r.status === 'pending').length > 0 && (
-              <span className="mr-1.5 bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">
-                {requests.filter(r => r.status === 'pending').length}
-              </span>
-            )}
-          </button>
-        ))}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div className="flex gap-2 bg-slate-100 p-1.5 rounded-2xl w-fit">
+          {([['pending', '⏳ معلقة'], ['topup', '⬆️ شحن'], ['withdrawal', '⬇️ سحب'], ['all', 'الكل']] as const).map(([k, l]) => (
+            <button key={k} onClick={() => setFilter(k as any)}
+              className={`px-4 py-2 rounded-xl text-sm font-black transition-all ${filter === k ? 'bg-white shadow text-slate-900' : 'text-slate-500'}`}>
+              {l}
+              {k === 'pending' && requests.filter(r => r.status === 'pending').length > 0 && (
+                <span className="mr-1.5 bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">
+                  {requests.filter(r => r.status === 'pending').length}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+        <button onClick={() => setShowTopupModal(true)} className="bg-orange-500 hover:bg-orange-600 text-white px-5 py-2.5 rounded-xl font-black text-sm shadow-lg shadow-orange-500/20 flex items-center gap-2">
+          <Plus className="w-5 h-5"/>
+          شحن وتسوية محفظة يدوياً
+        </button>
       </div>
+
+      {showTopupModal && (
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center z-[100] p-4">
+          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+              <h3 className="font-black text-lg text-slate-800 flex items-center gap-2">
+                <Wallet className="w-6 h-6 text-orange-500" />
+                شحن وتسوية محفظة (Admin)
+              </h3>
+              <button onClick={() => setShowTopupModal(false)} className="p-2 hover:bg-rose-100 hover:text-rose-600 rounded-full text-slate-400 transition-colors">
+                <X className="w-5 h-5"/>
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-black text-slate-500 mb-1.5">البريد الإلكتروني للمستخدم</label>
+                <input type="email" placeholder="user@example.com" value={topupForm.email} onChange={e => setTopupForm(f => ({...f, email: e.target.value}))}
+                  className="w-full border border-slate-200 p-3 rounded-xl focus:border-orange-500 outline-none text-left" dir="ltr" />
+              </div>
+              <div>
+                <label className="block text-xs font-black text-slate-500 mb-1.5">المبلغ ($)</label>
+                <input type="number" placeholder="مثال: 5000" value={topupForm.amount || ''} onChange={e => setTopupForm(f => ({...f, amount: Number(e.target.value)}))}
+                  className="w-full border border-slate-200 p-3 rounded-xl focus:border-orange-500 outline-none font-black text-xl text-left" dir="ltr" />
+                <p className="text-[10px] text-slate-400 font-bold mt-1">يمثل هذا المبلغ تسوية نقدية أو بنكية مسجلة خارج المنصة ويتم إضافته للمحفظة.</p>
+              </div>
+              <div>
+                <label className="block text-xs font-black text-slate-500 mb-1.5">ملاحظات التحويل (تظهر للمستخدم)</label>
+                <input type="text" placeholder="مثال: إيداع نقدي بفرع طرابلس" value={topupForm.note} onChange={e => setTopupForm(f => ({...f, note: e.target.value}))}
+                  className="w-full border border-slate-200 p-3 rounded-xl focus:border-orange-500 outline-none" />
+              </div>
+            </div>
+            <div className="p-6 border-t border-slate-100 bg-slate-50 flex gap-3">
+              <button onClick={handleManualTopup} className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-black py-3 rounded-xl shadow-lg shadow-orange-500/20 transition-all flex items-center justify-center gap-2">
+                <CheckCircle2 className="w-5 h-5"/> تأكيد الشحن والترصيد
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Table */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -1465,6 +1585,7 @@ const KycReviewCard: React.FC<{
    MarketingPanel — Email Campaigns & Marketing
    ============================================================ */
 const MarketingPanel: React.FC = () => {
+  const [activeTab, setActiveTab] = useState<'campaign' | 'templates'>('campaign');
   const [users, setUsers] = useState<any[]>([]);
   const [cars, setCars] = useState<any[]>([]);
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
@@ -1472,6 +1593,14 @@ const MarketingPanel: React.FC = () => {
   const [templateType, setTemplateType] = useState<'upcoming' | 'live_auction' | 'offer_market'>('live_auction');
   const [subject, setSubject] = useState('🚗 مزاد أوتو برو مفتوح الآن! سيارات حصرية بانتظارك');
   const [sending, setSending] = useState(false);
+  
+  // Templates State
+  const [notifTemplates, setNotifTemplates] = useState<any[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  const [editTemplate, setEditTemplate] = useState<any>(null);
+  const [savingTemplate, setSavingTemplate] = useState(false);
+  const [previewMode, setPreviewMode] = useState<'code' | 'preview'>('code');
+
   const { showAlert } = useStore();
 
   const getCarImage = (c: any) => {
@@ -1484,17 +1613,53 @@ const MarketingPanel: React.FC = () => {
     }
   };
 
-  useEffect(() => {
+  const renderPreview = (html: string) => {
+    if (!html) return '';
+    const mockData: any = {
+      userName: 'أحمد محمد',
+      carLink: 'https://www.autopro.ac/cars/123',
+      invoiceLink: 'https://www.autopro.ac/dashboard/invoices',
+      shippingLink: 'https://www.autopro.ac/dashboard/shipments',
+      winLink: 'https://www.autopro.ac/dashboard/wins',
+      itemInfo: '2024 Mercedes-Benz G-Class',
+      title: 'إشعار تجريبي',
+      message: 'هذا هو نص الرسالة التجريبي للمعاينة.'
+    };
+    
+    let rendered = html;
+    Object.keys(mockData).forEach(key => {
+      const regex = new RegExp(`{{${key}}}`, 'g');
+      rendered = rendered.replace(regex, mockData[key]);
+    });
+    return rendered;
+  };
+
+  const fetchMarketingData = () => {
     fetch('/api/admin/mailing-list').then(r => r.json()).then(data => {
       if (Array.isArray(data)) setUsers(data);
     }).catch(e => console.error(e));
 
     fetch('/api/admin/marketing-cars').then(r => r.json()).then(data => {
+      if (Array.isArray(data)) setCars(data);
+    }).catch(e => console.error("Marketing Cars Fetch Error:", e));
+  };
+
+  const fetchTemplates = () => {
+    fetch('/api/admin/notification-templates').then(r => r.json()).then(data => {
       if (Array.isArray(data)) {
-        setCars(data);
+        setNotifTemplates(data);
+        if (data.length > 0 && !selectedTemplateId) {
+          setSelectedTemplateId(data[0].id);
+          setEditTemplate(data[0]);
+        }
       }
     }).catch(e => console.error(e));
-  }, []);
+  };
+
+  useEffect(() => {
+    if (activeTab === 'campaign') fetchMarketingData();
+    else fetchTemplates();
+  }, [activeTab]);
 
   const toggleUser = (id: string) => {
     setSelectedUsers(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id]);
@@ -1508,13 +1673,12 @@ const MarketingPanel: React.FC = () => {
   const toggleCar = (id: string) => {
     setSelectedCars(p => {
       if (p.includes(id)) return p.filter(x => x !== id);
-      if (p.length >= 6) return p;
+      if (p.length >= 18) return p;
       return [...p, id];
     });
   };
 
   const generateHTML = () => {
-
     let config = {
       bgTitle: '#0f172a',
       bgBody: '#1e293b',
@@ -1545,7 +1709,7 @@ const MarketingPanel: React.FC = () => {
             <div style="color:${config.accent}; font-size:13px; font-weight:bold; margin-top:4px;">${config.badgeText}</div>
             <div style="color:#ea580c; font-size:18px; font-weight:900; margin-top:8px;">$${config.showPrice(c)} ${config.priceLabel}</div>
           </div>
-        </a>
+        </div>
       `;
     }).join('');
 
@@ -1555,23 +1719,17 @@ const MarketingPanel: React.FC = () => {
       <head><meta charset="utf-8"></head>
       <body style="margin:0; padding:0; background-color:#f1f5f9; font-family:Arial, sans-serif;">
         <div style="max-width:600px; margin:0 auto; background-color:${config.bgBody}; overflow:hidden;">
-          <!-- Header -->
           <div style="text-align:center; padding-top:20px; border-bottom:1px solid rgba(255,255,255,0.1); background-color:${config.bgTitle};">
             <h1 style="color:${config.accent}; font-size:24px; letter-spacing:2px; margin-bottom:5px;">A U T O &nbsp; P R O</h1>
             <p style="color:#e2e8f0; font-size:14px; letter-spacing:4px; margin-top:0;">A U C T I O N S</p>
           </div>
-          
           <div style="background-color:${config.bgTitle}; padding:30px 20px; text-align:center;">
             <h2 style="color:white; margin:0; font-size:38px; font-weight:900; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);">${config.title}</h2>
             <div style="width:50px; height:4px; background-color:${config.accent}; margin: 15px auto 0;"></div>
           </div>
-          
-          <!-- Grid -->
           <div style="padding:20px 10px; background-color:${config.bgBody}; text-align:center;">
              ${carsHtml || '<div style="color:white; padding:20px; font-weight:bold;">لم يتم تحديد سيارات لعرضها في هذه الحملة.</div>'}
           </div>
-          
-          <!-- Features -->
           <div style="padding:25px 40px; color:#f8fafc; font-size:17px; font-weight:bold; line-height:2; text-align:right; background-color:${config.bgTitle}; border-top:2px solid rgba(255,255,255,0.1);" dir="rtl">
             <ul style="margin:0; padding:0 20px 0 0;">
               <li style="margin-bottom:12px;"><span style="color:${config.accent};">✓</span> توفير حقيقي وفريد في رسوم المزاد يصل إلى 40%.</li>
@@ -1579,24 +1737,11 @@ const MarketingPanel: React.FC = () => {
               <li><span style="color:${config.accent};">✓</span> أسعار منافسة للسوق المحلي وشفافية مطلقة!</li>
             </ul>
           </div>
-          
-          <!-- CTA Button -->
           <div style="text-align:center; padding:35px 20px; background-color:${config.bgBody};">
-             <a href="https://lyautopro.com/marketplace" style="display:inline-block; background-color:${config.accent}; color:${config.bgTitle}; padding:18px 36px; font-size:22px; font-weight:900; text-decoration:none; border-radius:10px; box-shadow:0 6px 15px rgba(0,0,0,0.4);">
+             <a href="https://www.autopro.ac/marketplace" style="display:inline-block; background-color:${config.accent}; color:${config.bgTitle}; padding:18px 36px; font-size:22px; font-weight:900; text-decoration:none; border-radius:10px; box-shadow:0 6px 15px rgba(0,0,0,0.4);">
                ${config.buttonText}
              </a>
           </div>
-          
-          <!-- Personal Branding -->
-          <div style="background-color:#e6e8eb; text-align:center; border-top:6px solid ${config.accent}; overflow:hidden;">
-             <div style="padding: 40px 30px 10px 30px;">
-               <h3 style="color:#0f172a; font-size:26px; line-height:1.6; font-weight:900; margin:0; text-shadow:1px 1px 0px rgba(255,255,255,0.8);" dir="rtl">
-                 "نحن في أوتو برو نلتزم بتقديم أفضل تشكيلة سيارات مضمونة وبأسعار لا منافس لها."
-               </h3>
-             </div>
-             <img src="${window.location.origin}/new_ceo_photo.jpg" alt="CEO" style="width:100%; max-width:600px; height:auto; display:block; margin:0 auto -45px auto;" />
-          </div>
-          
           <div style="background-color:#020617; padding:20px; text-align:center;">
              <p style="color:#64748b; font-size:12px; margin:0;">حقوق النشر أوتو برو للمزادات 2026. المتبعة في السوق المحلي، ليبيا</p>
           </div>
@@ -1632,146 +1777,330 @@ const MarketingPanel: React.FC = () => {
     }
   };
 
+  const handleSaveTemplate = async () => {
+    if (!editTemplate) return;
+    setSavingTemplate(true);
+    try {
+      const res = await fetch(`/api/admin/notification-templates/${editTemplate.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editTemplate)
+      });
+      if (res.ok) {
+        showAlert('تم حفظ القالب بنجاح!', 'success');
+        fetchTemplates();
+      } else {
+        showAlert('فشل حفظ القالب', 'error');
+      }
+    } catch (e) {
+      showAlert('خطأ في الاتصال', 'error');
+    } finally {
+      setSavingTemplate(false);
+    }
+  };
+
   return (
     <div className="space-y-6 animate-in fade-in duration-500" dir="rtl">
-
-      <div className="flex justify-between items-center bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-        <div>
-          <h2 className="text-2xl font-black text-slate-800 tracking-tight flex items-center gap-3">
-            <Mail className="w-8 h-8 text-indigo-500" />
-            التسويق والحملات البريدية
-          </h2>
-          <p className="text-slate-500 font-bold text-sm mt-1">تجهيز وإرسال إيميلات تسويقية احترافية للعملاء المسجلين.</p>
+      {/* Header & Sub-Tabs */}
+      <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+        <div className="flex justify-between items-center mb-6">
+          <div>
+            <h2 className="text-2xl font-black text-slate-800 tracking-tight flex items-center gap-3">
+              <Mail className="w-8 h-8 text-indigo-500" />
+              أدوات التسويق والتواصل
+            </h2>
+            <p className="text-slate-500 font-bold text-sm mt-1">إدارة الحملات البريدية وتعديل قوالب الإشعارات التلقائية.</p>
+          </div>
+          <div className="flex bg-slate-100 p-1.5 rounded-2xl">
+            <button
+              onClick={() => setActiveTab('campaign')}
+              className={`px-6 py-2.5 rounded-xl font-black text-sm transition-all ${activeTab === 'campaign' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              🚀 حملة بريدية
+            </button>
+            <button
+              onClick={() => setActiveTab('templates')}
+              className={`px-6 py-2.5 rounded-xl font-black text-sm transition-all ${activeTab === 'templates' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              📝 قوالب الإشعارات
+            </button>
+          </div>
         </div>
-        <button
-          onClick={handleSend}
-          disabled={sending || selectedUsers.length === 0}
-          className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-8 py-3 rounded-2xl font-black transition-all flex items-center gap-2 shadow-lg shadow-indigo-200"
-        >
-          {sending ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
-          إرسال الحملة الآن ({selectedUsers.length})
-        </button>
+
+        {activeTab === 'campaign' && (
+          <div className="flex justify-end">
+            <button
+              onClick={handleSend}
+              disabled={sending || selectedUsers.length === 0}
+              className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-8 py-3 rounded-2xl font-black transition-all flex items-center gap-2 shadow-lg shadow-indigo-200"
+            >
+              {sending ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+              إرسال الحملة الآن ({selectedUsers.length})
+            </button>
+          </div>
+        )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Left Side: Setup */}
-        <div className="space-y-6">
-          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-            <h3 className="font-black text-lg text-slate-800 mb-4 flex items-center gap-2">
-              <Users className="w-5 h-5 text-indigo-500" />
-              الجمهور المستهدف
-            </h3>
-            <div className="max-h-60 overflow-y-auto border border-slate-100 rounded-xl">
-              <table className="w-full text-right text-sm">
-                <thead className="bg-slate-50 sticky top-0">
-                  <tr>
-                    <th className="p-3">
-                      <input title="اختيار الكل" aria-label="اختيار الكل" type="checkbox" checked={selectedUsers.length === users.length && users.length > 0} onChange={toggleAllUsers} className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300" />
-                    </th>
-                    <th className="p-3 font-bold text-slate-600">الاسم</th>
-                    <th className="p-3 font-bold text-slate-600">الإيميل</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {users.map(u => (
-                    <tr key={u.id} className="hover:bg-slate-50">
-                      <td className="p-3">
-                        <input title="اختيار المستخدم" aria-label={`اختيار المستخدم ${u.firstName} `} type="checkbox" checked={selectedUsers.includes(u.id)} onChange={() => toggleUser(u.id)} className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300" />
-                      </td>
-                      <td className="p-3 font-bold text-slate-800">{u.firstName} {u.lastName}</td>
-                      <td className="p-3 text-slate-500">{u.email}</td>
+      {activeTab === 'campaign' ? (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="space-y-6">
+            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+              <h3 className="font-black text-lg text-slate-800 mb-4 flex items-center gap-2">
+                <Users className="w-5 h-5 text-indigo-500" />
+                الجمهور المستهدف
+              </h3>
+              <div className="max-h-60 overflow-y-auto border border-slate-100 rounded-xl">
+                <table className="w-full text-right text-sm">
+                  <thead className="bg-slate-50 sticky top-0">
+                    <tr>
+                      <th className="p-3">
+                        <input title="اختيار الكل" aria-label="اختيار الكل" type="checkbox" checked={selectedUsers.length === users.length && users.length > 0} onChange={toggleAllUsers} className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300" />
+                      </th>
+                      <th className="p-3 font-bold text-slate-600">الاسم</th>
+                      <th className="p-3 font-bold text-slate-600">الإيميل</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {users.length === 0 && <p className="text-slate-500 text-sm mt-4 text-center">جاري تحميل المشتركين...</p>}
-          </div>
-
-          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-            <h3 className="font-black text-lg text-slate-800 mb-4 flex items-center gap-2">
-              <Car className="w-5 h-5 text-emerald-500" />
-              ربط سيارات بالحملة (الحد الأقصى 6)
-            </h3>
-            <div className="space-y-5 max-h-[500px] overflow-y-auto pr-2 pb-2">
-              {[
-                { title: 'قريباً', list: cars.filter(c => c.status === 'upcoming' && !c.isBuyNow && c.marketType !== 'secondary').slice(0, 6) },
-                { title: 'المزادات المباشرة', list: cars.filter(c => (c.status === 'active' || c.status === 'live') && !c.isBuyNow && c.marketType !== 'secondary').slice(0, 6) },
-                { title: 'سوق العروض', list: cars.filter(c => c.status === 'offer_market' || c.isBuyNow || c.marketType === 'secondary').slice(0, 6) }
-              ].map(section => section.list.length > 0 && (
-                <div key={section.title} className="bg-slate-50 p-3 rounded-2xl border border-slate-100">
-                  <h4 className="font-black text-sm text-indigo-900 mb-3 flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
-                    {section.title}
-                  </h4>
-                  <div className="grid grid-cols-3 gap-3">
-                    {section.list.map(c => (
-                      <div
-                        key={c.id}
-                        onClick={() => toggleCar(c.id)}
-                        className={`cursor-pointer bg-white rounded-xl border-2 transition-all overflow-hidden relative group ${selectedCars.includes(c.id) ? 'border-indigo-500 ring-2 ring-indigo-200 shadow-md' : 'border-slate-200 hover:border-slate-300'}`}
-                      >
-                        <img alt={`سيارة ${c.make} ${c.model} `} src={getCarImage(c)} onError={(e) => { e.currentTarget.src = 'https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&q=80&w=400'; }} className="w-full h-20 object-cover" />
-                        <div className="p-2 text-center">
-                          <p className="font-bold text-xs truncate text-slate-800" dir="ltr">{c.year} {c.make}</p>
-                          <p className="text-emerald-600 font-bold text-xs mt-1">${c.buyNowPrice || c.currentBid || 0}</p>
-                        </div>
-                        {selectedCars.includes(c.id) && (
-                          <div className="absolute top-1 right-1 bg-indigo-500 text-white rounded-full p-1 shadow-sm">
-                            <CheckCircle2 className="w-3 h-3" />
-                          </div>
-                        )}
-                      </div>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {users.map(u => (
+                      <tr key={u.id} className="hover:bg-slate-50">
+                        <td className="p-3">
+                          <input title="اختيار المستخدم" aria-label={`اختيار المستخدم ${u.firstName} `} type="checkbox" checked={selectedUsers.includes(u.id)} onChange={() => toggleUser(u.id)} className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300" />
+                        </td>
+                        <td className="p-3 font-bold text-slate-800">{u.firstName} {u.lastName}</td>
+                        <td className="p-3 text-slate-500">{u.email}</td>
+                      </tr>
                     ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+              <h3 className="font-black text-lg text-slate-800 mb-4 flex items-center gap-2">
+                <Car className="w-5 h-5 text-emerald-500" />
+                ربط سيارات بالحملة (الحد الأقصى 18)
+              </h3>
+              <div className="space-y-5 max-h-[500px] overflow-y-auto pr-2 pb-2">
+                {[
+                  { title: 'قريباً', list: cars.filter(c => c.status === 'upcoming').slice(0, 6) },
+                  { title: 'المزادات المباشرة', list: cars.filter(c => c.status === 'active' || c.status === 'live').slice(0, 6) },
+                  { title: 'سوق العروض', list: cars.filter(c => c.status === 'offer_market' || c.status === 'ultimo').slice(0, 10) }
+                ].map(section => section.list.length > 0 && (
+                  <div key={section.title} className="bg-slate-50 p-3 rounded-2xl border border-slate-100">
+                    <h4 className="font-black text-sm text-indigo-900 mb-3 flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
+                      {section.title}
+                    </h4>
+                    <div className="grid grid-cols-3 gap-3">
+                      {section.list.map(c => (
+                        <div
+                          key={c.id}
+                          onClick={() => toggleCar(c.id)}
+                          className={`cursor-pointer bg-white rounded-xl border-2 transition-all overflow-hidden relative group ${selectedCars.includes(c.id) ? 'border-indigo-500 ring-2 ring-indigo-200 shadow-md' : 'border-slate-200 hover:border-slate-300'}`}
+                        >
+                          <img alt={`سيارة ${c.make} ${c.model} `} src={getCarImage(c)} className="w-full h-20 object-cover" />
+                          <div className="p-2 text-center">
+                            <p className="font-bold text-xs truncate text-slate-800" dir="ltr">{c.year} {c.make}</p>
+                            <p className="text-emerald-600 font-bold text-xs mt-1">${c.buyNowPrice || c.currentBid || 0}</p>
+                          </div>
+                          {selectedCars.includes(c.id) && (
+                            <div className="absolute top-1 right-1 bg-indigo-500 text-white rounded-full p-1 shadow-sm">
+                              <CheckCircle2 className="w-3 h-3" />
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Right Side: Preview */}
-        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col">
-          <h3 className="font-black text-lg text-slate-800 mb-4 flex items-center gap-2">
-            <Eye className="w-5 h-5 text-orange-500" />
-            معاينة الإيميل (Live Preview)
-          </h3>
-          <div className="grid grid-cols-2 gap-4 mb-4">
-            <div>
-              <label className="block text-sm font-black text-slate-700 mb-2">القالب (Template)</label>
-              <select
-                title="القالب"
-                aria-label="القالب"
-                value={templateType}
-                onChange={e => setTemplateType(e.target.value as any)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 font-bold text-slate-800 outline-none focus:border-indigo-500 transition-all cursor-pointer"
-              >
-                <option value="upcoming">سيارات قريباً (أزرق وذهبي)</option>
-                <option value="live_auction">المزادات المباشرة (أحمر ملكي)</option>
-                <option value="offer_market">سوق العروض (زمردي وبرتقالي)</option>
-              </select>
+          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col">
+            <h3 className="font-black text-lg text-slate-800 mb-4 flex items-center gap-2">
+              <Eye className="w-5 h-5 text-orange-500" />
+              معاينة الإيميل (Live Preview)
+            </h3>
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div>
+                <label className="block text-sm font-black text-slate-700 mb-2">القالب</label>
+                <select
+                  value={templateType}
+                  onChange={e => setTemplateType(e.target.value as any)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 font-bold text-slate-800 outline-none focus:border-indigo-500 transition-all cursor-pointer"
+                >
+                  <option value="upcoming">سيارات قريباً</option>
+                  <option value="live_auction">المزادات المباشرة</option>
+                  <option value="offer_market">سوق العروض</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-black text-slate-700 mb-2">عنوان الإيميل</label>
+                <input
+                  type="text"
+                  value={subject}
+                  onChange={e => setSubject(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 font-bold text-slate-800 outline-none focus:border-indigo-500 transition-all"
+                />
+              </div>
             </div>
-            <div>
-              <label className="block text-sm font-black text-slate-700 mb-2">عنوان الإيميل (Subject)</label>
-              <input
-                title="عنوان الإيميل"
-                aria-label="عنوان الإيميل"
-                type="text"
-                value={subject}
-                onChange={e => setSubject(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 font-bold text-slate-800 outline-none focus:border-indigo-500 transition-all"
+            <div className="flex-1 bg-slate-100 rounded-2xl border-4 border-slate-300 overflow-hidden relative" dir="ltr">
+              <iframe
+                srcDoc={generateHTML()}
+                className="w-full h-[600px] border-none"
+                title="Email Preview"
               />
             </div>
           </div>
-          <div className="flex-1 bg-slate-100 rounded-2xl border-4 border-slate-300 overflow-hidden relative" dir="ltr">
-            <iframe
-              srcDoc={generateHTML()}
-              className="w-full h-[600px] border-none"
-              title="Email Preview"
-            />
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 min-h-[600px]">
+          <div className="lg:col-span-1 space-y-3">
+            <h3 className="font-black text-lg text-slate-800 px-2 flex items-center gap-2">
+              <List className="w-5 h-5 text-indigo-500" />
+              قائمة القوالب
+            </h3>
+            {notifTemplates.map(t => (
+              <div
+                key={t.id}
+                onClick={() => { setSelectedTemplateId(t.id); setEditTemplate(t); }}
+                className={`p-4 rounded-2xl border-2 cursor-pointer transition-all ${selectedTemplateId === t.id ? 'border-indigo-500 bg-indigo-50 shadow-md' : 'border-slate-100 bg-white hover:border-slate-200'}`}
+              >
+                <div className="font-black text-slate-800 text-sm mb-1">{t.name || t.id}</div>
+                <div className="text-[10px] text-slate-400 font-bold truncate">{t.subject}</div>
+                <div className="text-[9px] text-slate-400 mt-2">آخر تحديث: {t.updatedAt ? new Date(t.updatedAt).toLocaleDateString('ar-EG') : '—'}</div>
+              </div>
+            ))}
+          </div>
+
+          <div className="lg:col-span-3 bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
+            {editTemplate ? (
+              <>
+                <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                  <div>
+                    <h3 className="font-black text-xl text-slate-800">تعديل قالب: <span className="text-indigo-600">{editTemplate.name || editTemplate.id}</span></h3>
+                    <p className="text-xs text-slate-400 font-bold mt-1">تعديل محتوى الرسائل التلقائية (Email & WhatsApp)</p>
+                  </div>
+                  <button
+                    onClick={handleSaveTemplate}
+                    disabled={savingTemplate}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-2.5 rounded-xl font-black transition-all flex items-center gap-2 shadow-lg shadow-emerald-200"
+                  >
+                    {savingTemplate ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                    حفظ التغييرات
+                  </button>
+                </div>
+
+                <div className="bg-slate-100 p-1 flex border-b border-slate-200">
+                  <button
+                    onClick={() => setPreviewMode('code')}
+                    className={`flex-1 py-2 text-xs font-black rounded-lg transition-all ${previewMode === 'code' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                  >
+                    <Code2 className="w-4 h-4 inline-block ml-1" /> المحرر البرمجي
+                  </button>
+                  <button
+                    onClick={() => setPreviewMode('preview')}
+                    className={`flex-1 py-2 text-xs font-black rounded-lg transition-all ${previewMode === 'preview' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                  >
+                    <Eye className="w-4 h-4 inline-block ml-1" /> معاينة مباشرة
+                  </button>
+                </div>
+                
+                <div className="p-8 space-y-6 overflow-y-auto flex-1">
+                  <div className="space-y-2">
+                    <label className="block text-sm font-black text-slate-700">عنوان الرسالة (Subject)</label>
+                    <input
+                      type="text"
+                      value={editTemplate.subject || ''}
+                      onChange={e => setEditTemplate({ ...editTemplate, subject: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 text-slate-800 font-bold outline-none focus:border-indigo-500"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    {previewMode === 'code' ? (
+                      <>
+                        <div className="space-y-3">
+                          <label className="flex items-center gap-2 text-sm font-black text-slate-700">
+                            <Mail className="w-4 h-4 text-blue-500" /> محتوى البريد (HTML)
+                          </label>
+                          <textarea
+                            dir="ltr"
+                            value={editTemplate.body_html || ''}
+                            onChange={e => setEditTemplate({ ...editTemplate, body_html: e.target.value })}
+                            className="w-full bg-slate-900 text-emerald-400 font-mono text-xs rounded-2xl p-6 min-h-[400px] outline-none border-2 border-slate-800 focus:border-indigo-500"
+                          />
+                        </div>
+
+                        <div className="space-y-3">
+                          <label className="flex items-center gap-2 text-sm font-black text-slate-700">
+                            <MessageSquare className="w-4 h-4 text-emerald-500" /> محتوى الواتساب (WhatsApp)
+                          </label>
+                          <textarea
+                            value={editTemplate.body_whatsapp || ''}
+                            onChange={e => setEditTemplate({ ...editTemplate, body_whatsapp: e.target.value })}
+                            className="w-full bg-emerald-50 text-emerald-900 font-bold text-sm rounded-2xl p-6 min-h-[400px] outline-none border-2 border-emerald-100 focus:border-emerald-500"
+                          />
+                          <div className="text-[10px] text-slate-500 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                            <h4 className="font-black text-slate-700 mb-2 border-b border-slate-200 pb-1">المتغيرات المتاحة:</h4>
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-1 font-mono">
+                              <div><code className="text-indigo-600">{"{{userName}}"}</code> اسم العميل</div>
+                              <div><code className="text-indigo-600">{"{{carLink}}"}</code> رابط السيارة</div>
+                              <div><code className="text-indigo-600">{"{{invoiceLink}}"}</code> رابط الفاتورة</div>
+                              <div><code className="text-indigo-600">{"{{shippingLink}}"}</code> رابط الشحن</div>
+                              <div><code className="text-indigo-600">{"{{winLink}}"}</code> رابط السيارات الفائزة</div>
+                              <div><code className="text-indigo-600">{"{{itemInfo}}"}</code> معلومات الغرض</div>
+                              <div><code className="text-indigo-600">{"{{title}}"}</code> عنوان الإشعار</div>
+                              <div><code className="text-indigo-600">{"{{message}}"}</code> نص الرسالة</div>
+                            </div>
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="space-y-3 h-full flex flex-col">
+                          <label className="flex items-center gap-2 text-sm font-black text-slate-700">
+                             📧 معاينة البريد الإلكتروني
+                          </label>
+                          <div className="flex-1 bg-white border-4 border-slate-200 rounded-3xl overflow-hidden shadow-inner min-h-[500px]">
+                            <iframe
+                              srcDoc={renderPreview(editTemplate.body_html)}
+                              className="w-full h-full border-none"
+                              title="Email Template Preview"
+                            />
+                          </div>
+                        </div>
+                        <div className="space-y-3 h-full flex flex-col">
+                          <label className="flex items-center gap-2 text-sm font-black text-slate-700">
+                             📱 معاينة الواتساب
+                          </label>
+                          <div className="flex-1 bg-[#e5ddd5] border-4 border-slate-200 rounded-3xl p-4 min-h-[500px] relative overflow-y-auto">
+                            <div className="max-w-[85%] bg-white rounded-2xl p-4 shadow-sm relative mr-auto">
+                              <p className="text-slate-800 text-sm whitespace-pre-wrap leading-relaxed">
+                                {renderPreview(editTemplate.body_whatsapp)}
+                              </p>
+                              <div className="text-[10px] text-slate-400 text-left mt-1">10:45 AM</div>
+                              <div className="absolute top-0 right-[-8px] w-0 h-0 border-t-[10px] border-t-white border-r-[10px] border-r-transparent"></div>
+                            </div>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="flex-1 flex flex-col items-center justify-center p-20 text-center">
+                <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mb-4">
+                  <FileText className="w-10 h-10 text-slate-200" />
+                </div>
+                <h3 className="text-slate-400 font-black">اختر قالباً من القائمة للبدء في تعديله</h3>
+              </div>
+            )}
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };
@@ -1794,7 +2123,7 @@ export const AdminDashboard = () => {
     customs: 'تخليص جمركي'
   };
 
-  const { cars, addCar, deleteCar, stats, users, setUsers, addUser, showAlert, showConfirm, socket, messages, notifications, unreadCounts, markMessageAsRead, markNotificationAsRead, sendMessage, marketEstimates, addMarketEstimate, updateMarketEstimate, deleteMarketEstimate, exchangeRate, updateExchangeRate } = useStore();
+  const { cars, addCar, updateCar, deleteCar, stats, users, setUsers, addUser, showAlert, showConfirm, socket, messages, notifications, unreadCounts, markMessageAsRead, markNotificationAsRead, sendMessage, marketEstimates, addMarketEstimate, updateMarketEstimate, deleteMarketEstimate, exchangeRate, updateExchangeRate } = useStore();
   const [searchParams, setSearchParams] = useSearchParams();
   const view = searchParams.get('view') || 'overview';
 
@@ -1843,6 +2172,7 @@ export const AdminDashboard = () => {
   const [adminInvoices, setAdminInvoices] = useState<any[]>([]);
   const [showInvoiceConfirmModal, setShowInvoiceConfirmModal] = useState<{ isOpen: boolean; invoice: any; nextStatus: string }>({ isOpen: false, invoice: null, nextStatus: '' });
   const [rejectReason, setRejectReason] = useState('');
+  const [editingInvoice, setEditingInvoice] = useState<any>(null);
   // Auto-fetch data based on view
   useEffect(() => {
     if (view === 'messages') {
@@ -2056,6 +2386,7 @@ export const AdminDashboard = () => {
   };
 
   const [showAddCarModal, setShowAddCarModal] = useState(false);
+  const [editingCarId, setEditingCarId] = useState<string | null>(null);
   const [showOpenSooqModal, setShowOpenSooqModal] = useState(false);
   const [opensooqMake, setOpensooqMake] = useState('تويوتا');
   const [opensooqModel, setOpensooqModel] = useState('كامري');
@@ -3662,6 +3993,7 @@ export const AdminDashboard = () => {
               <div className="text-xs font-black bg-emerald-50 text-emerald-600 px-4 py-2 rounded-xl">النظام متوازن مالياً</div>
             </div>
 
+
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
               <div className="bg-slate-900 p-6 rounded-[2rem] text-white">
                 <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">إجمالي السيولة (الإيداعات)</div>
@@ -3717,7 +4049,7 @@ export const AdminDashboard = () => {
                           {tx.status === 'completed' ? 'ناجحة' : 'قيد المراجعة'}
                         </span>
                       </td>
-                      <td className="p-4 text-xs text-slate-400">{new Date(tx.timestamp).toLocaleString('ar-EG')}</td>
+                      <td className="p-4 text-xs font-mono text-slate-400 block pt-5" dir="ltr">{new Date(tx.timestamp).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })} <span className="opacity-50 text-[10px] block">{new Date(tx.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span></td>
                     </tr>
                   )) : (
                     <tr><td colSpan={5} className="p-10 text-center text-slate-400 font-bold">لا توجد حركات مالية مسجلة</td></tr>
@@ -3753,7 +4085,7 @@ export const AdminDashboard = () => {
                         <td className="p-4">
                           <div className="font-bold text-slate-900 border-b border-slate-100 block pb-1 mb-1">
                             INV-{inv.id.substring(0, 8)}...
-                            <span className="text-[9px] text-slate-400 font-bold mr-2 uppercase tracking-tight">({inv.type})</span>
+                            <span className="text-[9px] text-orange-500 font-black mr-2 uppercase bg-orange-50 px-2 py-0.5 rounded-full">{INVOICE_TYPE_LABELS[inv.type] || inv.type}</span>
                           </div>
                           <div className="text-xs text-slate-500">{inv.firstName} {inv.lastName}</div>
                         </td>
@@ -3761,7 +4093,7 @@ export const AdminDashboard = () => {
                           {inv.make} {inv.model}
                         </td>
                         <td className="p-4">
-                          <div className="text-sm font-bold text-slate-800">{new Date(inv.timestamp).toLocaleDateString('ar-EG')}</div>
+                          <div className="text-sm font-bold text-slate-800 font-mono" dir="ltr">{new Date(inv.timestamp).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</div>
                           {Math.floor((Date.now() - new Date(inv.timestamp).getTime()) / 86400000) > 0 && inv.status === 'unpaid' && (
                             <div className="text-[10px] font-black mt-1 bg-rose-50 text-rose-600 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
                                <AlertCircle className="w-3 h-3" /> تأخير {Math.floor((Date.now() - new Date(inv.timestamp).getTime()) / 86400000)} يوماً
@@ -3788,33 +4120,39 @@ export const AdminDashboard = () => {
                           </div>
                         </td>
                         <td className="p-4">
-                          {inv.status === 'unpaid' && (
-                            <button
-                              onClick={() => {
-                                showConfirm(`تأكيد استلام تحويل بقيمة $${inv.amount.toLocaleString()} واعتماد الفاتورة؟`, async () => {
-                                  try {
-                                    const res = await fetch(`/api/invoices/${inv.id}/pay`, { method: 'POST' });
-                                    if (res.ok) {
-                                      showAlert('تم اعتماد الدفع بنجاح وتسوية حساب البائع ✅', 'success');
-                                      fetch('/api/admin/all-invoices').then(r => r.json()).then(setAllInvoices);
-                                      fetch('/api/admin/shipments').then(r => r.json()).then(setAdminShipments);
-                                    } else {
-                                      showAlert('حدث خطأ في ترصيد الدفعة', 'error');
+                          <div className="flex items-center gap-2">
+                            {inv.status === 'unpaid' && (
+                              <button
+                                onClick={() => {
+                                  showConfirm(`تأكيد استلام تحويل بقيمة $${inv.amount.toLocaleString()} واعتماد الفاتورة؟`, async () => {
+                                    try {
+                                      const res = await fetch(`/api/invoices/${inv.id}/pay`, { method: 'POST' });
+                                      if (res.ok) {
+                                        showAlert('تم اعتماد الدفع بنجاح وتسوية حساب البائع ✅', 'success');
+                                        fetch('/api/admin/all-invoices').then(r => r.json()).then(setAllInvoices);
+                                        fetch('/api/admin/shipments').then(r => r.json()).then(setAdminShipments);
+                                      } else {
+                                        showAlert('حدث خطأ في ترصيد الدفعة', 'error');
+                                      }
+                                    } catch (error) {
+                                      showAlert('التصال بالخادم فشل', 'error');
                                     }
-                                  } catch (error) {
-                                    showAlert('التصال بالخادم فشل', 'error');
-                                  }
-                                });
-                              }}
-                              className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-black transition-all shadow-md flex items-center gap-2"
+                                  });
+                                }}
+                                className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-black transition-all shadow-md flex items-center gap-1"
+                              >
+                                <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                                سداد
+                              </button>
+                            )}
+                            <button
+                              onClick={() => setEditingInvoice(inv)}
+                              className="px-3 py-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg text-[10px] font-black transition-all flex items-center gap-1"
                             >
-                              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                              تأكيد سداد وتحصيل
+                              <Edit className="w-3 h-3" />
+                              الفتح والتعديل
                             </button>
-                          )}
-                          {inv.status === 'paid' && (
-                            <div className="text-xs font-bold text-slate-400">لا يوجد إجراء</div>
-                          )}
+                          </div>
                         </td>
                       </tr>
                     )) : (
@@ -4264,7 +4602,21 @@ export const AdminDashboard = () => {
               <h2 className="text-2xl font-bold text-slate-800">إدارة السيارات</h2>
               <div className="flex gap-2">
                 <button
-                  onClick={() => setShowAddCarModal(true)}
+                  onClick={() => {
+                    setEditingCarId(null);
+                    setNewCar({
+                      make: '', model: '', year: 2024, currentBid: 0, status: 'upcoming',
+                      trim: '', mileageUnit: 'mi', engineSize: '', horsepower: '',
+                      drivetrain: 'FWD', fuelType: 'gasoline', exteriorColor: '',
+                      interiorColor: '', secondaryDamage: 'None', keys: 'yes',
+                      runsDrives: 'yes', notes: '',
+                      odometer: 0, transmission: 'automatic', engine: '',
+                      primaryDamage: 'None', titleType: 'Clean',
+                      location: 'Warehouse', description: '', images: [],
+                      reservePrice: 0, acceptOffers: true
+                    });
+                    setShowAddCarModal(true);
+                  }}
                   className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-orange-500/20"
                 >
                   <Plus className="w-5 h-5" />
@@ -4281,6 +4633,7 @@ export const AdminDashboard = () => {
                       <th className="p-4 font-medium">السيارة</th>
                       <th className="p-4 font-medium">VIN / Lot</th>
                       <th className="p-4 font-medium">السعر الحالي</th>
+                      <th className="p-4 font-medium">بيانات الإضافة والبائع</th>
                       <th className="p-4 font-medium">الحالة</th>
                       <th className="p-4 font-medium">إجراءات</th>
                     </tr>
@@ -4301,7 +4654,11 @@ export const AdminDashboard = () => {
                           <div>VIN: {car.vin}</div>
                           <div>Lot: {car.lotNumber}</div>
                         </td>
-                        <td className="p-4 font-bold text-slate-900 font-mono">${car.currentBid.toLocaleString()}</td>
+                        <td className="p-4 font-bold text-slate-900 font-mono">${(car.currentBid || 0).toLocaleString()}</td>
+                        <td className="p-4 text-sm font-bold text-slate-600">
+                           <div className="text-orange-600 font-black truncate max-w-[120px]" title={car.sellerName || car.sellerId}>{car.sellerName || car.sellerId || 'إدارة المنصة'}</div>
+                           <div className="text-[10px] text-slate-400 font-mono mt-1">{new Date(car.createdAt || Date.now()).toLocaleDateString('ar-EG')}</div>
+                        </td>
                         <td className="p-4">
                           <span className={`px-2 py-1 rounded text-xs font-bold ${car.status === 'live' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>
                             {car.status === 'live' ? 'مباشر' : 'قادم'}
@@ -4309,7 +4666,13 @@ export const AdminDashboard = () => {
                         </td>
                         <td className="p-4">
                           <div className="flex gap-2">
-                            <button aria-label="زر" title="زر" className="p-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-slate-600 transition-colors">
+                            <button aria-label="زر" title="زر"
+                              onClick={() => {
+                                setEditingCarId(car.id);
+                                setNewCar(car as any);
+                                setShowAddCarModal(true);
+                              }}
+                              className="p-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-slate-600 transition-colors">
                               <Edit className="w-4 h-4" />
                             </button>
                             <button aria-label="زر" title="زر"
@@ -4637,6 +5000,7 @@ export const AdminDashboard = () => {
                       <tr key={car.id || idx} className="hover:bg-slate-50 transition-colors">
                         <td className="px-6 py-4">
                           <div className="font-black text-slate-800 text-base">{car.make} {car.model}</div>
+                          <div className="text-[11px] font-bold text-slate-400 font-mono tracking-wider mt-0.5 uppercase" dir="ltr">{car.makeEn} {car.modelEn}</div>
                         </td>
                         <td className="px-6 py-4 font-bold text-slate-700">{car.year}</td>
                         <td className="px-6 py-4 text-center">
@@ -4649,10 +5013,21 @@ export const AdminDashboard = () => {
                           <div className="text-xs text-slate-400">{car.transmission}</div>
                         </td>
                         <td className="px-6 py-4 text-slate-500 font-mono text-center" dir="ltr">{car.mileage}</td>
-                        <td className="px-6 py-4 font-mono font-black text-indigo-600 text-lg" dir="ltr">
-                          {Number(car.priceLYD).toLocaleString()} د.ل
+                        <td className="px-6 py-4">
+                          <div className="font-mono font-black text-indigo-600 text-lg" dir="ltr">
+                            {Number(car.priceLYD).toLocaleString()} د.ل
+                          </div>
+                          <div className="text-[11px] font-bold text-slate-400 font-mono tracking-wider mt-0.5" dir="ltr">
+                            ≈ ${(Number(car.priceLYD) / (exchangeRate || 7)).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                          </div>
                         </td>
                         <td className="px-6 py-4 text-left space-x-2 space-x-reverse whitespace-nowrap">
+                          <button onClick={() => {
+                            setLibyanModalForm(car);
+                            setShowLibyanModal(true);
+                          }} title="تعديل التسعيرة" aria-label="تعديل التسعيرة" className="p-2 text-indigo-500 hover:bg-indigo-50 border border-transparent hover:border-indigo-100 rounded-lg transition-all inline-block">
+                            <Edit className="w-4 h-4" />
+                          </button>
                           <button onClick={() => {
                             showConfirm('هل أنت متأكد من حذف هذا السعر؟', async () => {
                               try {
@@ -5238,7 +5613,21 @@ export const AdminDashboard = () => {
       {/* Modals & Overlays */}
       <div className="fixed bottom-10 left-10 z-50">
         <button aria-label="إضافة سيارة جديدة" title="إضافة سيارة"
-          onClick={() => setShowAddCarModal(true)}
+          onClick={() => {
+            setEditingCarId(null);
+            setNewCar({
+              make: '', model: '', year: 2024, currentBid: 0, status: 'upcoming',
+              trim: '', mileageUnit: 'mi', engineSize: '', horsepower: '',
+              drivetrain: 'FWD', fuelType: 'gasoline', exteriorColor: '',
+              interiorColor: '', secondaryDamage: 'None', keys: 'yes',
+              runsDrives: 'yes', notes: '',
+              odometer: 0, transmission: 'automatic', engine: '',
+              primaryDamage: 'None', titleType: 'Clean',
+              location: 'Warehouse', description: '', images: [],
+              reservePrice: 0, acceptOffers: true
+            });
+            setShowAddCarModal(true);
+          }}
           className="w-16 h-16 bg-slate-900 text-white rounded-3xl flex items-center justify-center shadow-2xl shadow-slate-900/40 hover:scale-110 active:scale-95 transition-all group"
         >
           <Plus className="w-8 h-8 group-hover:rotate-90 transition-transform" />
@@ -5258,6 +5647,7 @@ export const AdminDashboard = () => {
             </button>
             <UnifiedCarForm
               isSubmitting={false}
+              initialData={editingCarId ? cars.find(c => c.id === editingCarId) : newCar}
               onCancel={() => setShowAddCarModal(false)}
               onSubmit={async (data, images, media) => {
                 try {
@@ -5324,12 +5714,18 @@ export const AdminDashboard = () => {
                     acceptOffers: true,
                     currency: 'USD',
                     location: data.locationDetails || 'Unknown Location', // Added location
-                    currentBid: 0 // Added currentBid
+                    currentBid: data.currentBid || 0 // Added currentBid
                   };
 
-                  await addCar(car);
-                  setShowAddCarModal(false);
-                  showAlert('تم إضافة السيارة بنجاح إلى النظام', 'success');
+                  if (editingCarId) {
+                    await updateCar(editingCarId, car);
+                    setShowAddCarModal(false);
+                    showAlert('تم تحديث بيانات السيارة بنجاح', 'success');
+                  } else {
+                    await addCar(car);
+                    setShowAddCarModal(false);
+                    showAlert('تم إضافة السيارة بنجاح إلى النظام', 'success');
+                  }
                 } catch (err) {
                   showAlert('حدث خطأ أثناء رفع الملفات أو حفظ السيارة', 'error');
                 }
@@ -5850,6 +6246,82 @@ export const AdminDashboard = () => {
         </div>
       )}
 
+      {/* Invoice Edit Modal */}
+      {editingInvoice && (
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[9999] p-4 flex items-center justify-center animate-in fade-in zoom-in-95 duration-200 shadow-2xl" dir="rtl">
+          <div className="bg-white rounded-[2rem] w-full max-w-lg overflow-hidden border border-slate-200 shadow-[0_0_50px_rgba(0,0,0,0.5)] flex flex-col max-h-[90vh]">
+            <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50 shrink-0">
+              <h3 className="font-black text-lg text-slate-800 flex items-center gap-2">
+                <FileText className="w-5 h-5 text-blue-500" />
+                مراجعة وتعديل الفاتورة
+              </h3>
+              <button onClick={() => setEditingInvoice(null)} className="p-2 hover:bg-rose-100 rounded-full text-slate-400 hover:text-rose-600 transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-4 text-right overflow-y-auto custom-scrollbar flex-1">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-bold text-slate-500 block mb-1">تاريخ الإصدار</label>
+                  <div className="p-3 bg-slate-50 rounded-xl font-black text-slate-800 font-mono text-center" dir="ltr">
+                    {new Date(editingInvoice.timestamp).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-500 block mb-1">نوع الفاتورة</label>
+                  <div className="p-3 bg-slate-50 rounded-xl font-black text-slate-800 whitespace-nowrap overflow-hidden text-ellipsis">
+                    {INVOICE_TYPE_LABELS[editingInvoice.type] || editingInvoice.type}
+                  </div>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-500 block mb-1">اسم العميل / المشتري</label>
+                <div className="p-3 bg-slate-50 rounded-xl font-bold text-slate-800 text-lg">
+                  {editingInvoice.firstName} {editingInvoice.lastName}
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-500 block mb-1">المبلغ المطلوب ($)</label>
+                <input type="number" value={editingInvoice.amount || ''} onChange={e => setEditingInvoice({ ...editingInvoice, amount: Number(e.target.value) })}
+                  className="w-full border-2 border-slate-200 p-4 rounded-xl font-black text-xl font-mono focus:border-blue-500 outline-none text-left transition-colors" dir="ltr" />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-500 block mb-1">ملاحظات إضافية</label>
+                <textarea rows={3} value={editingInvoice.notes || ''} onChange={e => setEditingInvoice({ ...editingInvoice, notes: e.target.value })}
+                  className="w-full border-2 border-slate-200 p-4 rounded-xl focus:border-blue-500 outline-none text-sm transition-colors resize-none" placeholder="اكتب ملاحظاتك هنا..."></textarea>
+              </div>
+            </div>
+            <div className="p-5 border-t border-slate-100 bg-slate-50 flex gap-3 shrink-0">
+              <button onClick={() => setEditingInvoice(null)} className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-200 rounded-xl transition-colors">إلغاء</button>
+              <button 
+                onClick={async () => {
+                  try {
+                    const res = await fetch(`/api/admin/invoices/${editingInvoice.id}`, {
+                      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ amount: editingInvoice.amount, notes: editingInvoice.notes })
+                    });
+                    if (res.ok) {
+                      showAlert('تم حفظ التعديلات بنجاح', 'success');
+                      fetch('/api/admin/all-invoices').then(r => r.json()).then(setAllInvoices);
+                      setEditingInvoice(null);
+                    } else {
+                      showAlert('فشل التحديث', 'error');
+                    }
+                  } catch (err) {
+                    console.error('Invoice Update Error:', err);
+                    showAlert('حدث خطأ في الاتصال', 'error');
+                  }
+                }} 
+                className="flex-[2] bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-xl font-black shadow-lg shadow-blue-500/20 active:scale-95 transition-all flex justify-center items-center gap-2"
+              >
+                 <CheckCircle2 className="w-5 h-5" /> حفظ التعديلات
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Invoice Confirmation Modal */}
       {showInvoiceConfirmModal.isOpen && (
         <ConfirmModal
@@ -6043,14 +6515,16 @@ export const AdminDashboard = () => {
                   showAlert('يرجى تعبئة الحقول الأساسية', 'error'); return;
                 }
                 try {
-                  const res = await fetch('/api/libyan-market', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(libyanModalForm) });
+                  const url = libyanModalForm.id ? `/api/libyan-market/${libyanModalForm.id}` : '/api/libyan-market';
+                  const method = libyanModalForm.id ? 'PUT' : 'POST';
+                  const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(libyanModalForm) });
                   if (res.ok) {
-                    showAlert('تمت الإضافة بنجاح', 'success');
+                    showAlert(libyanModalForm.id ? 'تم التعديل بنجاح' : 'تمت الإضافة بنجاح', 'success');
                     setShowLibyanModal(false);
                     fetch('/api/libyan-market').then(r => r.json()).then(setLibyanMarketPrices);
                   }
                 } catch(e) { showAlert('حدث خطأ أثناء الاتصال بالخادم', 'error'); }
-              }} className="px-5 py-2 flex gap-2 items-center rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-md transition-colors"><Check className="w-4 h-4" />حفظ البيانات</button>
+              }} className="px-5 py-2 flex gap-2 items-center rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-md transition-colors"><Check className="w-4 h-4" />{libyanModalForm.id ? 'حفظ التعديلات' : 'حفظ البيانات'}</button>
             </div>
           </div>
         </div>

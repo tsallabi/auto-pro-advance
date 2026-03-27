@@ -1,3 +1,4 @@
+import "dotenv/config";
 import express from "express";
 import { createServer } from "http";
 import { Server } from "socket.io";
@@ -47,6 +48,8 @@ const transporter = nodemailer.createTransport({
 
 // Initialize Database
 db.exec("PRAGMA foreign_keys = OFF;");
+
+// Create core tables early
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
@@ -149,6 +152,18 @@ db.exec(`
     FOREIGN KEY(receiverId) REFERENCES users(id)
   );
 
+  CREATE TABLE IF NOT EXISTS libyan_market_prices (
+    id TEXT PRIMARY KEY,
+    condition TEXT,
+    make TEXT,
+    model TEXT,
+    year INTEGER,
+    transmission TEXT,
+    fuel TEXT,
+    mileage TEXT,
+    priceLYD REAL
+  );
+
   CREATE TABLE IF NOT EXISTS proxy_bids (
     userId TEXT,
     carId TEXT,
@@ -225,6 +240,15 @@ db.exec(`
     FOREIGN KEY(userId) REFERENCES users(id)
   );
 
+  CREATE TABLE IF NOT EXISTS notification_templates (
+    id TEXT PRIMARY KEY,
+    name TEXT,
+    subject TEXT,
+    body_html TEXT,
+    body_whatsapp TEXT,
+    updatedAt TEXT
+  );
+
   CREATE TABLE IF NOT EXISTS branch_configs (
     id TEXT PRIMARY KEY,
     name TEXT,
@@ -276,6 +300,8 @@ db.exec(`
     priceLYD REAL
   );
 
+  -- Consolidated external notifications table
+
   INSERT OR IGNORE INTO system_settings (key, value, description, updatedAt) VALUES
   ('platform_commission_rate', '0.07', 'Platform commission as decimal (0.07 = 7%)', CURRENT_TIMESTAMP),
   ('internal_transport_fee', '450', 'Fixed fee for internal transport ($)', CURRENT_TIMESTAMP),
@@ -284,7 +310,9 @@ db.exec(`
   ('min_bid_increment', '100', 'Minimum bid increment ($)', CURRENT_TIMESTAMP),
   ('default_buying_power_multiplier', '10', 'Default multiplier for deposit to calculate buying power', CURRENT_TIMESTAMP),
   ('require_kyc_for_bidding', '1', 'Require KYC approval before allowing bids (1=Yes, 0=No)', CURRENT_TIMESTAMP),
-  ('usd_lyd_rate', '7.00', 'Global exchange rate for USD to Libyan Dinar', CURRENT_TIMESTAMP);
+  ('usd_lyd_rate', '7.00', 'Global exchange rate for USD to Libyan Dinar', CURRENT_TIMESTAMP),
+  ('enable_email_notifications', '1', 'Send notifications to buyer/seller email (1=Yes, 0=No)', CURRENT_TIMESTAMP),
+  ('enable_whatsapp_notifications', '1', 'Send notifications to buyer/seller WhatsApp (1=Yes, 0=No)', CURRENT_TIMESTAMP);
 
   -- Insert default branch configs
   INSERT OR IGNORE INTO branch_configs (id, name, englishName, logoText, logoSubtext, currency, domain, primaryColor)
@@ -310,10 +338,136 @@ db.exec(`
   INSERT OR IGNORE INTO users (id, firstName, lastName, email, phone, password, role, status, joinDate, buyingPower, deposit, commission)
   VALUES ('user-1', 'محمد', 'العربي', 'user@autopro.com', '0123456789', 'user123', 'buyer', 'active', '2024-02-01', 50000, 5000, 5);
 
-  INSERT OR IGNORE INTO users (id, firstName, lastName, email, phone, password, role, status, joinDate, buyingPower, deposit, commission)
-  VALUES ('seller-1', 'أحمد', 'المعرض', 'seller@autopro.com', '0112233445', 'seller123', 'seller', 'active', '2024-02-01', 0, 0, 3);
+  INSERT OR REPLACE INTO users (id, firstName, lastName, email, phone, password, role, status, joinDate, buyingPower, deposit, commission)
+  VALUES ('seller-1', 'أحمد', 'المعرض', 'seller-1@autopro.com', '0112233445', 'seller123', 'seller', 'active', '2024-02-01', 0, 0, 3);
+
+  -- Seed Default Notification Templates
+  INSERT OR IGNORE INTO notification_templates (id, name, subject, body_html, body_whatsapp, updatedAt) VALUES
+  ('general_notification', 'إشعار عام', '{{title}} | تنبيه منصة أوتو برو', 
+  '<!DOCTYPE html>
+<html dir="rtl">
+<head><meta charset="utf-8"></head>
+<body style="margin:0; padding:0; background-color:#f8fafc; font-family:Arial, sans-serif;">
+  <div style="max-width:600px; margin:20px auto; background-color:white; border-radius:16px; overflow:hidden; border:1px solid {{border_color}}; box-shadow:0 4px 6px -1px rgba(0,0,0,0.1);">
+    <div style="background-color:#0f172a; padding:24px; text-align:center;">
+      <h1 style="color:#f97316; font-size:24px; margin:0; letter-spacing:2px; font-weight:900;">A U T O &nbsp; P R O</h1>
+      <p style="color:#94a3b8; font-size:12px; margin:4px 0 0; letter-spacing:4px;">A U C T I O N S</p>
+    </div>
+    
+    <div style="padding:40px 30px; text-align:center; background-color:{{bg_color}};">
+      <div style="display:inline-block; padding:10px 20px; background-color:white; border-radius:100px; border:2px solid {{primary_color}}; color:{{primary_color}}; font-weight:bold; margin-bottom:20px; font-size:14px;">
+        💎 إشعار رسمي من المنصة
+      </div>
+      <h2 style="color:#0f172a; margin:0 0 16px; font-size:28px; font-weight:900;">{{title}}</h2>
+      <div style="height:3px; width:60px; background-color:{{primary_color}}; margin:0 auto 24px;"></div>
+      <p style="color:#334155; font-size:18px; line-height:1.6; margin:0; white-space:pre-wrap;">{{message}}</p>
+    </div>
+
+    <div style="padding:30px; background-color:white; text-align:center;">
+      <a href="https://www.autopro.ac" style="display:inline-block; background-color:#0f172a; color:white; padding:16px 40px; font-size:18px; font-weight:bold; text-decoration:none; border-radius:12px; box-shadow:0 10px 15px -3px rgba(15,23,42,0.3);">
+        الدخول للمنصة الآن
+      </a>
+    </div>
+
+    <div style="background-color:#f1f5f9; padding:20px; text-align:center; border-top:1px solid #e2e8f0;">
+      <p style="color:#64748b; font-size:12px; margin:0;">هذا إشعار تلقائي من أوتو برو للمزادات - ليبيا 2026.<br>يمكنك التحكم في الإشعارات من إعدادات حسابك.</p>
+    </div>
+  </div>
+</body>
+</html>', 
+  '🌟 *A U T O P R O  A U C T I O N S*\n\n🔔 *{{title}}*\n\n{{message}}\n\n🔗 *رابط الوصل:* https://www.autopro.ac/dashboard',
+  CURRENT_TIMESTAMP);
+
+  INSERT OR IGNORE INTO notification_templates (id, name, subject, body_html, body_whatsapp, updatedAt) VALUES
+  ('marketing_campaign', 'حملة تسويقية سيارات', 'عروض سيارات حصرية بانتظارك من أوتو برو', 
+  '', 
+  '🚗 *عروض سيارات مميزة من أوتو برو!*\n\nتتوفر لدينا مجموعة جديدة من السيارات (قادمة / في المزاد / عروض سوق).\n\n👇 *تصفح السيارات المختارة لك من هنا:* \nhttps://www.autopro.ac/marketplace',
+  CURRENT_TIMESTAMP);
+
+  INSERT OR IGNORE INTO notification_templates (id, name, subject, body_html, body_whatsapp, updatedAt) VALUES
+  ('auction_win', 'فوز بمزاد سيارة 🎉', 'تهانينا {{userName}}! لقد فزت بمزاد سيارة {{itemInfo}}', 
+  '<!DOCTYPE html>
+<html dir="rtl">
+<head><meta charset="utf-8"></head>
+<body style="margin:0; padding:0; background-color:#f8fafc; font-family:Arial, sans-serif;">
+  <div style="max-width:600px; margin:20px auto; background-color:white; border-radius:16px; overflow:hidden; border:1px solid #e2e8f0; box-shadow:0 10px 15px -3px rgba(0,0,0,0.1);">
+    <div style="background-color:#0f172a; padding:40px 20px; text-align:center;">
+      <h1 style="color:#f97316; font-size:28px; margin:0; font-weight:900;">🏅 فوز مستحق!</h1>
+    </div>
+    <div style="padding:40px 30px; text-align:center;">
+      <h2 style="color:#0f172a; margin:0 0 10px; font-size:24px;">تهانينا {{userName}}!</h2>
+      <p style="color:#475569; font-size:18px; line-height:1.6;">لقد فزت بنجاح بمزاد السيارة: <br><strong style="color:#f97316;">{{itemInfo}}</strong></p>
+      
+      <div style="margin:30px 0; padding:20px; background-color:#f8fafc; border-radius:12px; border:1px dashed #cbd5e1;">
+        <p style="color:#64748b; font-size:14px; margin:0;">يرجى مراجعة فواتير الشراء وتكاليف النقل في لوحة التحكم لإتمام الإجراءات.</p>
+      </div>
+
+      <a href="{{winLink}}" style="display:inline-block; background-color:#f97316; color:white; padding:18px 45px; font-size:18px; font-weight:bold; text-decoration:none; border-radius:12px; box-shadow:0 10px 15px -3px rgba(249,115,22,0.3);">
+        عرض سياراتي الفائزة
+      </a>
+    </div>
+    <div style="background-color:#f1f5f9; padding:20px; text-align:center;">
+      <p style="color:#64748b; font-size:12px; margin:0;">أوتو برو للمزادات - شريكك الموثوق لاستيراد السيارات من أمريكا</p>
+    </div>
+  </div>
+</body>
+</html>', 
+  '🏆 *تهانينا {{userName}}!*\n\nلقد فزت بسيارة: *{{itemInfo}}*\n\nيرجى التوجه للرابط التالي لمراجعة الفواتير وإتمام الشحن:\n{{winLink}}\n\nشكراً لاختيارك أوتو برو! 🚗✨',
+  CURRENT_TIMESTAMP);
+
+  INSERT OR IGNORE INTO notification_templates (id, name, subject, body_html, body_whatsapp, updatedAt) VALUES
+  ('registration_success', 'مرحباً بك في أوتو برو', 'أهلاً بك {{userName}}! تم تفعيل حسابك بنجاح', 
+  '<!DOCTYPE html>
+<html dir="rtl">
+<head><meta charset="utf-8"></head>
+<body style="margin:0; padding:0; background-color:#f8fafc; font-family:Arial, sans-serif;">
+  <div style="max-width:600px; margin:20px auto; background-color:white; border-radius:16px; overflow:hidden; border:1px solid #e2e8f0;">
+    <div style="background-color:#0f172a; padding:30px; text-align:center;">
+      <h1 style="color:#f97316; font-size:32px; margin:0;">أهلاً بك {{userName}}!</h1>
+    </div>
+    <div style="padding:40px; text-align:center;">
+      <p style="color:#334155; font-size:20px;">يسعدنا انضمامك لأكبر منصة مزادات سيارات في ليبيا.</p>
+      <p style="color:#64748b; font-size:16px;">يمكنك الآن المزايدة على آلاف السيارات يومياً مباشرة من أمريكا.</p>
+      <div style="margin-top:30px;">
+        <a href="https://www.autopro.ac" style="background-color:#0f172a; color:white; padding:15px 30px; text-decoration:none; border-radius:10px; font-weight:bold;">ابدأ المزايدة الآن</a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>', 
+  '👋 *أهلاً {{userName}}!*\n\nتم تفعيل حسابك بنجاح في منصة *أوتو برو للمزادات*.\nيمكنك الآن البدء في تصفح السيارات والمشاركة في المزادات.\n\n🔗 *رابط المنصة:* https://www.autopro.ac',
+  CURRENT_TIMESTAMP);
+
+  INSERT OR IGNORE INTO notification_templates (id, name, subject, body_html, body_whatsapp, updatedAt) VALUES
+  ('shipping_status_update', 'تحديث حالة الشحن 🚢', 'تحديث جديد حول شحن سيارتك {{itemInfo}}', 
+  '<!DOCTYPE html>
+<html dir="rtl">
+<head><meta charset="utf-8"></head>
+<body style="margin:0; padding:0; background-color:#f8fafc; font-family:Arial, sans-serif;">
+  <div style="max-width:600px; margin:20px auto; background-color:white; border-radius:16px; overflow:hidden; border:1px solid #e2e8f0;">
+    <div style="background-color:#0f172a; padding:24px; text-align:center;">
+      <h1 style="color:#f97316; font-size:24px; margin:0; font-weight:900;">A U T O &nbsp; P R O</h1>
+    </div>
+    <div style="padding:40px 30px;">
+      <h2 style="color:#0f172a; margin:0 0 16px; font-size:22px;">أهلاً {{userName}}</h2>
+      <p style="color:#334155; font-size:16px;">لقد تم تحديث حالة شحن سيارتك: <strong>{{itemInfo}}</strong></p>
+      <div style="margin:25px 0; padding:20px; background-color:#f1f5f9; border-radius:12px; border:1px solid #e2e8f0; text-align:center;">
+        <p style="color:#0f172a; font-size:20px; font-weight:bold; margin:0;">{{title}}</p>
+        <p style="color:#64748b; font-size:14px; margin:10px 0 0;">{{message}}</p>
+      </div>
+      <div style="text-align:center; margin-top:30px;">
+        <a href="{{shippingLink}}" style="display:inline-block; background-color:#0f172a; color:white; padding:15px 35px; text-decoration:none; border-radius:10px; font-weight:bold;">تتبع الشحن الآن</a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>', 
+  '🚢 *تحديث حالة الشحن*\n\nأهلاً {{userName}}، تم تحديث حالة شحن سيارتك *{{itemInfo}}*:\n\n📍 *الحالة:* {{title}}\n📝 *التفاصيل:* {{message}}\n\n🔗 *تتبع الشحن من هنا:* {{shippingLink}}',
+  CURRENT_TIMESTAMP);
 `);
 
+
+// Separate block for post-init setup
 db.exec("PRAGMA foreign_keys = ON;");
 
 // 1. Ensure all columns exist for 'cars'
@@ -343,7 +497,8 @@ db.exec("PRAGMA foreign_keys = ON;");
   "notes TEXT",
   "auctionSessionCount INTEGER DEFAULT 0",
   "acceptedBy TEXT",
-  "sellerCounterPrice REAL"
+  "sellerCounterPrice REAL",
+  "isBuyNow INTEGER DEFAULT 0"
 ].forEach(colDef => {
   try {
     db.exec(`ALTER TABLE cars ADD COLUMN ${colDef}`);
@@ -388,7 +543,8 @@ const initLibyanMarketPrices = () => {
 جديد	جيتور	T2	2026	اوتوماتيك	بنزين	0	255,000
 جديد	آيتو	آيتو 9	2026	اوتوماتيك	بنزين	0	36,666
 مستعمل	تويوتا	كامري	2024	اوتوماتيك	بنزين	1,000 - 9,999	260,000
-جديد	أودي	Q3	2024	اوتوماتيك	بنزين	0	178,938
+جديد	Audi	Q3	2024	اوتوماتيك	بنزين	0	178,938
+جديد	Audi	RS6 Avant	2024	اوتوماتيك	بنزين	0	650,000
 مستعمل	هيونداي	كريتا	2025	اوتوماتيك	بنزين	10,000 - 19,999	99,999
 جديد	كيا	سورينتو	2023	اوتوماتيك	بنزين	0	135,000
 مستعمل	هيونداي	سنتافي	2023	اوتوماتيك	بنزين	50,000 - 59,999	135,000
@@ -604,15 +760,19 @@ const carModels: Record<string, string[]> = {
   'Jeep': ['Wrangler Rubicon', 'Grand Cherokee', 'Gladiator', 'Renegade'],
   'Land Rover': ['Defender 110', 'Range Rover Sport', 'Discovery', 'Evoque']
 };
-const carStatuses = ['live', 'live', 'live', 'upcoming', 'upcoming', 'offer_market', 'offer_market', 'offer_market', 'offer_market', 'offer_market'];
+const carStatuses = [
+  'live', 'live', 'live', 'live', 'live', 'live',
+  'upcoming', 'upcoming', 'upcoming', 'upcoming', 'upcoming', 'upcoming',
+  'offer_market', 'offer_market', 'offer_market', 'offer_market', 'offer_market', 'offer_market'
+];
 const carLocations = ['Long Island, NY', 'Miami, FL', 'Houston, TX', 'Los Angeles, CA', 'Newark, NJ', 'Atlanta, GA', 'Chicago, IL', 'Baltimore, MD', 'Denver, CO', 'Seattle, WA'];
 
-for (let i = 1; i <= 20; i++) {
+for (let i = 1; i <= 18; i++) {
   const make = makes[i % makes.length];
   const modelArray = carModels[make];
   const model = modelArray[i % modelArray.length];
-  const status = carStatuses[i % carStatuses.length];
-  const lotNumber = (50000000 + i * 123456).toString();
+  const status = carStatuses[i - 1]; 
+  const lotNumber = (70000000 + i).toString();
   const id = `car-${i}`;
   const reservePrice = 20000 + (i * 5000);
   const currentBid = reservePrice - (i * 1000) - 2000;
@@ -671,7 +831,7 @@ async function startServer() {
     cors: { origin: "*", methods: ["GET", "POST"] }
   });
 
-  const PORT = Number(process.env.PORT) || 3000;
+  const PORT = Number(process.env.PORT) || 3005;
 
   app.use(cors());
   app.use(express.json());
@@ -743,8 +903,85 @@ async function startServer() {
     } catch (err) { console.error('sendInternalMessage error:', err); }
   }
 
+  // Rich Template Engine for Professional Communications
+  const NotificationColors: Record<string, { primary: string; bg: string; border: string }> = {
+    success: { primary: '#16a34a', bg: '#f0fdf4', border: '#bcf0da' },
+    warning: { primary: '#ea580c', bg: '#fff7ed', border: '#ffedd5' },
+    error: { primary: '#dc2626', bg: '#fef2f2', border: '#fee2e2' },
+    info: { primary: '#2563eb', bg: '#eff6ff', border: '#dbeafe' },
+    alert: { primary: '#7c3aed', bg: '#f5f3ff', border: '#ede9fe' }
+  };
+
+  const TemplateEngine = {
+    getHtml: (title: string, message: string, type: string = 'info', customTemplate?: any) => {
+      const colors = NotificationColors[type] || { primary: '#0f172a', bg: '#f8fafc', border: '#e2e8f0' };
+
+      if (customTemplate && customTemplate.body_html) {
+         // Replace placeholders in custom template
+         let content = customTemplate.body_html
+          .replace(/\{\{title\}\}/g, title)
+          .replace(/\{\{message\}\}/g, message)
+          .replace(/\{\{primary_color\}\}/g, colors.primary)
+          .replace(/\{\{bg_color\}\}/g, colors.bg)
+          .replace(/\{\{border_color\}\}/g, colors.border);
+
+        // Replace Context Variables
+        if (customTemplate.context) {
+          Object.keys(customTemplate.context).forEach(key => {
+            const regex = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
+            content = content.replace(regex, customTemplate.context[key] || '');
+          });
+        }
+        return content;
+      }
+
+      return `
+        <!DOCTYPE html>
+        <html dir="rtl">
+        <head><meta charset="utf-8"></head>
+        <body style="margin:0; padding:0; background-color:#f8fafc; font-family:Arial, sans-serif;">
+          <div style="max-width:600px; margin:20px auto; background-color:white; border-radius:16px; overflow:hidden; border:1px solid ${colors.border}; box-shadow:0 4px 6px -1px rgba(0,0,0,0.1);">
+            <div style="background-color:#0f172a; padding:24px; text-align:center;">
+              <h1 style="color:#f97316; font-size:24px; margin:0; letter-spacing:2px; font-weight:900;">A U T O &nbsp; P R O</h1>
+              <p style="color:#94a3b8; font-size:12px; margin:4px 0 0; letter-spacing:4px;">A U C T I O N S</p>
+            </div>
+            
+            <div style="padding:40px 30px; text-align:center; background-color:${colors.bg};">
+              <div style="display:inline-block; padding:10px 20px; background-color:white; border-radius:100px; border:2px solid ${colors.primary}; color:${colors.primary}; font-weight:bold; margin-bottom:20px; font-size:14px;">
+                💎 إشعار رسمي من المنصة
+              </div>
+              <h2 style="color:#0f172a; margin:0 0 16px; font-size:28px; font-weight:900;">${title}</h2>
+              <div style="height:3px; width:60px; background-color:${colors.primary}; margin:0 auto 24px;"></div>
+              <p style="color:#334155; font-size:18px; line-height:1.6; margin:0; white-space:pre-wrap;">${message}</p>
+            </div>
+
+            <div style="background-color:#f1f5f9; padding:20px; text-align:center; border-top:1px solid #e2e8f0;">
+              <p style="color:#64748b; font-size:12px; margin:0;">هذا إشعار تلقائي من أوتو برو للمزادات - ليبيا 2026.<br>يمكنك التحكم في الإشعارات من إعدادات حسابك.</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `;
+    },
+    getWhatsApp: (title: string, message: string, customTemplate?: any, context: any = {}) => {
+      if (customTemplate && customTemplate.body_whatsapp) {
+        let content = customTemplate.body_whatsapp
+          .replace(/\{\{title\}\}/g, title)
+          .replace(/\{\{message\}\}/g, message);
+
+        // Replace Context Variables
+        Object.keys(context).forEach(key => {
+          const regex = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
+          content = content.replace(regex, context[key] || '');
+        });
+        return content;
+      }
+      return `🌟 *A U T O P R O  A U C T I O N S*\n\n🔔 *${title}*\n\n${message}\n\n🔗 *رابط الوصل:* https://www.autopro.ac/dashboard`;
+    }
+  };
+
   // Function to send a notification and optional email/whatsapp mirror
-  function sendNotification(userId: string, title: string, message: string, type: string = 'info') {
+  function sendNotification(userId: string, title: string, message: string, type: string = 'info', templateId: string = 'general_notification', context: any = {}) {
     const id = `notif-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
     const timestamp = new Date().toISOString();
     try {
@@ -755,49 +992,47 @@ async function startServer() {
       io.to(`user_${userId}`).emit("new_notification", notifData);
 
       // Omni-Channel External Dispatch (Email/WhatsApp)
-      const user: any = db.prepare("SELECT email, phone FROM users WHERE id = ?").get(userId);
+      const user: any = db.prepare("SELECT firstName, lastName, email, phone FROM users WHERE id = ?").get(userId);
       if (!user) return;
+
+      const fullContext = { ...context, userName: `${user.firstName || ''} ${user.lastName || ''}`.trim() };
 
       const settings: any = db.prepare("SELECT emailNotifications, whatsappNotifications FROM user_settings WHERE userId = ?").get(userId);
       const wantsEmail = settings ? settings.emailNotifications === 1 : true;
       const wantsWhatsapp = settings ? settings.whatsappNotifications === 1 : true;
 
+      // Fetch specific template
+      const template: any = db.prepare("SELECT * FROM notification_templates WHERE id = ?").get(templateId) || 
+                       db.prepare("SELECT * FROM notification_templates WHERE id = 'general_notification'").get();
+      
+      const emailTemplateData = template ? { ...template, context: fullContext } : null;
+
       if (wantsEmail && transporter && user.email) {
         transporter.sendMail({
-          from: process.env.SMTP_FROM || '"AutoPro Auctions" <info@autopro.ac>',
+          from: process.env.SMTP_FROM || '"AUTOPRO AUCTIONS" <info@autopro.ac>',
           to: user.email,
-          subject: `تنبيه من أوتو برو: ${title}`,
-          html: `
-            <div dir="rtl" style="font-family: Arial, sans-serif; padding: 20px; background: #f8fafc; border-radius: 12px; color: #0f172a;">
-              <h2 style="color: #0369a1;">${title}</h2>
-              <p style="font-size: 16px; line-height: 1.5; white-space: pre-wrap;">${message}</p>
-              <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;">
-              <p style="font-size: 12px; color: #64748b;">هذا إشعار تلقائي من منصة ليبيا أوتو برو للمزادات.<br>يمكنك تعديل إعدادات الإشعارات من حسابك.</p>
-            </div>
-          `
-        }).catch(err => console.error("External Email Error ignoring:", err.message));
+          subject: template?.subject?.replace(/\{\{title\}\}/g, title) || `${title} | تنبيه منصة أوتو برو`,
+          html: TemplateEngine.getHtml(title, message, type, emailTemplateData)
+        }).catch(err => console.error("Rich Email Error:", err.message));
       }
 
       if (wantsWhatsapp && user.phone) {
-        const cleanPhone = user.phone.replace(/[^0-9]/g, '');
-        console.log(`[WHATSAPP DISPATCH] From: 00353894435368 | To: ${cleanPhone} | MSG: ${title} - ${message}`);
-
-        const instanceId = process.env.ULTRAMSG_INSTANCE_ID;
-        const token = process.env.ULTRAMSG_TOKEN;
-
-        if (instanceId && token) {
-          fetch(`https://api.ultramsg.com/${instanceId}/messages/chat`, {
+        const cleanPhone = user.phone.replace(/[^0-9]/g, '').replace(/^00/, '').replace(/^0/, '');
+        const wasenderToken = process.env.WASENDER_TOKEN;
+        if (wasenderToken) {
+          fetch(`https://wasenderapi.com/api/send-message`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: new URLSearchParams({
-              token: token,
+            headers: { 
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${wasenderToken}`
+            },
+            body: JSON.stringify({
               to: cleanPhone,
-              body: `*AutoPro Auctions: ${title}*\n\n${message}\n\n_لتغيير إعدادات الإشعارات، توجه لملفك الشخصي._`
+              text: TemplateEngine.getWhatsApp(title, message, template, fullContext)
             })
-          }).catch(err => console.error("UltraMsg WhatsApp Dispatch Error:", err.message));
+          }).catch(err => console.error("Rich WhatsApp Error:", err.message));
         }
       }
-
     } catch (err) { console.error('sendNotification error:', err); }
   }
 
@@ -834,7 +1069,10 @@ async function startServer() {
       .run(shipId, carId, userId, now, now);
 
     if (car && car.sellerId) {
-      sendNotification(car.sellerId, 'تم بيع سيارة! 💰', `تم بيع سيارتك ${car.make} ${car.model} بمبلغ $${amount.toLocaleString()}`, 'success');
+      sendNotification(car.sellerId, 'تم بيع سيارة! 💰', `تم بيع سيارتك ${car.make} ${car.model} بمبلغ $${amount.toLocaleString()}`, 'success', 'car_sold', {
+        carLink: `https://www.autopro.ac/cars/${carId}`,
+        itemInfo: `${car.year} ${car.make} ${car.model}`
+      });
       sendInternalMessage('admin-1', car.sellerId, '✅ تأكيد بيع سيارة',
         `تهانينا! تم بيع سيارتك ${car.make} ${car.model} (${car.year}) بنجاح.\n\n` +
         `السعر النهائي: $${amount.toLocaleString()}\n` +
@@ -844,7 +1082,12 @@ async function startServer() {
     }
 
     if (car) {
-      sendNotification(userId, 'تهانينا! فزت بسيارة 🎉', `لقد فزت بمزاد سيارة ${car.make} ${car.model} بمبلغ $${amount.toLocaleString()}. الفواتير متاحة الآن لدفعها.`, 'success');
+      sendNotification(userId, 'تهانينا! فزت بسيارة 🎉', `لقد فزت بمزاد سيارة ${car.make} ${car.model} بمبلغ $${amount.toLocaleString()}. الفواتير متاحة الآن لدفعها.`, 'success', 'auction_win', {
+        carLink: `https://www.autopro.ac/cars/${carId}`,
+        winLink: `https://www.autopro.ac/dashboard/wins`,
+        invoiceLink: `https://www.autopro.ac/dashboard/invoices`,
+        itemInfo: `${car.year} ${car.make} ${car.model}`
+      });
       sendInternalMessage('admin-1', userId, '🏆 إشعار فوز بالمزاد وإصدار فواتير',
         `أهلاً! لقد فزت بسيارة ${car.make} ${car.model} (${car.year}).\n\n` +
         `السعر النهائي: $${amount.toLocaleString()}\n` +
@@ -990,6 +1233,50 @@ async function startServer() {
   setInterval(tickAuctions, 1000);
 
   // API Routes
+  
+  app.get("/api/libyan-market", (req, res) => {
+    try {
+      const prices = db.prepare("SELECT * FROM libyan_market_prices ORDER BY id DESC").all();
+      res.json(prices);
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to fetch market prices", details: err.message });
+    }
+  });
+
+  app.post("/api/libyan-market", (req, res) => {
+    try {
+      const { condition, make, model, year, transmission, fuel, mileage, priceLYD } = req.body;
+      const id = require('crypto').randomBytes(8).toString('hex');
+      db.prepare("INSERT INTO libyan_market_prices (id, condition, make, model, year, transmission, fuel, mileage, priceLYD) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").run(
+        id, condition, make, model, year, transmission, fuel, mileage, priceLYD
+      );
+      res.json({ success: true, id });
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to save market estimate", details: err.message });
+    }
+  });
+
+  app.put("/api/libyan-market/:id", (req, res) => {
+    try {
+      const { condition, make, model, year, transmission, fuel, mileage, priceLYD } = req.body;
+      db.prepare("UPDATE libyan_market_prices SET condition = ?, make = ?, model = ?, year = ?, transmission = ?, fuel = ?, mileage = ?, priceLYD = ? WHERE id = ?").run(
+        condition, make, model, year, transmission, fuel, mileage, priceLYD, req.params.id
+      );
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to update market estimate", details: err.message });
+    }
+  });
+
+  app.delete("/api/libyan-market/:id", (req, res) => {
+    try {
+      db.prepare("DELETE FROM libyan_market_prices WHERE id = ?").run(req.params.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to delete market estimate", details: err.message });
+    }
+  });
+
   app.get("/api/debug/seed-simulation", (req, res) => {
     try {
       console.log("🚀 API Triggered Full Simulation Seeding...");
@@ -1086,7 +1373,7 @@ async function startServer() {
       db.prepare("UPDATE cars SET status = 'offer_market', currentBid = 35000, reservePrice = 40000, offerMarketEndTime = ? WHERE id = ?")
         .run(new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(), "sim-car-2");
       db.prepare("INSERT INTO bids (id, carId, userId, amount, timestamp) VALUES (?, ?, ?, ?, ?)").run(`bid-${Date.now()}-1`, "sim-car-2", "buyer-3", 35000, new Date().toISOString());
-      sendNotification("buyer-3", "😔 المزاد لم يصل للسعر المطلوب", "سيارة sim-car-2 انتقلت لسوق العروض، يمكنك تقديم عرض جديد هناك!");
+      sendNotification("buyer-3", "😔 المزاد لم يصل للسعر المطلوب", "سيارة sim-car-2 انتقلت لسوق العروض، يمكنك تقديم عرض جديد هناك!", "warning");
 
       db.prepare("UPDATE cars SET status = 'offer_market', currentBid = 62000 WHERE id = ?").run("sim-car-17");
       db.prepare("INSERT INTO bids (id, carId, userId, amount, timestamp) VALUES (?, ?, ?, ?, ?)").run(`bid-${Date.now()}-2`, "sim-car-17", "buyer-4", 62000, new Date().toISOString());
@@ -1508,7 +1795,10 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         nationalId || '', commercialRegister || '', showroomLicense || '', iban || ''
       );
 
-      // Send welcome message to the new user from system (admin-1)
+      // Send welcome notification using template
+      sendNotification(id, '🎉 مرحباً بك في أوتو برو!', 'شكراً لتسجيلك في المنصة. حسابك قيد المراجعة حالياً.', 'success', 'registration_success');
+
+      // Send welcome message to the new user from system (admin-1) - keeping legacy internal message for consistency
       sendInternalMessage('admin-1', id,
         '🎉 مرحباً بك في ليبيا أوتو برو!',
         `أهلاً ${firstName} ${lastName}!\n\nشكراً لتسجيلك في منصة ليبيا أوتو برو للمزادات.\n\nحسابك الآن قيد المراجعة من قبل فريق الإدارة. سيتم إشعارك فور الموافقة على حسابك.\n\n📋 الخطوات القادمة:\n1. انتظر موافقة المدير على حسابك\n2. بعد التفعيل، قم بإيداع العربون لتفعيل القوة الشرائية\n3. ابدأ المزايدة على السيارات!\n\n💰 ملاحظة مهمة: القوة الشرائية = العربون × 10\nمثال: إيداع $5,000 = قوة شرائية $50,000\n\nفريق ليبيا أوتو برو 🚗`
@@ -1525,9 +1815,9 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       // Dispatch Email via Transporter
       try {
         await transporter.sendMail({
-          from: process.env.SMTP_FROM || '"AutoPro Auctions" <info@autopro.ac>',
+          from: process.env.SMTP_FROM || '"AUTOPRO AUCTIONS" <info@autopro.ac>',
           to: email,
-          subject: 'يرجى توثيق بريدك الإلكتروني - AutoPro',
+          subject: 'يرجى توثيق بريدك الإلكتروني - AUTOPRO',
           html: `
             <div dir="rtl" style="font-family: Arial, sans-serif; padding: 20px; background: #f8fafc; border-radius: 12px; color: #0f172a;">
               <h2 style="color: #ea580c;">أهلاً ${firstName} 👋</h2>
@@ -1853,9 +2143,35 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
   app.get("/api/admin/marketing-cars", (req, res) => {
     try {
-      const list = db.prepare("SELECT * FROM cars WHERE status IN ('live', 'active', 'upcoming', 'offer_market') OR isBuyNow = 1").all();
-      res.json(list);
+      const list = db.prepare("SELECT * FROM cars WHERE status IN ('live', 'active', 'upcoming', 'offer_market', 'ultimo') OR isBuyNow = 1").all();
+      res.json(list.map((car: any) => ({ ...car, images: JSON.parse(car.images || '[]') })));
     } catch (e) { res.status(500).json({ error: "Failed to fetch marketing cars" }); }
+  });
+
+  // ======= NOTIFICATION TEMPLATES API =======
+  app.get("/api/admin/notification-templates", (req, res) => {
+    try {
+      const templates = db.prepare("SELECT * FROM notification_templates ORDER BY updatedAt DESC").all();
+      res.json(templates);
+    } catch (e) {
+      res.status(500).json({ error: "Failed to fetch notification templates" });
+    }
+  });
+
+  app.put("/api/admin/notification-templates/:id", (req, res) => {
+    const { id } = req.params;
+    const { subject, body_html, body_whatsapp } = req.body;
+    try {
+      const now = new Date().toISOString();
+      db.prepare(`
+        UPDATE notification_templates 
+        SET subject = ?, body_html = ?, body_whatsapp = ?, updatedAt = ? 
+        WHERE id = ?
+      `).run(subject, body_html, body_whatsapp, now, id);
+      res.json({ success: true });
+    } catch (e) {
+      res.status(500).json({ error: "Failed to update template" });
+    }
   });
 
   // User Routes
@@ -2085,6 +2401,19 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           'customs': 'التخليص الجمركي',
           'delivered': 'تم التوصيل'
         };
+        const car: any = db.prepare("SELECT make, model, year FROM cars WHERE id = ?").get(shipment.carId);
+        const itemInfo = car ? `${car.year} ${car.make} ${car.model}` : `سيارة #${shipment.carId}`;
+        const shippingLink = `https://www.autopro.ac/dashboard/shipments`;
+        const carLink = `https://www.autopro.ac/cars/${shipment.carId}`;
+        
+        const statusMsg = `${trackingNumber ? `كود التتبع: ${trackingNumber} | ` : ''}${currentLocation ? `الموقع: ${currentLocation} | ` : ''}${estimatedDelivery ? `تاريخ الوصول: ${new Date(estimatedDelivery).toLocaleDateString('ar-EG')}` : ''} ${trackingNotes ? ` | ملاحظات: ${trackingNotes}` : ''}`;
+
+        sendNotification(shipment.userId, statusLabels[status] || status, statusMsg, 'info', 'shipping_status_update', {
+          shippingLink,
+          carLink,
+          itemInfo
+        });
+
         sendInternalMessage('admin-1', shipment.userId,
           `📦 تحديث حالة الشحن: ${statusLabels[status] || status}`,
           `تم تحديث حالة شحن سيارتك إلى: ${statusLabels[status] || status}\n${trackingNumber ? `كود التتبع: ${trackingNumber}\n` : ''}${currentLocation ? `الموقع الحالي: ${currentLocation}\n` : ''}${estimatedDelivery ? `التاريخ المتوقع للوصول: ${new Date(estimatedDelivery).toLocaleDateString('ar-EG')}\n` : ''}${trackingNotes ? `ملاحظات: ${trackingNotes}` : ''}`
@@ -2655,6 +2984,115 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   // ==========================================
+  // GLOBAL SYSTEM SETTINGS & NOTIFICATIONS
+  // ==========================================
+  app.get("/api/admin/settings", (req, res) => {
+    try {
+      const settings = db.prepare("SELECT * FROM system_settings").all();
+      res.json(Array.isArray(settings) ? settings : []);
+    } catch (e) {
+      console.error(e);
+      res.json([]); // Return empty array instead of error object to prevent frontend crash
+    }
+  });
+
+  app.post("/api/admin/settings/update", (req, res) => {
+    const { key, value } = req.body;
+    try {
+      db.prepare("INSERT OR REPLACE INTO system_settings (key, value, updatedAt) VALUES (?, ?, ?)")
+        .run(key, value, new Date().toISOString());
+      res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: "Failed to update setting" }); }
+  });
+
+  app.get("/api/admin/external-notifications", (req, res) => {
+    try {
+      const logs = db.prepare("SELECT * FROM external_notifications ORDER BY timestamp DESC LIMIT 100").all();
+      res.json(Array.isArray(logs) ? logs : []);
+    } catch (e) {
+      console.error(e);
+      res.json([]); // Return empty array
+    }
+  });
+
+  app.post("/api/admin/external-notifications/test", async (req, res) => {
+    const { email, phone } = req.body;
+    const results = [];
+
+    // 1. Test Email
+    if (email) {
+      try {
+        await transporter.sendMail({
+          from: process.env.SMTP_FROM || `"AUTOPRO AUCTIONS" <${process.env.SMTP_USER}>`,
+          to: email,
+          subject: "🔍 Test Notification - Auto Pro Platform",
+          html: `<div dir="rtl" style="font-family: Arial; padding: 20px; background: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0;">
+                  <h2 style="color: #f97316;">AUTOPRO - Test Message</h2>
+                  <p>This is a test email sent from your platform admin dashboard.</p>
+                  <p>Status: <b>SMTP connection working correctly</b></p>
+                  <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;">
+                  <small style="color: #64748b;">Timestamp: ${new Date().toLocaleString('ar-LY')}</small>
+                 </div>`
+        });
+
+        db.prepare("INSERT INTO external_notifications (id, type, contact, title, content, status, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)")
+          .run(`test-em-${Date.now()}`, 'email', email, 'Test Email Dispatch', 'Test email from Admin', 'sent', new Date().toISOString());
+        results.push({ type: 'email', status: 'success' });
+      } catch (err: any) {
+        db.prepare("INSERT INTO external_notifications (id, type, contact, title, content, status, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)")
+          .run(`test-em-err-${Date.now()}`, 'email', email, 'Test Email Dispatch', 'Error: ' + err.message, 'error', new Date().toISOString());
+        results.push({ type: 'email', status: 'error', message: err.message });
+      }
+    }
+
+    // 2. Test WhatsApp (WasenderAPI)
+    if (phone) {
+      const token = process.env.WASENDER_TOKEN;
+
+      if (!token) {
+        results.push({ type: 'whatsapp', status: 'error', message: 'WASENDER_TOKEN missing in .env' });
+      } else {
+        try {
+          // Strip leading zeros or + for WasenderAPI
+          const finalPhone = phone.replace(/[^0-9]/g, '').replace(/^00/, '').replace(/^0/, '');
+          
+          const waRes = await fetch(`https://wasenderapi.com/api/send-message`, {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              to: finalPhone,
+              text: `🚀 *AUTOPRO Platform Test*\n\nهذه رسالة تجريبية لتأكيد عمل نظام الواتساب (WasenderAPI) بنجاح.\n\nالوقت: ${new Date().toLocaleString('ar-LY')}`
+            })
+          });
+
+          const waData: any = await waRes.json();
+          if (waRes.ok) {
+            db.prepare("INSERT INTO external_notifications (id, type, contact, title, content, status, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)")
+              .run(`test-wa-${Date.now()}`, 'whatsapp', phone, 'Test WhatsApp Dispatch', 'Test WhatsApp from Admin', 'sent', new Date().toISOString());
+            results.push({ type: 'whatsapp', status: 'success' });
+          } else {
+            throw new Error(waData.message || 'Failed to dispatch WhatsApp');
+          }
+        } catch (err: any) {
+          console.error('WhatsApp Test Failed:', err);
+          db.prepare("INSERT INTO external_notifications (id, type, contact, title, content, status, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)")
+            .run(`test-wa-err-${Date.now()}`, 'whatsapp', phone, 'Test WhatsApp Dispatch', 'Error: ' + err.message, 'error', new Date().toISOString());
+          results.push({ type: 'whatsapp', status: 'error', message: err.message });
+        }
+      }
+    }
+
+    res.json({ 
+      results, 
+      success: results.length > 0 && results.every(r => r.status === 'success'),
+      anySuccess: results.some(r => r.status === 'success')
+    });
+  });
+
+  // ==========================================
   // ROUTES
   // ==========================================
   app.post('/api/admin/send-campaign', async (req, res) => {
@@ -2684,7 +3122,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         <div style="max-width: 600px; margin: auto; background: #1e293b; border-radius: 24px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);">
           <!-- Header -->
           <div style="padding: 30px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.1);">
-            <h1 style="color: ${color}; margin: 0; font-size: 28px;">ليبيـــا AUTO PRO</h1>
+            <h1 style="color: ${color}; margin: 0; font-size: 28px;">AUTOPRO AUCTIONS</h1>
             <p style="color: #94a3b8; margin: 10px 0 0;">${title}</p>
           </div>
 
@@ -2711,7 +3149,7 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
               </div>
             </div>
 
-            <a href="http://localhost:3005" style="display: block; background: ${color}; color: white; text-align: center; padding: 18px; border-radius: 14px; text-decoration: none; font-weight: bold; font-size: 18px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);">
+            <a href="https://www.autopro.ac" style="display: block; background: ${color}; color: white; text-align: center; padding: 18px; border-radius: 14px; text-decoration: none; font-weight: bold; font-size: 18px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);">
               ${action}
             </a>
           </div>
@@ -2727,9 +3165,9 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       // Process sending emails securely using Nodemailer
       for (const email of emails) {
         transporter.sendMail({
-          from: '"Libya Auto Pro" <' + process.env.SMTP_USER + '>',
+          from: '"AUTOPRO AUCTIONS" <' + process.env.SMTP_USER + '>',
           to: email,
-          subject: `🔥 [Auto Pro] ${title} ${car.make} ${car.model}`,
+          subject: `🔥 [AUTOPRO] ${title} ${car.make} ${car.model}`,
           html: htmlTemplate
         }).catch(err => console.error('Email failed to send directly:', err));
       }
@@ -3394,7 +3832,90 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     }
   });
 
-  // ======= INTEGRATED ADMIN & MERCHANT MANAGEMENT =======
+  // ======= INTEGRATED ADMIN & MARKETING =======
+
+  app.get("/api/admin/mailing-list", (req, res) => {
+    try {
+      const users = db.prepare("SELECT id, firstName, lastName, email, phone FROM users WHERE email IS NOT NULL").all();
+      res.json(users);
+    } catch (e) { res.status(500).json({ error: "Failed to fetch mailing list" }); }
+  });
+
+  app.get("/api/admin/marketing-cars", (req, res) => {
+    try {
+      // Fetch all non-sold cars for selection
+      const results = db.prepare("SELECT id, make, model, year, status, currentBid, startingBid, buyItNow, images FROM cars WHERE status NOT IN ('sold', 'closed', 'rejected')").all();
+      if (results.length > 0) {
+        const firstCar = results[0] as any;
+      }
+      
+      res.json(results.map((c: any) => {
+        let imgs = [];
+        try {
+          const rawImgs = c.images || c.Images; // Handle potential case diff
+          if (rawImgs && typeof rawImgs === 'string') {
+            imgs = JSON.parse(rawImgs);
+          } else if (Array.isArray(rawImgs)) {
+            imgs = rawImgs;
+          }
+        } catch (e) { imgs = []; }
+        
+        // Normalize object to lowercase keys for frontend consistency
+        return {
+          id: c.id || c.ID,
+          make: c.make || c.Make,
+          model: c.model || c.Model,
+          year: c.year || c.Year,
+          status: (c.status || c.Status || '').toLowerCase(),
+          currentBid: c.currentBid || 0,
+          startingBid: c.startingBid || 0,
+          buyNowPrice: c.buyItNow || 0,
+          images: imgs
+        };
+      }));
+    } catch (e) {
+      console.error("Marketing Cars Error:", e);
+      res.status(500).json({ error: "Internal Server Error" });
+    }
+  });
+
+  app.post("/api/admin/send-campaign", (req, res) => {
+    const { emails, subject, html } = req.body;
+    if (!emails || !Array.isArray(emails) || emails.length === 0) {
+      return res.status(400).json({ error: "No recipients" });
+    }
+
+    try {
+      // For campaigns, we'll send email directly via transporter
+       emails.forEach(email => {
+         transporter.sendMail({
+           from: process.env.SMTP_FROM || '"AUTOPRO MARKETING" <info@autopro.ac>',
+           to: email,
+           subject,
+           html
+         }).catch(e => console.error("Campaign mail error for:", email, e.message));
+       });
+       res.json({ success: true, count: emails.length });
+    } catch (e) { res.status(500).json({ error: "Failed to process campaign" }); }
+  });
+
+  // ======= TEMPLATE MANAGEMENT =======
+  app.get("/api/admin/templates", (req, res) => {
+    try {
+      const templates = db.prepare("SELECT * FROM notification_templates").all();
+      res.json(templates);
+    } catch (e) { res.status(500).json({ error: "Templates fetch error" }); }
+  });
+
+  app.put("/api/admin/templates/:id", (req, res) => {
+    const { id } = req.params;
+    const { name, subject, body_html, body_whatsapp } = req.body;
+    try {
+      db.prepare("UPDATE notification_templates SET name = ?, subject = ?, body_html = ?, body_whatsapp = ?, updatedAt = ? WHERE id = ?")
+        .run(name, subject, body_html, body_whatsapp, new Date().toISOString(), id);
+      res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: "Template update error" }); }
+  });
 
   app.get("/api/admin/offer-market-cars", (req, res) => {
     try {
@@ -3450,6 +3971,21 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).all();
       res.json(invoices);
     } catch (e) { res.status(500).json({ error: "Invoices fetch error" }); }
+  });
+
+  app.put("/api/admin/invoices/:id", (req, res) => {
+    const { id } = req.params;
+    const { amount, notes } = req.body;
+    try {
+      try {
+        db.prepare("ALTER TABLE invoices ADD COLUMN notes TEXT").run();
+      } catch (e) { /* column may exist */ }
+      
+      db.prepare("UPDATE invoices SET amount = ?, notes = ? WHERE id = ?").run(amount, notes || '', id);
+      res.json({ success: true, id, amount, notes });
+    } catch (e) { 
+      res.status(500).json({ error: "Failed to update invoice" }); 
+    }
   });
 
   app.get("/api/admin/system-summary", (req, res) => {

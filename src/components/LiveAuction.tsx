@@ -19,7 +19,7 @@ interface LiveAuctionProps {
 export const LiveAuction: React.FC<LiveAuctionProps> = ({ car, upcomingCars, onBack }) => {
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const { socket, currentUser, placeBid, showAlert, exchangeRate } = useStore();
+  const { socket, currentUser, placeBid, showAlert, exchangeRate, marketEstimates } = useStore();
   const [currentBid, setCurrentBid] = useState(car.currentBid || 0);
   const [bidders, setBidders] = useState(12);
   const [timeLeft, setTimeLeft] = useState(15);
@@ -38,6 +38,34 @@ export const LiveAuction: React.FC<LiveAuctionProps> = ({ car, upcomingCars, onB
   const [outbidFlash, setOutbidFlash] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const [isTvMode, setIsTvMode] = useState(false);
+  const estimate = React.useMemo(() => {
+    if (!car || !marketEstimates?.length) return null;
+    return marketEstimates.find(est => {
+      const cleanString = (s: string) => String(s || '').toLowerCase().trim().replace(/[-\s]/g, '');
+      const cMake = cleanString(car.make);
+      const cModel = cleanString(car.model);
+      const eMake = cleanString(est.make);
+      const eMakeEn = cleanString(est.makeEn);
+      const eModel = cleanString(est.model);
+      const eModelEn = cleanString(est.modelEn);
+      
+      const makeMatch = cMake.includes(eMake) || cMake.includes(eMakeEn) || eMakeEn.includes(cMake) || eMake.includes(cMake);
+      const modelMatch = cModel.includes(eModel) || cModel.includes(eModelEn) || eModelEn.includes(cModel) || eModel.includes(cModel);
+      
+      if (!makeMatch) return false;
+      if (!modelMatch) return false;
+      return Math.abs((car.year || 0) - (est.year || 0)) <= 2;
+    });
+  }, [car, marketEstimates]);
+
+  const parseEstPrice = (p: any) => {
+    const parts = String(p).split('-');
+    if (parts.length > 1) {
+        return Math.floor((Number(parts[0].replace(/[^0-9]/g, '')) + Number(parts[1].replace(/[^0-9]/g, ''))) / 2);
+    }
+    return Number(String(p).replace(/[^0-9]/g, ''));
+  };
+  const estPriceValue = estimate ? parseEstPrice(estimate.price) : 0;
 
   const toggleTvMode = async () => {
     try {
@@ -496,6 +524,54 @@ export const LiveAuction: React.FC<LiveAuctionProps> = ({ car, upcomingCars, onB
                     )}
                   </button>
                 )}
+              </div>
+            </div>
+
+            {/* Market Estimate Widget */}
+            <div className="bg-gradient-to-br from-indigo-500/10 to-transparent border border-indigo-500/20 rounded-2xl p-5 shadow-2xl relative overflow-hidden group">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full blur-[60px] -mr-16 -mt-16 transition-transform group-hover:scale-150 duration-700"></div>
+              <div className="relative flex flex-col gap-4">
+                <div className="flex items-center gap-4">
+                  <div className="flex-shrink-0 w-12 h-12 bg-indigo-500/20 rounded-xl shadow-sm border border-indigo-500/30 flex items-center justify-center">
+                    <ArrowUp className="w-6 h-6 text-indigo-400" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="text-[10px] font-black text-indigo-400 mb-1 flex items-center gap-1.5 uppercase tracking-widest">
+                      {t('liveAuction.estLibyanMarket', 'السعر المتوقع بالسوق (ليبيا)')}
+                    </div>
+                    {estimate ? (
+                      <div className="flex items-end gap-3">
+                        <div className="text-2xl font-black text-white font-mono tracking-tighter">{estPriceValue.toLocaleString('en-US')} د.ل</div>
+                        <div className="text-sm font-bold text-slate-400 font-mono tracking-tight pb-[2px]">
+                          (${Math.round(estPriceValue / (exchangeRate || 7)).toLocaleString('en-US')})
+                        </div>
+                      </div>
+                    ) : (
+                       <div className="text-[12px] font-bold text-slate-400 mt-1">لا تتوفر بيانات كافية</div>
+                    )}
+                  </div>
+                </div>
+                
+                {/* Profit Margin Box for Live Auction */}
+                <div className="mt-1 bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                    </div>
+                    <span className="font-bold text-emerald-100 text-sm">{t('liveAuction.estProfit', 'توفير الزبون (الربح)')}</span>
+                  </div>
+                  <div className="text-left font-black text-emerald-400 font-mono text-xl" dir="ltr">
+                    {(() => {
+                      if (!estimate) return <span className="text-xs text-emerald-400/50 font-sans tracking-normal font-bold">غير متاح</span>;
+                      
+                      const loc = MOCK_LOCATIONS.find(l => (car.location || '').includes(l.state)) || MOCK_LOCATIONS[0];
+                      const landingResult = calculateTotalCost(currentBid || nextBidAmount, VehicleType.SEDAN, loc, 'LIBYA', 'KHOMS', 10);
+                      const totalCostLYD = Math.floor(landingResult.total * (exchangeRate || 7));
+                      const profit = estPriceValue - totalCostLYD;
+                      return profit > 0 ? `+${profit.toLocaleString('en-US')} د.ل` : `${profit.toLocaleString('en-US')} د.ل`;
+                    })()}
+                  </div>
+                </div>
               </div>
             </div>
 
