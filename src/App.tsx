@@ -22,6 +22,8 @@ import { PrivacyPage } from './pages/PrivacyPage';
 import { RefundPage } from './pages/RefundPage';
 import { StoreProvider, useStore } from './context/StoreContext';
 import { MobileBottomNav } from './components/MobileBottomNav';
+import { AdminErrorBoundary } from './components/AdminErrorBoundary';
+import ScrollToTop from './components/ScrollToTop';
 
 
 const DashboardRedirect = () => {
@@ -38,6 +40,7 @@ export default function App() {
   return (
     <StoreProvider>
       <BrowserRouter>
+        <ScrollToTop />
         <Routes>
           {/* Public Website Routes */}
           <Route path="/" element={<MainLayout />}>
@@ -68,7 +71,7 @@ export default function App() {
           <Route path="/dashboard" element={<DashboardLayout />}>
             <Route index element={<DashboardRedirect />} />
             <Route path="user" element={<UserDashboard />} />
-            <Route path="admin" element={<AdminDashboard />} />
+            <Route path="admin" element={<AdminErrorBoundary><AdminDashboard /></AdminErrorBoundary>} />
             <Route path="seller" element={<SellerDashboard />} />
           </Route>
         </Routes>

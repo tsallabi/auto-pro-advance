@@ -156,7 +156,9 @@
         "admin": "مدير النظام",
         "seller": "بائع / معرض",
         "buyer": "مشتري",
-        "myWallet": "محفظتي 💰",
+        "myWallet": "محفظتي",
+        "home": "الرئيسية",
+        "profile": "الملف الشخصي",
         "libya": "ليبيا",
         "autoPro": "AUTO PRO"
     },

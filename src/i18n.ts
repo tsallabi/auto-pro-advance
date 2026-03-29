@@ -19,10 +19,11 @@ i18n
     .use(initReactI18next)
     .init({
         resources,
+        lng: 'ar', // Set default language to Arabic
         fallbackLng: 'ar',
         debug: false,
         interpolation: {
-            escapeValue: false, // not needed for react as it escapes by default
+            escapeValue: false,
         },
     });
 

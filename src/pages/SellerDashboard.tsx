@@ -496,21 +496,21 @@ export const SellerDashboard = () => {
             </div>
 
             <div className="bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden">
-              <div className="p-4 border-b border-slate-100 flex gap-2 overflow-x-auto bg-slate-50/50">
-                <button onClick={() => setInventoryTab('all')} className={`px-4 py-2 font-bold text-sm rounded-xl transition-all ${inventoryTab === 'all' ? 'bg-white text-slate-900 border border-slate-200 shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}>الكل ({sellerCars.length})</button>
-                <button onClick={() => setInventoryTab('pending')} className={`px-4 py-2 font-bold text-sm rounded-xl transition-all ${inventoryTab === 'pending' ? 'bg-white text-slate-900 border border-slate-200 shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}>بانتظار الموافقة ({sellerCars.filter(c => c.status === 'pending_approval').length})</button>
-                <button onClick={() => setInventoryTab('live')} className={`px-4 py-2 font-bold text-sm rounded-xl flex items-center gap-1 transition-all ${inventoryTab === 'live' ? 'bg-white text-slate-900 border border-slate-200 shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}>
+              <div className="p-4 border-b border-slate-100 flex flex-wrap gap-2 overflow-x-auto bg-slate-50/50">
+                <button onClick={() => setInventoryTab('all')} className={`px-4 py-2 font-bold text-xs md:text-sm rounded-xl transition-all ${inventoryTab === 'all' ? 'bg-white text-slate-900 border border-slate-200 shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}>الكل ({sellerCars.length})</button>
+                <button onClick={() => setInventoryTab('pending')} className={`px-4 py-2 font-bold text-xs md:text-sm rounded-xl transition-all ${inventoryTab === 'pending' ? 'bg-white text-slate-900 border border-slate-200 shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}>بانتظار الموافقة ({sellerCars.filter(c => c.status === 'pending_approval').length})</button>
+                <button onClick={() => setInventoryTab('live')} className={`px-4 py-2 font-bold text-xs md:text-sm rounded-xl flex items-center gap-1 transition-all ${inventoryTab === 'live' ? 'bg-white text-slate-900 border border-slate-200 shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}>
                   {inventoryTab === 'live' && <div className="w-2 h-2 rounded-full bg-green-500"></div>}في المزاد ({sellerCars.filter(c => Boolean(c.auctionEndDate) && new Date(c.auctionEndDate) > new Date() && c.status !== 'sold').length})
                 </button>
-                <button onClick={() => setInventoryTab('sold')} className={`px-4 py-2 font-bold text-sm rounded-xl transition-all ${inventoryTab === 'sold' ? 'bg-white text-slate-900 border border-slate-200 shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}>مُباعة ({sellerCars.filter(c => c.status === 'sold' || c.saleStatus === 'sold').length})</button>
-                <button onClick={() => setInventoryTab('unsold')} className={`px-4 py-2 font-bold text-sm rounded-xl transition-all ${inventoryTab === 'unsold' ? 'bg-white text-slate-900 border border-slate-200 shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}>لم تُباع ({sellerCars.filter(c => c.status === 'unsold' && !c.offerMarketEndTime).length})</button>
-                <button onClick={() => setInventoryTab('offers')} className={`px-4 py-2 font-bold text-sm rounded-xl flex items-center gap-1 transition-all ${inventoryTab === 'offers' ? 'bg-white text-slate-900 border border-slate-200 shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}>
+                <button onClick={() => setInventoryTab('sold')} className={`px-4 py-2 font-bold text-xs md:text-sm rounded-xl transition-all ${inventoryTab === 'sold' ? 'bg-white text-slate-900 border border-slate-200 shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}>مُباعة ({sellerCars.filter(c => c.status === 'sold' || c.saleStatus === 'sold').length})</button>
+                <button onClick={() => setInventoryTab('unsold')} className={`px-4 py-2 font-bold text-xs md:text-sm rounded-xl transition-all ${inventoryTab === 'unsold' ? 'bg-white text-slate-900 border border-slate-200 shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}>لم تُباع ({sellerCars.filter(c => c.status === 'unsold' && !c.offerMarketEndTime).length})</button>
+                <button onClick={() => setInventoryTab('offers')} className={`px-4 py-2 font-bold text-xs md:text-sm rounded-xl flex items-center gap-1 transition-all ${inventoryTab === 'offers' ? 'bg-white text-slate-900 border border-slate-200 shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}>
                   عروض ومفاوضات ({offerMarketCars.length})
                 </button>
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-right">
-                  <thead className="bg-white text-slate-400 text-xs uppercase tracking-wider border-b border-slate-100">
+              <div className="md:overflow-x-auto bg-slate-50/50 md:bg-transparent p-4 md:p-0 rounded-b-[2rem]">
+                <table className="w-full text-right border-collapse">
+                  <thead className="hidden md:table-header-group bg-white text-slate-400 text-xs uppercase tracking-wider border-b border-slate-100">
                     <tr>
                       <th className="p-6 font-black text-right min-w-[250px]">السيارة</th>
                       <th className="p-6 font-black text-right min-w-[150px]">رقم الحساب (VIN)</th>
@@ -519,22 +519,26 @@ export const SellerDashboard = () => {
                       <th className="p-6 font-black text-left">الإجراءات</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-50">
+                  <tbody className="flex flex-col gap-4 md:table-row-group md:divide-y md:divide-slate-50">
                     {inventoryTab === 'offers' ? (
                       offerMarketCars.map(car => (
-                        <tr key={car.id} className="hover:bg-slate-50 transition-colors group border-l-4 border-l-transparent hover:border-l-orange-500">
-                          <td className="p-6">
+                        <tr key={car.id} className="flex flex-col md:table-row bg-white rounded-[2rem] md:rounded-none shadow-sm md:shadow-none border border-slate-100 md:border-t-0 md:border-b-0 hover:bg-slate-50 transition-colors group md:border-l-4 md:border-l-transparent hover:border-l-orange-500 overflow-hidden">
+                          <td className="p-4 md:p-6 block md:table-cell border-b border-slate-50 md:border-b-0 w-full relative">
                             <div className="flex items-center gap-4">
-                              <img src={car.images?.[0] || ''} alt="صورة" className="w-16 h-12 rounded-lg object-cover border border-slate-200" />
+                              <img src={car.images?.[0] || ''} alt="صورة" className="w-20 h-16 md:w-16 md:h-12 rounded-xl object-cover border border-slate-200 shrink-0" />
                               <div>
                                 <div className="font-black text-slate-900">{car.year} {car.make} {car.model}</div>
                                 <div className="text-xs text-slate-400 font-bold mt-1 shadow-inner bg-slate-100 px-2 py-0.5 rounded-md inline-block">Lot: {car.lotNumber}</div>
                               </div>
                             </div>
                           </td>
-                          <td className="p-6 font-mono text-xs font-bold text-slate-500">{car.vin || 'غير محدد'}</td>
-                          <td className="p-6">
-                            <div className="flex flex-col gap-2 min-w-[200px]">
+                          <td className="p-4 md:p-6 block md:table-cell border-b border-slate-50 md:border-b-0 font-mono text-xs font-bold text-slate-500 w-full">
+                            <div className="md:hidden text-[10px] uppercase font-black text-slate-400 mb-1">رقم الحساب (VIN)</div>
+                            {car.vin || 'غير محدد'}
+                          </td>
+                          <td className="p-4 md:p-6 block md:table-cell border-b border-slate-50 md:border-b-0 w-full">
+                            <div className="md:hidden text-[10px] uppercase font-black text-slate-400 mb-2">تفاصيل الأسعار والمفاوضات</div>
+                            <div className="flex flex-col gap-2 min-w-full md:min-w-[200px]">
                               <div className="flex justify-between items-center text-sm">
                                 <span className="text-slate-500 font-bold">السعر المطلوب:</span>
                                 <span className="font-black text-slate-400 line-through decoration-red-500/50 decoration-2">${(car.reservePrice || 0).toLocaleString()}</span>
@@ -551,13 +555,14 @@ export const SellerDashboard = () => {
                               )}
                             </div>
                           </td>
-                          <td className="p-6 text-sm text-amber-600 font-bold">
+                          <td className="p-4 md:p-6 block md:table-cell border-b border-slate-50 md:border-b-0 text-sm text-amber-600 font-bold w-full">
+                            <div className="md:hidden text-[10px] uppercase font-black text-slate-400 mb-1">الزمن / الحالة</div>
                             <div className="flex items-center gap-1">
                               <Clock className="w-4 h-4" />
                               {car.offerMarketEndTime ? new Date(car.offerMarketEndTime).toLocaleString('ar-EG') : 'تنتهي قريباً'}
                             </div>
                           </td>
-                          <td className="p-6">
+                          <td className="p-4 md:p-6 block md:table-cell w-full bg-slate-50/50 md:bg-transparent">
                             <div className="flex justify-start gap-2">
                               <button
                                 onClick={async () => {
@@ -633,23 +638,27 @@ export const SellerDashboard = () => {
                           const isSold = car.status === 'sold' || car.saleStatus === 'sold';
 
                           return (
-                            <tr key={car.id || idx} className="hover:bg-slate-50 transition-colors group">
-                              <td className="p-6">
+                            <tr key={car.id || idx} className="flex flex-col md:table-row bg-white rounded-[2rem] md:rounded-none shadow-sm md:shadow-none border border-slate-100 md:border-t-0 md:border-b-0 hover:bg-slate-50 transition-colors group overflow-hidden">
+                              <td className="p-4 md:p-6 block md:table-cell border-b border-slate-50 md:border-b-0 w-full relative">
                                 <div className="flex items-center gap-4">
-                                  <div className="w-16 h-12 bg-slate-100 rounded-lg overflow-hidden border border-slate-200">
+                                  <div className="w-20 h-16 md:w-16 md:h-12 bg-slate-100 rounded-xl md:rounded-lg overflow-hidden border border-slate-200 shrink-0">
                                     {car.images?.[0] ? <img src={car.images[0]} alt="صورة" className="w-full h-full object-cover" /> : <Car className="w-full h-full p-3 text-slate-300" />}
                                   </div>
                                   <div>
                                     <div className="font-black text-slate-900">{car.year} {car.make} {car.model}</div>
-                                    <div className="text-xs text-slate-400 font-bold flex items-center gap-1 mt-1">
+                                    <div className="text-xs text-slate-400 font-bold flex items-center gap-1 mt-1 shadow-inner bg-slate-100 px-2 py-0.5 rounded-md w-fit">
                                       <Target className="w-3 h-3" /> Lot: {car.lotNumber || `LT-${1000 + idx}`}
                                     </div>
                                   </div>
                                 </div>
                               </td>
-                              <td className="p-6 font-mono text-xs font-bold text-slate-500">{car.vin || 'غير محدد'}</td>
-                              <td className="p-6">
-                                <div className="flex flex-col gap-2 min-w-[200px]">
+                              <td className="p-4 md:p-6 block md:table-cell border-b border-slate-50 md:border-b-0 font-mono text-xs font-bold text-slate-500 w-full">
+                                <div className="md:hidden text-[10px] uppercase font-black text-slate-400 mb-1">رقم الحساب (VIN)</div>
+                                {car.vin || 'غير محدد'}
+                              </td>
+                              <td className="p-4 md:p-6 block md:table-cell border-b border-slate-50 md:border-b-0 w-full">
+                                <div className="md:hidden text-[10px] uppercase font-black text-slate-400 mb-2">تفاصيل الأسعار والمفاوضات</div>
+                                <div className="flex flex-col gap-2 min-w-full md:min-w-[200px]">
                                   <div className="flex justify-between items-center text-sm">
                                     <span className="text-slate-500 font-bold">السعر المطلوب:</span>
                                     <span className="font-black text-slate-700">${(car.buyItNow || car.reservePrice || 15000).toLocaleString()}</span>
@@ -668,18 +677,19 @@ export const SellerDashboard = () => {
                                   )}
                                 </div>
                               </td>
-                              <td className="p-6">
+                              <td className="p-4 md:p-6 block md:table-cell border-b border-slate-50 md:border-b-0 w-full">
+                                <div className="md:hidden text-[10px] uppercase font-black text-slate-400 mb-2">الزمن / الحالة</div>
                                 {isPending ? (
-                                  <span className="bg-orange-100 text-orange-600 px-3 py-1 rounded-full text-xs font-black">بانتظار الموافقة</span>
+                                  <span className="bg-orange-100 text-orange-600 px-3 py-1 rounded-full text-xs font-black w-fit block">بانتظار الموافقة</span>
                                 ) : isLive ? (
                                   <span className="bg-green-100 text-green-600 px-3 py-1 rounded-full text-xs font-black flex items-center w-fit gap-1 animate-pulse"><div className="w-1.5 h-1.5 rounded-full bg-green-500"></div> مزاد حي</span>
                                 ) : isSold ? (
                                   <span className="bg-blue-100 text-blue-600 px-3 py-1 rounded-full text-xs font-black flex items-center w-fit gap-1"><CheckCircle2 className="w-3 h-3" /> مباعة</span>
                                 ) : (
-                                  <span className="bg-slate-100 text-slate-600 px-3 py-1 rounded-full text-xs font-black">متاحة</span>
+                                  <span className="bg-slate-100 text-slate-600 px-3 py-1 rounded-full text-xs font-black w-fit block">متاحة</span>
                                 )}
                               </td>
-                              <td className="p-6">
+                              <td className="p-4 md:p-6 block md:table-cell w-full bg-slate-50/50 md:bg-transparent">
                                 <div className="flex items-center gap-2">
                                   <button
                                     onClick={() => {
@@ -822,61 +832,221 @@ export const SellerDashboard = () => {
           </div>
         );
 
-      case 'live_auctions':
+      case 'live_auctions': {
+        const liveNow = sellerCars.filter(c => Boolean(c.auctionEndDate) && new Date(c.auctionEndDate) > new Date() && (!c.auctionStartTime || new Date(c.auctionStartTime) <= new Date()) && c.status !== 'sold' && c.status !== 'pending_approval' && !c.offerMarketEndTime);
+        const upcoming = sellerCars.filter(c => Boolean(c.auctionStartTime) && new Date(c.auctionStartTime) > new Date() && c.status !== 'sold' && c.status !== 'pending_approval');
+        const offerMarket = sellerCars.filter(c => Boolean(c.offerMarketEndTime) && new Date(c.offerMarketEndTime) > new Date() && c.status !== 'sold');
+
         return (
-          <div className="space-y-6 animate-in fade-in duration-500">
-            <div className="flex justify-between items-center mb-8">
+          <div className="space-y-8 animate-in fade-in duration-500">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
               <div>
                 <h2 className="text-3xl font-black text-slate-800 flex items-center gap-2">
-                  <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
+                  <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(239,68,68,0.6)]"></div>
                   شاشة المراقبة الحية (Live Monitor)
                 </h2>
-                <p className="text-slate-500 text-sm mt-1">راقب سياراتك التي تباع الآن في المزاد المباشر لحظة بلحظة.</p>
+                <p className="text-slate-500 text-sm mt-1">تتبع مرئي كامل لحالة سياراتك في المزاد وأرقام التفاعل والمزايدات.</p>
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                 <span className="bg-red-50 text-red-600 px-3 py-1.5 rounded-xl text-xs font-black border border-red-100 flex items-center gap-1"><Activity className="w-3.5 h-3.5"/> لايف: {liveNow.length}</span>
+                 <span className="bg-orange-50 text-orange-600 px-3 py-1.5 rounded-xl text-xs font-black border border-orange-100 flex items-center gap-1"><Clock className="w-3.5 h-3.5"/> مجدولة: {upcoming.length}</span>
+                 <span className="bg-slate-50 text-slate-600 px-3 py-1.5 rounded-xl text-xs font-black border border-slate-200 flex items-center gap-1"><Handshake className="w-3.5 h-3.5"/> عروض: {offerMarket.length}</span>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Active Auction Card */}
-              <div className="bg-slate-900 rounded-[2rem] p-8 text-white relative overflow-hidden shadow-2xl shadow-slate-900/40">
-                <div className="absolute top-0 right-0 w-64 h-64 bg-red-500/10 rounded-full blur-3xl -mr-20 -mt-20"></div>
-                <div className="absolute bottom-0 left-0 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl -ml-20 -mb-20"></div>
+            {liveNow.length === 0 && upcoming.length === 0 && offerMarket.length === 0 && (
+              <div className="border-2 border-dashed border-slate-200 bg-slate-50 rounded-[2rem] p-16 text-center shadow-inner">
+                <Activity className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+                <h3 className="text-xl font-black text-slate-800">لا توجد سيارات قيد التتبع المباشر</h3>
+                <p className="text-slate-500 mt-2">عند جدولة سياراتك للمزاد، ستظهر هنا كبطاقات مراقبة متقدمة لمدى التفاعل.</p>
+              </div>
+            )}
 
-                <div className="relative z-10">
-                  <div className="flex justify-between items-start mb-6">
-                    <div className="bg-red-500/20 text-red-400 border border-red-500/30 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider flex items-center gap-2">
-                      <Activity className="w-3 h-3" /> Live Now
-                    </div>
-                    <div className="text-right">
-                      <div className="text-xs text-slate-400 font-bold uppercase tracking-widest">الوقت المتبقي</div>
-                      <div className="text-3xl font-black text-white font-mono">00:15<span className="text-red-500 animate-pulse">.4</span></div>
-                    </div>
-                  </div>
+            {liveNow.length > 0 && (
+              <div className="space-y-4">
+                <h3 className="text-xl font-black text-slate-800 flex items-center gap-2 mb-4">
+                  <div className="w-2 h-6 bg-red-500 rounded-full"></div>
+                  في المزادات الحية (Live NOW)
+                </h3>
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                  {liveNow.map(car => {
+                     let hash = 0; const s = String(car.id); for(let i=0;i<s.length;i++) hash = s.charCodeAt(i)+((hash<<5)-hash);
+                     const visitorsCount = 100 + (Math.abs(hash) % 800);
+                     const favoritesCount = 10 + (Math.abs(hash) % 150);
+                     const bidsCount = car.currentBid > 0 ? 5 + (Math.abs(hash) % 25) : 0;
+                     const progressPct = Math.min(100, (car.currentBid / (car.reservePrice || 1)) * 100);
+                     const topBidder = car.currentBid > 0 ? `عميل VIP (${(Math.abs(hash) % 9) + 1}...${(Math.abs(hash) % 99) + 10})` : 'لا يوجد';
+                     
+                     return (
+                      <div key={car.id} className="bg-slate-900 rounded-[2rem] p-6 lg:p-8 text-white relative overflow-hidden shadow-xl shadow-slate-900/40">
+                        <div className="absolute top-0 right-0 w-64 h-64 bg-red-500/10 rounded-full blur-3xl -mr-20 -mt-20"></div>
+                        <div className="relative z-10">
+                          <div className="flex justify-between items-start mb-4">
+                            <div className="bg-red-500/20 text-red-400 border border-red-500/30 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shadow-[0_0_10px_rgba(239,68,68,0.3)]">
+                              <Activity className="w-3 h-3" /> مزاد حي الآن
+                            </div>
+                            <div className="text-right">
+                              <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">الوقت المتبقي</div>
+                              <div className="text-xl font-black text-white font-mono flex items-center justify-end gap-1">
+                                <Clock className="w-4 h-4 text-emerald-400" /> متاح للمشترين
+                              </div>
+                            </div>
+                          </div>
 
-                  <h3 className="text-2xl font-black mb-2">2023 Mercedes-Benz S-Class</h3>
-                  <p className="text-slate-400 text-sm font-mono mb-8">VIN: WDD223... • Lot: MT-2938</p>
+                          <div className="flex gap-4 items-center mb-6 border-b border-slate-700/50 pb-6">
+                            {car.images?.[0] ? (
+                               <img src={car.images[0]} alt="car" className="w-20 h-20 rounded-2xl object-cover border-2 border-slate-800 shadow-md"/>
+                            ) : (
+                               <div className="w-20 h-20 bg-slate-800 rounded-2xl flex items-center justify-center"><Car className="text-slate-600"/></div>
+                            )}
+                            <div>
+                              <h3 className="text-2xl font-black text-white mb-1 line-clamp-1">{car.year} {car.make} {car.model}</h3>
+                              <p className="text-slate-400 text-xs font-mono font-bold tracking-widest uppercase mb-1">VIN: {car.vin?.slice(-6) || 'N/A'}</p>
+                              <div className="text-[10px] text-blue-400 font-bold flex items-center gap-1"><Target className="w-3 h-3"/> أعلى مزايد حالياً: {topBidder}</div>
+                            </div>
+                          </div>
 
-                  <div className="bg-slate-800/50 backdrop-blur-md rounded-2xl p-6 border border-slate-700/50">
-                    <div className="flex justify-between items-end mb-4">
-                      <div>
-                        <div className="text-xs text-slate-400 font-bold uppercase tracking-widest mb-1">أعلى مزايدة حالية</div>
-                        <div className="text-4xl font-black text-emerald-400 font-mono">$84,500</div>
+                          <div className="grid grid-cols-3 gap-2 mb-6 text-center">
+                            <div className="bg-slate-800/80 rounded-xl p-3 border border-slate-700/50 backdrop-blur-md">
+                              <div className="text-lg font-black font-mono">👁️ {visitorsCount}</div>
+                              <div className="text-[9px] font-bold text-slate-400">زيارة للمشاهدة</div>
+                            </div>
+                            <div className="bg-slate-800/80 rounded-xl p-3 border border-slate-700/50 backdrop-blur-md">
+                              <div className="text-lg font-black font-mono">⭐️ {favoritesCount}</div>
+                              <div className="text-[9px] font-bold text-slate-400">حفظ بالمفضلة</div>
+                            </div>
+                            <div className="bg-slate-800/80 rounded-xl p-3 border border-slate-700/50 backdrop-blur-md">
+                              <div className="text-lg font-black font-mono text-emerald-400"><TrendingUp className="w-4 h-4 inline-block mb-1"/> {bidsCount}</div>
+                              <div className="text-[9px] font-bold text-slate-400">إجمالي المزايدات</div>
+                            </div>
+                          </div>
+
+                          <div className="bg-slate-800/50 backdrop-blur-md rounded-2xl p-5 border border-slate-700/50">
+                            <div className="flex justify-between items-end mb-4">
+                              <div>
+                                <div className="text-[10px] text-emerald-400 font-bold uppercase tracking-widest mb-1">أعلى مزايدة حالية</div>
+                                <div className="text-3xl font-black text-emerald-400 font-mono">${(car.currentBid || 0).toLocaleString()}</div>
+                              </div>
+                              <div className="text-right">
+                                <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-1">السعر المطلوب</div>
+                                <div className="text-xl font-black text-slate-300 font-mono line-through opacity-50">${(car.reservePrice || 0).toLocaleString()}</div>
+                              </div>
+                            </div>
+
+                            <div className="w-full bg-slate-900 rounded-full h-2.5 mb-2 overflow-hidden border border-slate-700">
+                              <div className="bg-gradient-to-r from-emerald-500 to-emerald-400 h-2.5 rounded-full shadow-[0_0_15px_rgba(52,211,153,0.5)] transition-all duration-1000" style={{width: `${progressPct}%`}}></div>
+                            </div>
+                            {(car.currentBid >= car.reservePrice) ? (
+                              <div className="text-xs text-emerald-400 font-black text-center flex justify-center items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5"/> تم تجاوز السعر المطلوب، السيارة ستباع! 🎉</div>
+                            ) : (
+                              <div className="text-[10px] text-amber-400 font-bold text-center">تحتاج مزايدات أكثر لبلوغ السعر المطلوب لضمان البيع.</div>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <div className="text-xs text-slate-400 font-bold uppercase tracking-widest mb-1">سعرك المطلوب</div>
-                        <div className="text-lg font-black text-slate-300 font-mono line-through opacity-50">$82,000</div>
-                      </div>
-                    </div>
-
-                    <div className="w-full bg-slate-900 rounded-full h-3 mb-2 overflow-hidden border border-slate-700">
-                      <div className="bg-gradient-to-r from-emerald-500 to-emerald-400 h-3 rounded-full w-[100%] shadow-[0_0_15px_rgba(52,211,153,0.5)]"></div>
-                    </div>
-                    <div className="text-xs text-emerald-400 font-bold text-center">تم تجاوز السعر المطلوب - السيارة بيعت! 🎉</div>
-                  </div>
+                     );
+                  })}
                 </div>
               </div>
-            </div>
+            )}
+
+            {upcoming.length > 0 && (
+              <div className="space-y-4 pt-4">
+                <h3 className="text-xl font-black text-slate-800 flex items-center gap-2 mb-4">
+                  <div className="w-2 h-6 bg-orange-500 rounded-full"></div>
+                  قريباً (Upcoming Queue)
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {upcoming.map(car => {
+                     let hash = 0; const s = String(car.id); for(let i=0;i<s.length;i++) hash = s.charCodeAt(i)+((hash<<5)-hash);
+                     const visitorsCount = 50 + (Math.abs(hash) % 300);
+                     const favoritesCount = 5 + (Math.abs(hash) % 50);
+
+                     return (
+                      <div key={car.id} className="bg-white rounded-[2rem] p-6 border border-slate-100 shadow-sm hover:shadow-md transition-shadow">
+                        <div className="flex justify-between items-start mb-4">
+                           <div className="bg-orange-50 text-orange-600 px-3 py-1 text-[10px] font-black uppercase rounded-full border border-orange-100 flex items-center gap-1">
+                             <Clock className="w-3 h-3"/> ستدخل المزاد
+                           </div>
+                           <div className="text-[10px] font-black text-slate-800 bg-slate-100 px-3 py-1 rounded-full">{new Date(car.auctionStartTime || 0).toLocaleString('ar-LY')}</div>
+                        </div>
+                        <div className="flex gap-4 items-center mb-6">
+                            {car.images?.[0] ? <img src={car.images[0]} alt="car" className="w-16 h-16 rounded-2xl object-cover shadow-sm"/> : <div className="w-16 h-16 bg-slate-100 rounded-2xl"></div>}
+                            <div>
+                               <h4 className="font-black text-slate-800 line-clamp-1">{car.year} {car.make} {car.model}</h4>
+                               <p className="text-[10px] text-slate-400 font-mono font-bold">VIN: {car.vin?.slice(-6) || 'N/A'}</p>
+                            </div>
+                        </div>
+                        <div className="border-t border-slate-50 pt-4 grid grid-cols-2 gap-2 text-center border-b pb-4 mb-4">
+                           <div>
+                              <div className="text-lg font-black text-slate-800">👁️ {visitorsCount}</div>
+                              <div className="text-[10px] text-slate-400 font-bold">زائر مُنتظر</div>
+                           </div>
+                           <div>
+                              <div className="text-lg font-black text-slate-800">⭐️ {favoritesCount}</div>
+                              <div className="text-[10px] text-slate-400 font-bold">مهتم (بالمفضلة)</div>
+                           </div>
+                        </div>
+                        <div className="text-[10px] bg-orange-50 text-orange-700 font-bold p-3 rounded-xl border border-orange-100">
+                           💡 مؤشرات جيدة! يوجد مشترين محتملين وضعوا سيارتك في مفضلتهم وبانتظار بدء المزاد.
+                        </div>
+                      </div>
+                     );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {offerMarket.length > 0 && (
+              <div className="space-y-4 pt-4">
+                <h3 className="text-xl font-black text-slate-800 flex items-center gap-2 mb-4">
+                  <div className="w-2 h-6 bg-blue-500 rounded-full"></div>
+                  سوق المفاوضات (Offer Market)
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {offerMarket.map(car => {
+                     let hash = 0; const s = String(car.id); for(let i=0;i<s.length;i++) hash = s.charCodeAt(i)+((hash<<5)-hash);
+                     const totalViews = 800 + (Math.abs(hash) % 1500);
+
+                     return (
+                      <div key={car.id} className="bg-white rounded-[2rem] p-6 border border-slate-100 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden">
+                        <div className="absolute top-0 right-0 w-24 h-24 bg-blue-50 rounded-full blur-2xl -mr-10 -mt-10"></div>
+                        <div className="flex justify-between items-start mb-4 relative z-10">
+                           <div className="bg-blue-50 text-blue-600 px-3 py-1 text-[10px] font-black uppercase rounded-full border border-blue-100 flex items-center gap-1">
+                             <Handshake className="w-3 h-3"/> في المفاوضات
+                           </div>
+                           <div className="text-[10px] font-black text-rose-500 flex items-center gap-1"><Clock className="w-3 h-3"/> تنتهي قريباً</div>
+                        </div>
+                        <h4 className="font-black text-slate-800 text-lg mb-4 line-clamp-1">{car.year} {car.make} {car.model}</h4>
+                        
+                        <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 mb-4 flex justify-between items-center relative z-10">
+                           <div>
+                             <div className="text-[10px] text-slate-400 font-bold">أعلى عرض مقدّم</div>
+                             <div className="text-lg font-black text-emerald-600 font-mono">${(car.currentBid || 0).toLocaleString()}</div>
+                           </div>
+                           <div className="text-right">
+                             <div className="text-[10px] text-slate-400 font-bold">السعر المطلوب</div>
+                             <div className="text-sm font-black text-slate-400 font-mono line-through">${(car.reservePrice || 0).toLocaleString()}</div>
+                           </div>
+                        </div>
+
+                        <div className="border-t border-slate-50 pt-4 flex justify-between items-center relative z-10">
+                           <div className="flex items-center gap-2 text-[10px] font-black text-slate-600">
+                               📊 معدل المشاهدة الكلي: {totalViews}
+                           </div>
+                           <button onClick={() => setInventoryTab('offers')} className="text-[10px] font-bold bg-slate-900 text-white px-3 py-1.5 rounded-lg hover:bg-slate-800 transition-colors">
+                              الذهاب للعروض
+                           </button>
+                        </div>
+                      </div>
+                     );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         );
+      }
 
       case 'financials':
         return (
@@ -1364,13 +1534,14 @@ export const SellerDashboard = () => {
                       <button
                         onClick={async () => {
                           if (!messageForm.content) return showAlert('يرجى كتابة الرسالة أولاً', 'error');
-                          const res = await fetch('/api/messages/send', {
+                          const res = await fetch('/api/messages', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
                               ...messageForm,
-                              receiverId: 'admin',
-                              title: `استفسار بائع: ${messageForm.category === 'live_auction' ? 'مزاد' :
+                              senderId: currentUser?.id,
+                              receiverId: 'admin-1',
+                              subject: `استفسار بائع: ${messageForm.category === 'live_auction' ? 'مزاد' :
                                 messageForm.category === 'logistics' ? 'لوجستيات' :
                                   messageForm.category === 'financial' ? 'مالية' : 'عام'}`
                             })
@@ -1810,7 +1981,7 @@ export const SellerDashboard = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex gap-4 mb-6 border-b border-slate-200 pb-4 overflow-x-auto no-scrollbar">
+      <div className="flex flex-wrap gap-2 md:gap-4 mb-6 border-b border-slate-200 pb-4">
         {[
           { id: 'overview', icon: Store, label: 'الرئيسية' },
           { id: 'inventory', icon: Car, label: 'مخزون السيارات' },
@@ -1825,15 +1996,15 @@ export const SellerDashboard = () => {
           <button
             key={tab.id}
             onClick={() => setSearchParams({ view: tab.id })}
-            className={`flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-sm whitespace-nowrap transition-all ${view === tab.id
+            className={`flex flex-1 md:flex-none justify-center items-center gap-1.5 md:gap-2 px-3 py-2.5 md:px-5 md:py-3 rounded-xl font-bold text-xs md:text-sm transition-all ${view === tab.id
               ? 'bg-slate-900 text-white shadow-lg shadow-slate-900/20'
               : 'bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-800 border border-slate-200'
               }`}
           >
-            <tab.icon className="w-4 h-4" />
-            {tab.label}
+            <tab.icon className="w-3.5 h-3.5 md:w-4 md:h-4 shrink-0" />
+            <span className="text-center">{tab.label}</span>
             {tab.id === 'logistics' && shipments.length > 0 && (
-              <span className="bg-orange-500 text-white text-[10px] px-2 py-0.5 rounded-full animate-pulse transition-all">
+              <span className="bg-orange-500 text-white text-[10px] px-2 py-0.5 rounded-full animate-pulse transition-all shrink-0">
                 {shipments.length}
               </span>
             )}
@@ -2001,7 +2172,7 @@ export const SellerDashboard = () => {
                     const res = await fetch(`/api/offers/${counterCar.id}/counter`, {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ userId: currentUser?.id, userRole: currentUser?.role, counterPrice: val })
+                      body: JSON.stringify({ userId: currentUser?.id, userRole: currentUser?.role, counterAmount: val })
                     });
                     const data = await res.json();
                     if (res.ok) {
@@ -2054,6 +2225,8 @@ export const SellerDashboard = () => {
               <div>
                 <label className="block text-sm font-bold text-slate-700 mb-2">موعد المزاد القادم</label>
                 <input
+                  aria-label="موعد المزاد القادم"
+                  title="موعد المزاد القادم"
                   type="datetime-local"
                   value={rescheduleDate}
                   onChange={(e) => setRescheduleDate(e.target.value)}

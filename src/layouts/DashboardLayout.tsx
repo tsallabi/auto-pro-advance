@@ -1,10 +1,12 @@
-import React from 'react';
+import React, { useState, useRef } from 'react';
+import { useClickOutside } from '../hooks/useClickOutside';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, User, ShieldCheck, Store, LogOut, Bell, Settings,
   Home, Users, Building2, FileText, Mail, Wallet, Truck, Car, Gavel,
   List, File, History, HelpCircle, ChevronRight, Heart, Database, Calculator,
-  CreditCard, Activity, Handshake, DollarSign, MessageSquare, LineChartIcon, PlusCircle
+  CreditCard, Activity, Handshake, DollarSign, MessageSquare, LineChartIcon, PlusCircle,
+  Menu, X
 } from 'lucide-react';
 
 import { useStore } from '../context/StoreContext';
@@ -24,6 +26,13 @@ export const DashboardLayout = () => {
   const { branchConfig, currentUser, unreadCounts } = useStore();
   const [showNotifications, setShowNotifications] = React.useState(false);
   const [showMessages, setShowMessages] = React.useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  const messagesRef = useRef<HTMLDivElement>(null);
+  const notificationsRef = useRef<HTMLDivElement>(null);
+
+  useClickOutside(messagesRef, () => setShowMessages(false));
+  useClickOutside(notificationsRef, () => setShowNotifications(false));
 
   // Define types for navigation items
   type NavItem = { path: string; label: string; icon: React.ElementType };
@@ -152,25 +161,42 @@ export const DashboardLayout = () => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row" dir="rtl">
+    <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row relative" dir="rtl">
+      {/* Mobile Sidebar Overlay */}
+      {isSidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-slate-900/60 z-40 md:hidden backdrop-blur-sm transition-opacity"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
-      <aside className="w-full md:w-64 bg-slate-900 text-white flex flex-col flex-shrink-0 h-screen sticky top-0 overflow-y-auto custom-scrollbar">
-        <div className="p-6 flex items-center gap-3 border-b border-slate-800 flex-shrink-0">
-          <div className="w-10 h-10 bg-orange-500 rounded-xl flex items-center justify-center text-white shadow-lg shadow-orange-500/20">
-            <Car className="w-6 h-6" />
+      <aside className={`fixed inset-y-0 right-0 z-50 w-[280px] bg-slate-900 text-white flex flex-col flex-shrink-0 h-screen overflow-y-auto custom-scrollbar transition-transform duration-300 transform md:sticky md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : 'translate-x-full'}`}>
+        <div className="p-6 flex items-center justify-between border-b border-slate-800 flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-orange-500 rounded-xl flex items-center justify-center text-white shadow-lg shadow-orange-500/20">
+              <Car className="w-6 h-6" />
+            </div>
+            <div>
+              {branchConfig ? (
+                <h1 className="font-bold text-lg leading-tight text-white shrink-0">
+                  {branchConfig.logoText.split(' ')[0]} <span className="text-orange-500 text-sm">{branchConfig.logoText.split(' ').slice(1).join(' ')}</span>
+                </h1>
+              ) : (
+                <h1 className="font-bold text-lg leading-tight text-white shrink-0">ليبيا <span className="text-orange-500 text-sm">AUTO PRO</span></h1>
+              )}
+              <span className="text-[10px] text-slate-400 font-black uppercase tracking-widest shrink-0">
+                {(role as string) === 'admin' ? 'الإدارة العامة' : 'حساب العميل'}
+              </span>
+            </div>
           </div>
-          <div>
-            {branchConfig ? (
-              <h1 className="font-bold text-lg leading-tight text-white">
-                {branchConfig.logoText.split(' ')[0]} <span className="text-orange-500 text-sm">{branchConfig.logoText.split(' ').slice(1).join(' ')}</span>
-              </h1>
-            ) : (
-              <h1 className="font-bold text-lg leading-tight text-white">ليبيا <span className="text-orange-500 text-sm">AUTO PRO</span></h1>
-            )}
-            <span className="text-[10px] text-slate-400 font-black uppercase tracking-widest">
-              {(role as string) === 'admin' ? 'الإدارة العامة' : 'حساب العميل'}
-            </span>
-          </div>
+          <button 
+            aria-label="إغلاق القائمة" title="إغلاق القائمة"
+            onClick={() => setIsSidebarOpen(false)}
+            className="md:hidden p-2 text-slate-400 hover:bg-slate-800 rounded-lg transition-colors"
+          >
+            <X className="w-6 h-6" />
+          </button>
         </div>
 
         <nav className="flex-grow p-4 space-y-6">
@@ -191,11 +217,12 @@ export const DashboardLayout = () => {
                     <Link
                       key={link.path}
                       to={link.path}
+                      onClick={() => setIsSidebarOpen(false)}
                       className={`flex items-center gap-3 px-4 py-2.5 rounded-xl transition-colors text-sm ${isActive ? 'bg-orange-500 text-white font-bold shadow-lg shadow-orange-500/20' : 'text-slate-300 hover:bg-slate-800 hover:text-white'
                         }`}
                     >
-                      <Icon className="w-4 h-4" />
-                      <span>{link.label}</span>
+                      <Icon className="w-4 h-4 shrink-0" />
+                      <span className="truncate">{link.label}</span>
                     </Link>
                   );
                 })}
@@ -213,14 +240,23 @@ export const DashboardLayout = () => {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-grow flex flex-col h-screen overflow-hidden">
+      <main className="flex-grow flex flex-col h-screen overflow-hidden min-w-0">
         <header className="bg-white border-b border-slate-200 h-16 flex items-center justify-between px-6 flex-shrink-0">
-          <h2 className="font-bold text-slate-800 text-lg flex items-center gap-2">
-            {(role as string) === 'admin' && <span className="text-slate-400 font-normal">لوحة التحكم / </span>}
-            <span>{getPageTitle()}</span>
-          </h2>
-          <div className="flex items-center gap-4">
-            <div className="relative">
+          <div className="flex items-center gap-2 md:gap-4 overflow-hidden">
+            <button
+              aria-label="فتح القائمة" title="فتح القائمة"
+              onClick={() => setIsSidebarOpen(true)}
+              className="md:hidden p-2 -ml-2 text-slate-600 hover:bg-slate-100 rounded-xl transition-colors shrink-0"
+            >
+              <Menu className="w-6 h-6" />
+            </button>
+            <h2 className="font-bold text-slate-800 text-base md:text-lg flex flex-wrap md:flex-nowrap items-center gap-1 md:gap-2 truncate">
+              {(role as string) === 'admin' && <span className="text-slate-400 font-normal hidden md:inline">لوحة التحكم / </span>}
+              <span className="truncate">{getPageTitle()}</span>
+            </h2>
+          </div>
+          <div className="flex items-center gap-1 md:gap-4 shrink-0">
+            <div className="relative" ref={messagesRef}>
               <button
                 onClick={() => { setShowMessages(!showMessages); setShowNotifications(false); }}
                 className={`p-2 rounded-xl transition-all ${showMessages ? 'bg-orange-50 text-orange-500 shadow-lg shadow-orange-500/10' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'}`}
@@ -235,7 +271,7 @@ export const DashboardLayout = () => {
               {showMessages && <MessageDropdown onClose={() => setShowMessages(false)} />}
             </div>
 
-            <div className="relative">
+            <div className="relative" ref={notificationsRef}>
               <button
                 onClick={() => { setShowNotifications(!showNotifications); setShowMessages(false); }}
                 className={`p-2 rounded-xl transition-all ${showNotifications ? 'bg-orange-50 text-orange-500 shadow-lg shadow-orange-500/10' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'}`}
@@ -250,13 +286,13 @@ export const DashboardLayout = () => {
               {showNotifications && <NotificationDropdown onClose={() => setShowNotifications(false)} />}
             </div>
 
-            <div className="w-10 h-10 bg-gradient-to-br from-slate-100 to-slate-200 border border-white rounded-[1rem] flex items-center justify-center text-slate-800 font-black shadow-sm">
+            <div className="w-8 h-8 md:w-10 md:h-10 bg-gradient-to-br from-slate-100 to-slate-200 border border-white rounded-[1rem] flex items-center justify-center text-slate-800 font-black shadow-sm shrink-0 text-sm md:text-base">
               {currentUser?.firstName?.[0] || 'U'}
             </div>
           </div>
         </header>
 
-        <div className="flex-grow overflow-y-auto p-6 pb-20 md:pb-6 custom-scrollbar bg-slate-50">
+        <div className="flex-grow overflow-y-auto p-4 md:p-6 pb-20 md:pb-6 custom-scrollbar bg-slate-50 w-full overflow-x-hidden">
           <Outlet />
         </div>
       </main>

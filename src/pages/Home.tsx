@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useStore } from '../context/StoreContext';
 import { Car } from '../types';
@@ -14,6 +14,9 @@ import {
 import { NotificationDropdown } from '../components/NotificationDropdown';
 import { MessageDropdown } from '../components/MessageDropdown';
 import { useTranslation } from 'react-i18next';
+import { CAR_MAKES_AND_MODELS } from '../data/carData';
+import { DualRangeSlider } from '../components/DualRangeSlider';
+import { useClickOutside } from '../hooks/useClickOutside';
 
 const ListCarTimer = ({ car }: { car: Car }) => {
   const [timeLeft, setTimeLeft] = useState('00:00:00');
@@ -71,6 +74,91 @@ export const Home = () => {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showMessages, setShowMessages] = useState(false);
   const [showUserDropdown, setShowUserDropdown] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isBottomSheetOpen, setIsBottomSheetOpen] = useState(false);
+  const [isDesktopMoreOpen, setIsDesktopMoreOpen] = useState(false);
+  const [isMyAuctionsOpen, setIsMyAuctionsOpen] = useState(true);
+  
+  // Advanced Filter States
+  const [activeFilterPopover, setActiveFilterPopover] = useState<string | null>(null);
+  const [filterMake, setFilterMake] = useState<string>('');
+  const [filterModel, setFilterModel] = useState<string>('');
+  const [filterYearMin, setFilterYearMin] = useState<number | ''>('');
+  const [filterYearMax, setFilterYearMax] = useState<number | ''>('');
+  const [filterMileageMin, setFilterMileageMin] = useState<number | ''>('');
+  const [filterMileageMax, setFilterMileageMax] = useState<number | ''>('');
+  const [filterPriceMin, setFilterPriceMin] = useState<number | ''>('');
+  const [filterPriceMax, setFilterPriceMax] = useState<number | ''>('');
+  const [filterAuctionTypes, setFilterAuctionTypes] = useState<string[]>([]);
+  const [filterDriveTypes, setFilterDriveTypes] = useState<string[]>([]);
+  const [filterBodyTypes, setFilterBodyTypes] = useState<string[]>([]);
+  const [filterFuelTypes, setFilterFuelTypes] = useState<string[]>([]);
+  const [sortBy, setSortBy] = useState<'ending_soonest' | 'recommended' | 'priced_to_sell'>('ending_soonest');
+  const [isSortOpen, setIsSortOpen] = useState(false);
+  
+  // Refs for outside click detection
+  const messagesRef = useRef<HTMLDivElement>(null);
+  const notificationsRef = useRef<HTMLDivElement>(null);
+  const userDropdownRef = useRef<HTMLDivElement>(null);
+  const filtersRef = useRef<HTMLDivElement>(null);
+  const moreRef = useRef<HTMLDivElement>(null);
+  const sortRef = useRef<HTMLDivElement>(null);
+
+  useClickOutside(messagesRef, () => setShowMessages(false));
+  useClickOutside(notificationsRef, () => setShowNotifications(false));
+  useClickOutside(userDropdownRef, () => setShowUserDropdown(false));
+  useClickOutside(filtersRef, () => setActiveFilterPopover(null));
+  useClickOutside(moreRef, () => setIsDesktopMoreOpen(false));
+  useClickOutside(sortRef, () => setIsSortOpen(false));
+
+  // Scroll Logic for Mobile FABs
+  const [isScrollingDown, setIsScrollingDown] = useState(false);
+  const [lastScrollY, setLastScrollY] = useState(0);
+  const [isMobileSortOpen, setIsMobileSortOpen] = useState(false);
+
+  const clearAllFilters = () => {
+    setSearchTerm('');
+    setFilterMake('');
+    setFilterModel('');
+    setFilterYearMin('');
+    setFilterYearMax('');
+    setFilterMileageMin('');
+    setFilterMileageMax('');
+    setFilterPriceMin('');
+    setFilterPriceMax('');
+    setFilterAuctionTypes([]);
+    setFilterDriveTypes([]);
+    setFilterBodyTypes([]);
+    setFilterFuelTypes([]);
+    setSortBy('ending_soonest');
+    
+    // Clear URL params too
+    const newParams = new URLSearchParams(searchParams);
+    newParams.set('tab', 'all');
+    newParams.delete('search');
+    newParams.delete('make');
+    setSearchParams(newParams);
+    
+    setIsMobileMenuOpen(false);
+    setIsBottomSheetOpen(false);
+    setIsDesktopMoreOpen(false);
+    setActiveFilterPopover(null);
+  };
+
+  useEffect(() => {
+    const handleScroll = () => {
+      if (typeof window !== 'undefined') {
+        if (window.scrollY > lastScrollY && window.scrollY > 100) {
+          setIsScrollingDown(true);
+        } else if (window.scrollY < lastScrollY) {
+          setIsScrollingDown(false);
+        }
+        setLastScrollY(window.scrollY);
+      }
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [lastScrollY]);
 
   // Use URL for tab state
   const activeTab = searchParams.get('tab') || 'all';
@@ -81,6 +169,7 @@ export const Home = () => {
     setSearchParams(newParams);
   };
 
+  // Filters logic
   // Filters logic
   const filteredCars = (cars || []).filter(car => {
     if (!car) return false;
@@ -102,10 +191,52 @@ export const Home = () => {
     if (activeTab === 'offer_market') matchesTab = car.status === 'offer_market';
     if (activeTab === 'closed') matchesTab = car.status === 'closed';
 
-    // Additional Brand Filter from URL
-    const matchesMake = urlMake === 'all' || car.make?.toLowerCase() === urlMake;
+    // Additional Brand Filter from URL or Advanced Filter Menu
+    const isUrlMakeMatching = urlMake === 'all' || car.make?.toLowerCase() === urlMake;
+    const isStateMakeMatching = !filterMake || filterMake === 'all' || car.make?.toLowerCase() === filterMake.toLowerCase();
+    const isStateModelMatching = !filterModel || filterModel === 'all' || car.model?.toLowerCase() === filterModel.toLowerCase();
 
-    return matchesSearch && matchesTab && matchesMake;
+    // Advanced Numeric Range Filters
+    const carYear = car.year || 0;
+    const isYearMinMatching = filterYearMin === '' || carYear >= Number(filterYearMin);
+    const isYearMaxMatching = filterYearMax === '' || carYear <= Number(filterYearMax);
+
+    const carMileage = car.odometer || (car as any).mileage || 0;
+    const isMileageMinMatching = filterMileageMin === '' || carMileage >= Number(filterMileageMin);
+    const isMileageMaxMatching = filterMileageMax === '' || carMileage <= Number(filterMileageMax);
+
+    const carPrice = car.currentBid || car.buyItNow || car.reservePrice || (car as any).buyNowPrice || (car as any).originalPrice || 0;
+    const isPriceMinMatching = filterPriceMin === '' || carPrice >= Number(filterPriceMin);
+    const isPriceMaxMatching = filterPriceMax === '' || carPrice <= Number(filterPriceMax);
+
+    // Advanced Checkboxes Filters
+    const isAuctionTypeMatching = filterAuctionTypes.length === 0 || filterAuctionTypes.includes((car as any).auctionType || 'بيع مباشر');
+    const isDriveTypeMatching = filterDriveTypes.length === 0 || filterDriveTypes.includes((car as any).driveType || 'دفع رباعي 4x4');
+    const isBodyTypeMatching = filterBodyTypes.length === 0 || filterBodyTypes.includes((car as any).bodyType || 'سيدان');
+    const isFuelTypeMatching = filterFuelTypes.length === 0 || filterFuelTypes.includes((car as any).fuelType || 'بنزين');
+
+    return matchesSearch && matchesTab && isUrlMakeMatching && isStateMakeMatching && isStateModelMatching &&
+           isYearMinMatching && isYearMaxMatching && isMileageMinMatching && isMileageMaxMatching &&
+           isPriceMinMatching && isPriceMaxMatching && isAuctionTypeMatching &&
+           isDriveTypeMatching && isBodyTypeMatching && isFuelTypeMatching;
+  }).sort((a, b) => {
+    if (sortBy === 'recommended') {
+      return ((b as any).isRecommended ? 1 : 0) - ((a as any).isRecommended ? 1 : 0);
+    } else if (sortBy === 'priced_to_sell') {
+      const aPrice = a.buyItNow || a.currentBid || 0;
+      const bPrice = b.buyItNow || b.currentBid || 0;
+      return aPrice - bPrice;
+    }
+    // Default: ending_soonest
+    const aEnd = a.auctionEndDate ? new Date(a.auctionEndDate).getTime() : Number.MAX_SAFE_INTEGER;
+    const bEnd = b.auctionEndDate ? new Date(b.auctionEndDate).getTime() : Number.MAX_SAFE_INTEGER;
+    
+    // For closed auctions, sort by inverse of end date (most recently closed first)
+    if (activeTab === 'closed') {
+       return bEnd - aEnd;
+    }
+    
+    return aEnd - bEnd;
   });
 
   const categories = [
@@ -132,8 +263,18 @@ export const Home = () => {
     <div className="min-h-screen bg-[#F8FAFC] font-cairo text-slate-900" dir="rtl">
       {/* --- TOP FULL-WIDTH HEADER --- */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-[101] shadow-sm">
-        <div className="max-w-[1920px] mx-auto px-4 h-16 flex items-center justify-between">
+        <div className="max-w-[1920px] mx-auto px-4 h-11 flex items-center justify-between">
           <div className="flex items-center gap-3 min-w-0">
+            {/* Hamburger (Mobile Only) */}
+            <button
+              title="القائمة الجانبية"
+              aria-label="القائمة الجانبية"
+              onClick={() => setIsMobileMenuOpen(true)}
+              className="lg:hidden p-2 text-slate-600 hover:text-orange-500 transition-colors mr-2"
+            >
+              <Menu className="w-6 h-6" />
+            </button>
+
             {/* Logo */}
             <div onClick={() => navigate('/')} className="flex items-center gap-2 cursor-pointer group shrink-0">
               <div className="w-9 h-9 bg-orange-600 rounded-xl flex items-center justify-center shadow-lg shadow-orange-500/20 group-hover:scale-110 transition-transform">
@@ -159,7 +300,7 @@ export const Home = () => {
           <div className="flex items-center gap-4">
             {/* Action Buttons */}
             <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-2xl">
-              <div className="relative">
+              <div className="relative" ref={messagesRef}>
                 <button
                   title="الرسائل"
                   aria-label="عرض الرسائل"
@@ -176,7 +317,7 @@ export const Home = () => {
                 {showMessages && <MessageDropdown onClose={() => setShowMessages(false)} />}
               </div>
 
-              <div className="relative">
+              <div className="relative" ref={notificationsRef}>
                 <button
                   title="الإشعارات"
                   aria-label="عرض الإشعارات"
@@ -197,7 +338,7 @@ export const Home = () => {
             {/* User Profile / Login */}
             {currentUser ? (
               <div className="flex items-center gap-2">
-                <div className="relative">
+                <div className="relative" ref={userDropdownRef}>
                   <button
                     onClick={() => setShowUserDropdown(!showUserDropdown)}
                     className="flex items-center gap-2 bg-slate-900 text-white px-3 py-1.5 rounded-2xl hover:bg-slate-800 transition-all shadow-lg shadow-slate-900/10"
@@ -258,41 +399,332 @@ export const Home = () => {
         </div>
       </header>
 
-      {/* --- STICKY FILTER BAR --- */}
-      <div className="bg-white border-b border-slate-200 sticky top-16 z-50">
-        <div className="max-w-[1920px] mx-auto px-6 py-4 flex flex-col md:flex-row items-center gap-4">
-          <div className="relative flex-1 group w-full">
+      {/* --- TOP SEARCH & QUICK FILTERS BAR (Desktop Only) --- */}
+      <div className="hidden lg:block bg-white border-b border-slate-200 sticky top-[44px] z-[100]">
+        <div className="max-w-[1920px] mx-auto px-6 py-1 flex items-center gap-6 relative">
+          {/* Main Search */}
+          <div className="relative flex-1 max-w-2xl group">
             <Search className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-orange-500 transition-colors" />
             <input
               type="text"
-              aria-label={t('home.search.placeholder')}
-              title={t('home.search.placeholder')}
               placeholder={t('home.search.placeholder')}
-              className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl py-3.5 pr-12 pl-4 outline-none focus:border-orange-500 focus:bg-white transition-all text-sm font-bold"
+              className="w-full bg-white border-2 border-slate-200 rounded-lg py-2.5 pr-12 pl-4 outline-none focus:border-orange-500 focus:shadow-[0_0_0_4px_rgba(249,115,22,0.1)] transition-all text-sm font-bold placeholder:text-slate-400 hover:border-slate-300"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
-          <div className="flex items-center justify-between w-full md:w-auto gap-3">
-            <button className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-slate-900 text-white px-6 py-3.5 rounded-2xl font-black text-sm hover:bg-slate-800 transition-all shadow-xl shadow-slate-900/10 active:scale-95">
-              <SlidersHorizontal className="w-4 h-4" />
-              {t('home.search.advancedSearch')}
-            </button>
-            <div className="flex bg-slate-100 p-1 rounded-2xl shrink-0">
-              <button
-                title={t('home.search.grid_view')}
-                aria-label={t('home.search.grid_view')}
-                onClick={() => setViewMode('grid')}
-                className={`p-2.5 rounded-xl transition-all ${viewMode === 'grid' ? 'bg-white text-orange-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-              >
+          
+          {/* Quick Filters */}
+          <div className="flex items-center gap-2" ref={filtersRef}>
+             {/* Make & Model Popover */}
+             <div className="relative">
+               <button onClick={() => setActiveFilterPopover(activeFilterPopover === 'make' ? null : 'make')} className={`px-4 py-2.5 border rounded-lg text-sm font-bold transition-all whitespace-nowrap shadow-sm hover:shadow active:scale-95 flex items-center gap-1 ${activeFilterPopover === 'make' ? 'bg-orange-50 border-orange-200 text-orange-700' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:text-slate-900'}`}>
+                 {filterMake || 'الشركة والموديل'} {filterMake && filterModel && ` - ${filterModel}`}
+                 <ChevronDown className="w-4 h-4 opacity-50" />
+               </button>
+               {activeFilterPopover === 'make' && (
+                 <div className="absolute top-[calc(100%+0.5rem)] right-0 w-80 bg-white rounded-3xl shadow-[0_20px_60px_rgba(0,0,0,0.15)] border border-slate-200 p-5 flex flex-col z-[150] animate-in fade-in slide-in-from-top-4 overflow-hidden">
+                   <h3 className="font-black text-slate-900 text-base mb-4">الشركة والموديل (Make & Model)</h3>
+                   <div className="max-h-60 overflow-y-auto custom-scrollbar space-y-2 pr-2">
+                      {Object.keys(CAR_MAKES_AND_MODELS).map(make => (
+                        <div key={make} className="space-y-1">
+                           <label className="flex items-center justify-between cursor-pointer group p-2 hover:bg-slate-50 rounded-xl transition-colors">
+                             <div className="flex items-center gap-3">
+                               <input type="radio" name="make_filter" checked={filterMake === make} onChange={() => { setFilterMake(make); setFilterModel(''); }} className="hidden peer" />
+                               <div className="w-5 h-5 rounded-md border-2 border-slate-300 peer-checked:bg-orange-600 peer-checked:border-orange-600 flex items-center justify-center transition-all bg-white">
+                                  <CheckCircle2 className="w-3 h-3 text-white opacity-0 peer-checked:opacity-100 transition-opacity" />
+                               </div>
+                               <span className="text-sm font-bold text-slate-700 peer-checked:text-slate-900">{make}</span>
+                             </div>
+                             <ChevronDown className={`w-4 h-4 transition-transform ${filterMake === make ? 'rotate-180 text-orange-500' : 'text-slate-300'}`} />
+                           </label>
+                           {filterMake === make && (
+                             <div className="pl-9 pr-4 py-2 space-y-3 bg-slate-50 rounded-xl mt-1 mb-2 shadow-inner">
+                               {(CAR_MAKES_AND_MODELS[make] || []).map((mdl) => (
+                                  <label key={mdl} className="flex items-center gap-3 cursor-pointer group">
+                                    <input type="radio" name="model_filter" checked={filterModel === mdl} onChange={() => setFilterModel(mdl)} className="hidden peer" />
+                                    <div className="w-4 h-4 rounded-full border-2 border-slate-300 peer-checked:border-4 peer-checked:border-orange-500 bg-white transition-all"></div>
+                                    <span className="text-xs font-bold text-slate-600 peer-checked:text-slate-900">{mdl}</span>
+                                  </label>
+                               ))}
+                             </div>
+                           )}
+                        </div>
+                      ))}
+                   </div>
+                   <div className="pt-4 mt-2 border-t border-slate-100 flex items-center justify-between">
+                     <button onClick={() => { setFilterMake(''); setFilterModel(''); }} className="text-xs font-black text-slate-500 hover:text-slate-900">تفريغ (Clear)</button>
+                     <button onClick={() => setActiveFilterPopover(null)} className="px-6 py-2.5 bg-orange-600 text-white rounded-xl font-black text-xs hover:bg-orange-700 active:scale-95 transition-all shadow-lg shadow-orange-500/20">تم (Done)</button>
+                   </div>
+                 </div>
+               )}
+             </div>
+
+             {/* Price Popover */}
+             <div className="relative">
+               <button onClick={() => setActiveFilterPopover(activeFilterPopover === 'price' ? null : 'price')} className={`px-4 py-2.5 border rounded-lg text-sm font-bold transition-all whitespace-nowrap shadow-sm hover:shadow active:scale-95 flex items-center gap-1 ${activeFilterPopover === 'price' ? 'bg-orange-50 border-orange-200 text-orange-700' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:text-slate-900'}`}>
+                 {filterPriceMin || filterPriceMax ? `${filterPriceMin || 0}$ - ${filterPriceMax || '1M+'}$` : 'السعر'}
+                 <ChevronDown className="w-4 h-4 opacity-50" />
+               </button>
+               {activeFilterPopover === 'price' && (
+                 <div className="absolute top-[calc(100%+0.5rem)] right-0 w-80 bg-white rounded-3xl shadow-[0_20px_60px_rgba(0,0,0,0.15)] border border-slate-200 p-6 flex flex-col z-[150] animate-in fade-in slide-in-from-top-4 overflow-hidden">
+                   <h3 className="font-black text-slate-900 text-base mb-6">السعر (Price)</h3>
+                   
+                   <div className="mb-8">
+                     <DualRangeSlider 
+                       min={0} max={150000} step={500} 
+                       value={[Number(filterPriceMin) || 0, Number(filterPriceMax) || 150000]} 
+                       onChange={(val) => { setFilterPriceMin(val[0]); setFilterPriceMax(val[1]); }} 
+                     />
+                   </div>
+
+                   <div className="flex gap-4">
+                     <div className="flex-1 space-y-1 bg-slate-50 p-3 rounded-xl border border-slate-200 focus-within:border-orange-500 transition-colors">
+                       <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">Min Price</div>
+                       <div className="flex items-center gap-1 text-slate-900 font-bold overflow-hidden">
+                         <span className="text-xs text-slate-400">$</span>
+                         <input type="number" min="0" placeholder="0" className="w-full outline-none bg-transparent font-mono" value={filterPriceMin} onChange={e => setFilterPriceMin(e.target.value ? Number(e.target.value) : '')} />
+                       </div>
+                     </div>
+                     <div className="flex-1 space-y-1 bg-slate-50 p-3 rounded-xl border border-slate-200 focus-within:border-orange-500 transition-colors">
+                       <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">Max Price</div>
+                       <div className="flex items-center gap-1 text-slate-900 font-bold overflow-hidden">
+                         <span className="text-xs text-slate-400">$</span>
+                         <input type="number" min="0" placeholder="100,000+" className="w-full outline-none bg-transparent font-mono" value={filterPriceMax} onChange={e => setFilterPriceMax(e.target.value ? Number(e.target.value) : '')} />
+                       </div>
+                     </div>
+                   </div>
+
+                   <div className="pt-6 mt-6 border-t border-slate-100 flex items-center justify-between">
+                     <button onClick={() => { setFilterPriceMin(''); setFilterPriceMax(''); }} className="text-xs font-black text-slate-500 hover:text-slate-900">تفريغ (Clear)</button>
+                     <button onClick={() => setActiveFilterPopover(null)} className="px-6 py-2.5 bg-orange-600 text-white rounded-xl font-black text-xs hover:bg-orange-700 active:scale-95 transition-all shadow-lg shadow-orange-500/20">تم (Done)</button>
+                   </div>
+                 </div>
+               )}
+             </div>
+
+             {/* Year Popover */}
+             <div className="relative">
+               <button onClick={() => setActiveFilterPopover(activeFilterPopover === 'year' ? null : 'year')} className={`px-4 py-2.5 border rounded-lg text-sm font-bold transition-all whitespace-nowrap shadow-sm hover:shadow active:scale-95 flex items-center gap-1 ${activeFilterPopover === 'year' ? 'bg-orange-50 border-orange-200 text-orange-700' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:text-slate-900'}`}>
+                 {filterYearMin || filterYearMax ? `${filterYearMin || '<1901'} - ${filterYearMax || '2027'}` : 'السنة'}
+                 <ChevronDown className="w-4 h-4 opacity-50" />
+               </button>
+               {activeFilterPopover === 'year' && (
+                 <div className="absolute top-[calc(100%+0.5rem)] right-0 w-80 bg-white rounded-3xl shadow-[0_20px_60px_rgba(0,0,0,0.15)] border border-slate-200 p-6 flex flex-col z-[150] animate-in fade-in slide-in-from-top-4 overflow-hidden">
+                   <div className="flex justify-between items-center mb-6">
+                     <h3 className="font-black text-slate-900 text-base">السنة (Year)</h3>
+                     <button className="text-[10px] font-black text-blue-600 hover:text-blue-800">Switch By Year</button>
+                   </div>
+                   
+                   <div className="mb-8">
+                     <DualRangeSlider 
+                       min={1990} max={2027} step={1} 
+                       value={[Number(filterYearMin) || 1990, Number(filterYearMax) || 2027]} 
+                       onChange={(val) => { setFilterYearMin(val[0]); setFilterYearMax(val[1]); }} 
+                     />
+                   </div>
+
+                   <div className="flex gap-4">
+                     <div className="flex-1 bg-slate-50 p-3 rounded-xl border border-slate-200 focus-within:border-orange-500 transition-colors">
+                       <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Min Year</div>
+                       <input type="number" min="1901" max="2027" placeholder="<1901" className="w-full outline-none bg-transparent text-slate-900 font-bold font-mono text-sm" value={filterYearMin} onChange={e => setFilterYearMin(e.target.value ? Number(e.target.value) : '')} />
+                     </div>
+                     <div className="flex-1 bg-slate-50 p-3 rounded-xl border border-slate-200 focus-within:border-orange-500 transition-colors">
+                       <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Max Year</div>
+                       <input type="number" min="1901" max="2027" placeholder="2027" className="w-full outline-none bg-transparent text-slate-900 font-bold font-mono text-sm" value={filterYearMax} onChange={e => setFilterYearMax(e.target.value ? Number(e.target.value) : '')} />
+                     </div>
+                   </div>
+
+                   <div className="pt-6 mt-6 border-t border-slate-100 flex items-center justify-between">
+                     <button onClick={() => { setFilterYearMin(''); setFilterYearMax(''); }} className="text-xs font-black text-slate-500 hover:text-slate-900">تفريغ (Clear)</button>
+                     <button onClick={() => setActiveFilterPopover(null)} className="px-6 py-2.5 bg-orange-600 text-white rounded-xl font-black text-xs hover:bg-orange-700 active:scale-95 transition-all shadow-lg shadow-orange-500/20">تم (Done)</button>
+                   </div>
+                 </div>
+               )}
+             </div>
+
+             {/* Mileage Popover */}
+             <div className="relative">
+               <button onClick={() => setActiveFilterPopover(activeFilterPopover === 'mileage' ? null : 'mileage')} className={`px-4 py-2.5 border rounded-lg text-sm font-bold transition-all whitespace-nowrap shadow-sm hover:shadow active:scale-95 flex items-center gap-1 ${activeFilterPopover === 'mileage' ? 'bg-orange-50 border-orange-200 text-orange-700' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:text-slate-900'}`}>
+                 {filterMileageMin || filterMileageMax ? `${filterMileageMin || 0} - ${filterMileageMax || 'مفتوح'}` : 'المسافة'}
+                 <ChevronDown className="w-4 h-4 opacity-50" />
+               </button>
+               {activeFilterPopover === 'mileage' && (
+                 <div className="absolute top-[calc(100%+0.5rem)] right-0 w-80 bg-white rounded-3xl shadow-[0_20px_60px_rgba(0,0,0,0.15)] border border-slate-200 p-6 flex flex-col z-[150] animate-in fade-in slide-in-from-top-4 overflow-hidden">
+                   <h3 className="font-black text-slate-900 text-base mb-6">المسافة (Mileage)</h3>
+                   
+                   <div className="mb-8">
+                     <DualRangeSlider 
+                       min={0} max={300000} step={5000} 
+                       value={[Number(filterMileageMin) || 0, Number(filterMileageMax) || 300000]} 
+                       onChange={(val) => { setFilterMileageMin(val[0]); setFilterMileageMax(val[1]); }} 
+                     />
+                   </div>
+
+                   <div className="flex gap-4">
+                     <div className="flex-1 bg-slate-50 p-3 rounded-xl border border-slate-200 focus-within:border-orange-500 transition-colors">
+                       <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Min Miles</div>
+                       <input type="number" min="0" placeholder="0" className="w-full outline-none bg-transparent text-slate-900 font-bold font-mono text-sm" value={filterMileageMin} onChange={e => setFilterMileageMin(e.target.value ? Number(e.target.value) : '')} />
+                     </div>
+                     <div className="flex-1 bg-slate-50 p-3 rounded-xl border border-slate-200 focus-within:border-orange-500 transition-colors">
+                       <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Max Miles</div>
+                       <input type="number" min="0" placeholder="100k+" className="w-full outline-none bg-transparent text-slate-900 font-bold font-mono text-sm" value={filterMileageMax} onChange={e => setFilterMileageMax(e.target.value ? Number(e.target.value) : '')} />
+                     </div>
+                   </div>
+
+                   <div className="pt-6 mt-6 border-t border-slate-100 flex items-center justify-between">
+                     <button onClick={() => { setFilterMileageMin(''); setFilterMileageMax(''); }} className="text-xs font-black text-slate-500 hover:text-slate-900">تفريغ (Clear)</button>
+                     <button onClick={() => setActiveFilterPopover(null)} className="px-6 py-2.5 bg-orange-600 text-white rounded-xl font-black text-xs hover:bg-orange-700 active:scale-95 transition-all shadow-lg shadow-orange-500/20">تم (Done)</button>
+                   </div>
+                 </div>
+               )}
+             </div>
+
+             {/* Auction Type Popover */}
+             <div className="relative">
+               <button onClick={() => setActiveFilterPopover(activeFilterPopover === 'auctionType' ? null : 'auctionType')} className={`px-4 py-2.5 border rounded-lg text-sm font-bold transition-all whitespace-nowrap shadow-sm hover:shadow active:scale-95 flex items-center gap-1 ${activeFilterPopover === 'auctionType' ? 'bg-orange-50 border-orange-200 text-orange-700' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:text-slate-900'}`}>
+                 {filterAuctionTypes.length > 0 ? `نوع المزاد (${filterAuctionTypes.length})` : 'نوع المزاد'}
+                 <ChevronDown className="w-4 h-4 opacity-50" />
+               </button>
+               {activeFilterPopover === 'auctionType' && (
+                 <div className="absolute top-[calc(100%+0.5rem)] right-0 w-80 bg-white rounded-3xl shadow-[0_20px_60px_rgba(0,0,0,0.15)] border border-slate-200 p-6 flex flex-col z-[150] animate-in fade-in slide-in-from-top-4 overflow-hidden">
+                   <h3 className="font-black text-slate-900 text-base mb-4">نوع المزاد (Auction Type)</h3>
+                   
+                   <div className="space-y-2">
+                     {['بيع مباشر', 'سعر احتياطي', 'اشتري الآن', 'تصفية معارض', 'سيارات الخليج', 'Ready to Sell', 'Live Appraisal'].map(opt => (
+                       <label key={opt} className="flex items-center gap-3 cursor-pointer group hover:bg-slate-50 p-2 rounded-xl transition-colors">
+                         <input 
+                           type="checkbox" 
+                           checked={filterAuctionTypes.includes(opt)} 
+                           className="hidden peer"
+                           onChange={(e) => {
+                             if (e.target.checked) setFilterAuctionTypes([...filterAuctionTypes, opt]);
+                             else setFilterAuctionTypes(filterAuctionTypes.filter(a => a !== opt));
+                           }}
+                         />
+                         <div className="w-5 h-5 rounded-md border-2 border-slate-300 peer-checked:bg-orange-600 peer-checked:border-orange-600 flex items-center justify-center transition-all bg-white">
+                            <CheckCircle2 className="w-3 h-3 text-white opacity-0 peer-checked:opacity-100 transition-opacity" />
+                         </div>
+                         <span className="text-sm font-bold text-slate-700 peer-checked:text-slate-900">{opt}</span>
+                       </label>
+                     ))}
+                   </div>
+
+                   <div className="pt-6 mt-4 border-t border-slate-100 flex items-center justify-between">
+                     <button onClick={() => setFilterAuctionTypes([])} className="text-xs font-black text-slate-500 hover:text-slate-900">تفريغ (Clear)</button>
+                     <button onClick={() => setActiveFilterPopover(null)} className="px-6 py-2.5 bg-orange-600 text-white rounded-xl font-black text-xs hover:bg-orange-700 active:scale-95 transition-all shadow-lg shadow-orange-500/20">تم (Done)</button>
+                   </div>
+                 </div>
+               )}
+             </div>
+
+             {/* Sort Select */}
+             <div className="relative border-l border-slate-200 pl-2 ml-2" ref={sortRef}>
+                <button onClick={() => setIsSortOpen(!isSortOpen)} className={`px-4 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-all shadow-sm active:scale-95 ${isSortOpen ? 'bg-slate-900 text-white shadow-slate-900/20' : 'bg-slate-900 text-white hover:bg-slate-800 hover:shadow'}`}>
+                   ترتيب <SlidersHorizontal className="w-4 h-4" />
+                </button>
+                {isSortOpen && (
+                  <div className="absolute top-[calc(100%+0.5rem)] right-0 w-60 bg-white rounded-3xl shadow-[0_20px_60px_rgba(0,0,0,0.15)] border border-slate-200 p-3 flex flex-col z-[150] animate-in fade-in slide-in-from-top-4 overflow-hidden">
+                     <span className="text-xs font-black text-slate-400 uppercase tracking-widest px-3 py-2 mb-1 block">Sort Options</span>
+                     <button onClick={() => { setSortBy('ending_soonest'); setIsSortOpen(false); }} className={`flex items-center gap-3 w-full p-3 rounded-xl transition-all text-sm font-bold ${sortBy === 'ending_soonest' ? 'bg-orange-50 text-orange-700' : 'hover:bg-slate-50 text-slate-700'}`}>
+                        <div className="w-4 h-4 rounded-full border-2 border-slate-300 flex items-center justify-center p-[2px]">
+                           {sortBy === 'ending_soonest' && <div className="w-full h-full bg-orange-600 rounded-full"></div>}
+                        </div>
+                        ينتهي أولاً (Ending Soonest)
+                     </button>
+                     <button onClick={() => { setSortBy('recommended'); setIsSortOpen(false); }} className={`flex items-center gap-3 w-full p-3 rounded-xl transition-all text-sm font-bold ${sortBy === 'recommended' ? 'bg-orange-50 text-orange-700' : 'hover:bg-slate-50 text-slate-700'}`}>
+                        <div className="w-4 h-4 rounded-full border-2 border-slate-300 flex items-center justify-center p-[2px]">
+                           {sortBy === 'recommended' && <div className="w-full h-full bg-orange-600 rounded-full"></div>}
+                        </div>
+                        مُوصى به (Recommended)
+                     </button>
+                     <button onClick={() => { setSortBy('priced_to_sell'); setIsSortOpen(false); }} className={`flex items-center gap-3 w-full p-3 rounded-xl transition-all text-sm font-bold ${sortBy === 'priced_to_sell' ? 'bg-orange-50 text-orange-700' : 'hover:bg-slate-50 text-slate-700'}`}>
+                        <div className="w-4 h-4 rounded-full border-2 border-slate-300 flex items-center justify-center p-[2px]">
+                           {sortBy === 'priced_to_sell' && <div className="w-full h-full bg-orange-600 rounded-full"></div>}
+                        </div>
+                        سعر منافس (Priced to Sell)
+                     </button>
+                  </div>
+                )}
+             </div>
+            <div className="relative">
+               <button onClick={() => setIsDesktopMoreOpen(!isDesktopMoreOpen)} className={`px-4 py-2.5 border rounded-lg text-sm font-bold flex items-center gap-2 transition-all shadow-sm active:scale-95 ${isDesktopMoreOpen ? 'bg-slate-900 border-slate-900 text-white shadow-slate-900/20' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:text-slate-900 hover:shadow'}`}>
+                  المزيد <SlidersHorizontal className="w-4 h-4" />
+               </button>
+               {isDesktopMoreOpen && (
+                 <div className="absolute top-[calc(100%+0.5rem)] left-0 w-[600px] bg-white rounded-3xl shadow-[0_20px_60px_rgba(0,0,0,0.15)] border border-slate-200 flex flex-col z-[150] animate-in fade-in slide-in-from-top-4 overflow-hidden">
+                    <div className="flex items-center justify-between p-6 border-b border-slate-100 bg-slate-50/50">
+                       <h3 className="font-black text-xl text-slate-900 flex items-center gap-2">
+                         <SlidersHorizontal className="w-5 h-5 text-orange-500" /> الفلاتر المتقدمة
+                       </h3>
+                       <button title="إغلاق الشاشة" aria-label="إغلاق الشاشة" onClick={() => setIsDesktopMoreOpen(false)} className="p-2 bg-slate-100 hover:bg-slate-200 rounded-full transition-colors"><X className="w-5 h-5 text-slate-500 hover:text-slate-900" /></button>
+                    </div>
+                    <div className="p-6 grid grid-cols-2 gap-x-8 gap-y-8 max-h-[60vh] overflow-y-auto custom-scrollbar">
+                       
+                       {/* Year Range */}
+                       <div className="col-span-2 sm:col-span-1 space-y-3">
+                         <label className="text-xs font-black text-slate-900 uppercase tracking-wider">سنة الصنع (Year)</label>
+                         <div className="flex items-center gap-3">
+                           <input title="من سنة" type="number" placeholder="من" className="w-full bg-slate-50 border border-slate-200 shadow-sm rounded-xl py-3 px-4 outline-none focus:border-orange-500 focus:bg-white transition-all font-mono font-bold text-sm text-center" value={filterYearMin} onChange={e => setFilterYearMin(e.target.value ? Number(e.target.value) : '')} />
+                           <span className="text-slate-400 font-black">-</span>
+                           <input title="إلى سنة" type="number" placeholder="إلى" className="w-full bg-slate-50 border border-slate-200 shadow-sm rounded-xl py-3 px-4 outline-none focus:border-orange-500 focus:bg-white transition-all font-mono font-bold text-sm text-center" value={filterYearMax} onChange={e => setFilterYearMax(e.target.value ? Number(e.target.value) : '')} />
+                         </div>
+                       </div>
+
+                       {/* Mileage Range */}
+                       <div className="col-span-2 sm:col-span-1 space-y-3">
+                         <label className="text-xs font-black text-slate-900 uppercase tracking-wider">الممشى (Mileage)</label>
+                         <div className="flex items-center gap-3">
+                           <input title="الممشى الأدنى" type="number" placeholder="من" className="w-full bg-slate-50 border border-slate-200 shadow-sm rounded-xl py-3 px-4 outline-none focus:border-orange-500 focus:bg-white transition-all font-mono font-bold text-sm text-center" value={filterMileageMin} onChange={e => setFilterMileageMin(e.target.value ? Number(e.target.value) : '')} />
+                           <span className="text-slate-400 font-black">-</span>
+                           <input title="الممشى الأقصى" type="number" placeholder="إلى" className="w-full bg-slate-50 border border-slate-200 shadow-sm rounded-xl py-3 px-4 outline-none focus:border-orange-500 focus:bg-white transition-all font-mono font-bold text-sm text-center" value={filterMileageMax} onChange={e => setFilterMileageMax(e.target.value ? Number(e.target.value) : '')} />
+                         </div>
+                       </div>
+
+                       {/* Drive Type */}
+                       <div className="col-span-2 space-y-3">
+                         <div className="flex justify-between items-center">
+                           <label className="text-xs font-black text-slate-900 uppercase tracking-wider">نظام الدفع (Drive Type)</label>
+                         </div>
+                         <div className="flex flex-wrap gap-2">
+                           {['دفع رباعي 4x4', 'AWD', 'دفع أمامي FWD', 'دفع خلفي RWD'].map(opt => (
+                              <label key={opt} className="cursor-pointer group">
+                                <input 
+                                  type="checkbox" 
+                                  className="peer hidden" 
+                                  checked={filterDriveTypes.includes(opt)}
+                                  onChange={(e) => {
+                                    if (e.target.checked) setFilterDriveTypes([...filterDriveTypes, opt]);
+                                    else setFilterDriveTypes(filterDriveTypes.filter(d => d !== opt));
+                                  }}
+                                />
+                                <div className="px-4 py-2 border border-slate-200 bg-slate-50 rounded-xl text-xs font-bold text-slate-500 peer-checked:bg-orange-500 peer-checked:border-orange-500 peer-checked:text-white hover:border-orange-300 transition-all select-none">
+                                  {opt}
+                                </div>
+                              </label>
+                           ))}
+                         </div>
+                       </div>
+                    </div>
+
+                    {/* Footer Actions */}
+                    <div className="p-6 bg-slate-50 border-t border-slate-100 flex items-center justify-between mt-auto">
+                       <button onClick={clearAllFilters} className="px-6 py-3 text-sm font-black text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 rounded-xl transition-colors">إعادة ضبط الكل</button>
+                       <button onClick={() => setIsDesktopMoreOpen(false)} className="px-8 py-3 bg-orange-600 text-white rounded-xl font-black text-sm hover:bg-orange-700 transition-all active:scale-95 shadow-lg shadow-orange-500/20 flex items-center gap-2">
+                         <CheckCircle2 className="w-5 h-5" /> تطبيق الفلاتر
+                       </button>
+                    </div>
+                 </div>
+               )}
+            </div>
+            
+            <div className="h-8 w-px bg-slate-200 mx-2"></div>
+            
+            <div className="flex bg-slate-100 p-1 rounded-lg shrink-0">
+              <button title="شبكة" onClick={() => setViewMode('grid')} className={`p-2 rounded-md transition-all ${viewMode === 'grid' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
                 <LayoutGrid className="w-5 h-5" />
               </button>
-              <button
-                title={t('home.search.list_view')}
-                aria-label={t('home.search.list_view')}
-                onClick={() => setViewMode('list')}
-                className={`p-2.5 rounded-xl transition-all ${viewMode === 'list' ? 'bg-white text-orange-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-              >
+              <button title="قائمة" onClick={() => setViewMode('list')} className={`p-2 rounded-md transition-all ${viewMode === 'list' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
                 <List className="w-5 h-5" />
               </button>
             </div>
@@ -301,10 +733,10 @@ export const Home = () => {
       </div>
 
       {/* --- MAIN CONTENT --- */}
-      <div className="max-w-[1920px] mx-auto px-4 md:px-6 py-6 flex flex-col lg:flex-row gap-8 items-start w-full overflow-hidden min-w-0">
+      <div className="max-w-[1920px] mx-auto px-4 md:px-6 pt-2 pb-6 flex flex-col lg:flex-row gap-8 items-start w-full overflow-hidden min-w-0">
 
-        {/* Left Sidebar */}
-        <aside className="w-full lg:w-80 flex flex-col gap-6 lg:sticky lg:top-40 z-10">
+        {/* Left Sidebar (Desktop Only) */}
+        <aside className="hidden lg:flex w-80 flex-col gap-6 sticky top-[90px] z-10">
           <div className="bg-white rounded-[2.5rem] border border-slate-200 shadow-xl overflow-hidden">
             <div className="flex p-2 bg-slate-50">
               <button
@@ -370,8 +802,9 @@ export const Home = () => {
         </aside>
 
         {/* Main Feed */}
-        <main className="flex-1 space-y-6 min-w-0 overflow-hidden w-full max-w-[100vw]">
-          <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide min-w-0 w-full max-w-[100vw]">
+        <main className="flex-1 space-y-6 min-w-0 overflow-hidden w-full max-w-[100vw] pb-32 lg:pb-0 pt-0">
+          {/* Tabs Bar Sticky Fix */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-4 pt-2 mb-4 scrollbar-hide min-w-0 w-full max-w-[100vw] lg:sticky lg:top-[85px] sticky top-[40px] z-[40] bg-[#F8FAFC]">
             {[
               { id: 'all', label: t('home.tabs.all'), count: (cars || []).length },
               { id: 'upcoming', label: t('home.tabs.upcoming'), count: (cars || []).filter(c => c.status === 'upcoming').length },
@@ -393,16 +826,16 @@ export const Home = () => {
           </div>
 
           {filteredCars.length === 0 ? (
-            <div className="bg-white rounded-[3rem] p-20 text-center border-2 border-dashed border-slate-200">
+            <div className="bg-white rounded-[3rem] p-20 text-center border-2 border-dashed border-slate-200 mt-8">
               <div className="w-24 h-24 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6 text-slate-200">
                 <Search className="w-12 h-12" />
               </div>
               <h3 className="text-2xl font-black text-slate-900 mb-2">{t('home.emptyState.title')}</h3>
               <p className="text-slate-500 font-bold mb-8">{t('home.emptyState.subtitle')}</p>
-              <button onClick={() => { setSearchTerm(''); handleTabChange('all'); }} className="bg-slate-900 text-white px-8 py-3 rounded-2xl font-black text-sm">{t('home.emptyState.clearFilters')}</button>
+              <button onClick={clearAllFilters} className="bg-slate-900 text-white px-8 py-3 rounded-2xl font-black text-sm">{t('home.emptyState.clearFilters')}</button>
             </div>
           ) : (
-            <div className={viewMode === 'grid' ? 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6' : 'flex flex-col gap-4'}>
+            <div className={`mt-20 ${viewMode === 'grid' ? 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-10' : 'flex flex-col gap-8'}`}>
               {filteredCars.map((car) => {
                 const seller = users.find(u => u.id === car.sellerId);
                 const showroomName = seller?.companyName || seller?.firstName ? `${seller.firstName || ''} ${seller.lastName || ''}`.trim() : 'معرض غير معروف';
@@ -411,21 +844,22 @@ export const Home = () => {
                 return (
                   <div
                     key={car.id}
+                    style={{ scrollMarginTop: '160px' }}
                     className={`bg-white rounded-[2rem] overflow-hidden border border-slate-200 shadow-sm hover:shadow-2xl transition-all duration-500 group ${viewMode === 'list' ? 'flex flex-col md:flex-row h-auto' : 'flex flex-col'}`}
                   >
                     {/* Image Section with Consistent Sizing */}
-                    <div className={`relative overflow-hidden bg-slate-100 shrink-0 ${viewMode === 'list' ? 'w-full h-48 md:h-auto md:w-[35%] lg:w-[35%] xl:w-[400px]' : 'w-full aspect-[16/10]'}`}>
+                    <div className={`relative overflow-hidden bg-slate-100 shrink-0 ${viewMode === 'list' ? 'w-full aspect-[4/3] md:aspect-auto md:h-auto md:w-[30%] lg:w-[32%] xl:w-[350px]' : 'w-full aspect-[16/9]'}`}>
                       <img
                         src={car.images && car.images[0] && car.images[0].length > 5 ? car.images[0] : 'https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&q=80&w=800'}
                         alt={`${car.make} ${car.model}`}
                         onError={(e) => { e.currentTarget.src = 'https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&q=80&w=800' }}
-                        className="w-full h-full object-cover car-card-image text-transparent"
+                        className="w-full h-full object-cover car-card-image transition-transform duration-700 group-hover:scale-105"
                         loading="lazy"
                       />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
 
                       {/* Status Overlay */}
-                      <div className="absolute top-5 right-5 flex flex-col gap-2">
+                      <div className="absolute top-6 right-6 flex flex-col gap-2 z-20">
                         {car.status === 'live' && (
                           <div className="bg-red-600 text-white px-4 py-1.5 rounded-full text-[10px] font-black flex items-center gap-2 shadow-xl animate-pulse">
                             <div className="w-1.5 h-1.5 bg-white rounded-full"></div>
@@ -435,9 +869,15 @@ export const Home = () => {
                         <div className="bg-white/90 backdrop-blur-md text-slate-900 px-3 py-1.5 rounded-xl text-[10px] font-black shadow-lg">
                           #{car.lotNumber}
                         </div>
+                        {car.isRecommended && (
+                          <div className="bg-gradient-to-r from-amber-400 to-orange-500 text-white px-4 py-1.5 rounded-full text-[10px] font-black flex items-center gap-2 shadow-xl border border-white/20">
+                            <Heart className="w-3 h-3 fill-current" />
+                            مُوصى به
+                          </div>
+                        )}
                       </div>
 
-                      <div className="absolute top-4 left-4 flex gap-2">
+                      <div className="absolute top-6 left-6 flex gap-2 z-20">
                         <button
                           title="إضافة للمفضلة"
                           aria-label="المفضلة"
@@ -517,6 +957,8 @@ export const Home = () => {
                         )}
                         <div className="grid grid-cols-2 gap-2 w-full sm:flex sm:flex-wrap sm:w-auto mt-3 sm:mt-0">
                           <button
+                            title="تفاصيل"
+                            aria-label="تفاصيل"
                             onClick={() => navigate(`/car-details/${car.id}`)}
                             className="flex-1 sm:w-32 py-3 bg-slate-950 text-white rounded-2xl font-black text-xs hover:bg-slate-800 transition-all active:scale-95 shadow-xl shadow-slate-900/10"
                           >
@@ -579,71 +1021,373 @@ export const Home = () => {
           )}
         </main>
 
-        {/* Right Sidebar */}
+        {/* Right Sidebar (Desktop Only) */}
         {
           currentUser && (
-            <aside className="w-full lg:w-80 flex flex-col gap-6 sticky top-40">
-              <div className="bg-white rounded-[2.5rem] border border-slate-200 shadow-xl p-8">
-                <div className="flex items-center justify-between mb-8 text-right">
-                  <h3 className="font-black text-slate-900">{t('home.rightSidebar.bidsStatus')}</h3>
-                  <Settings className="w-4 h-4 text-slate-300 cursor-pointer hover:text-orange-500" />
+            <aside className="hidden lg:flex w-80 flex-col gap-6 sticky top-[90px] z-10">
+              <div className="bg-white rounded-3xl border border-slate-200 shadow-xl p-4">
+                <div onClick={() => setIsMyAuctionsOpen(!isMyAuctionsOpen)} className="flex items-center justify-between mb-2 cursor-pointer group pb-3 border-b border-slate-100">
+                  <h3 className="font-black text-slate-900 text-base flex items-center gap-2 group-hover:text-orange-500 transition-colors">مزايداتي (My Auctions)</h3>
+                  <ChevronDown className={`w-5 h-5 text-slate-400 transition-transform duration-300 ${isMyAuctionsOpen ? 'rotate-180' : ''}`} />
                 </div>
 
-                <div className="space-y-6">
-                  <div className="p-5 rounded-3xl bg-slate-50 border border-slate-100 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center">
-                        <Wallet className="w-6 h-6" />
+                {isMyAuctionsOpen && (
+                  <div className="space-y-3 pt-2 animate-in fade-in slide-in-from-top-2">
+                    {[
+                      { year: 2016, make: 'Chevrolet', model: 'Silverado 25...', trim: 'LT 1LT • 4WD • 8cyl', miles: '131,332 miles', time: '26:37', bid: 22550, winning: true, image: 'https://images.unsplash.com/photo-1559416523-140ddc3d238c?auto=format&fit=crop&q=80&w=300', lot: '448555' },
+                      { year: 2014, make: 'Chevrolet', model: 'Corvette', trim: 'Stingray Z51 2LT', miles: '48,565 miles', time: '38:44', bid: 28500, winning: false, image: 'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?auto=format&fit=crop&q=80&w=300', lot: '184920' },
+                      { year: 2010, make: 'Toyota', model: '4Runner', trim: 'Limited • AWD • 6cyl', miles: '133,456 miles', time: '42:26', bid: 11100, winning: true, image: 'https://images.unsplash.com/photo-1590362891991-f7000bf49dc2?auto=format&fit=crop&q=80&w=300', lot: '194857' }
+                    ].map((item, idx) => (
+                      <div key={idx} className={`flex gap-3 p-2.5 rounded-2xl bg-white border cursor-pointer hover:shadow-md transition-all ${item.winning ? 'border-emerald-500/50 shadow-emerald-500/5 bg-emerald-50/10' : 'border-rose-500/50 bg-rose-50/30 shadow-rose-500/5'}`}>
+                         <div className="relative w-20 h-[60px] shrink-0 rounded-xl overflow-hidden bg-slate-100">
+                            <img src={item.image} alt="car" className="w-full h-full object-cover" />
+                            <div className="absolute top-1 left-1 w-4 h-4 bg-black/60 backdrop-blur rounded-full flex items-center justify-center">
+                              <Heart className="w-2.5 h-2.5 text-rose-500 fill-current" />
+                            </div>
+                         </div>
+                         <div className="flex-1 flex flex-col justify-between min-w-0">
+                           <div className="flex justify-between items-start">
+                             <div className="min-w-0 pr-1">
+                               <h4 className="text-[12px] font-black text-slate-900 truncate leading-none mb-1">{item.year || '2016'} {item.make} {item.model}</h4>
+                               <div className="text-[9px] text-slate-500 truncate mt-0.5 leading-none">{item.trim}</div>
+                               <div className="text-[9px] text-slate-400 mt-0.5">{item.miles}</div>
+                             </div>
+                             <div className={`w-4 h-4 rounded-full flex items-center justify-center shrink-0 ${item.winning ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`}>
+                               <CheckCircle2 className="w-3 h-3" />
+                             </div>
+                           </div>
+                           <div className="flex justify-between items-end mt-1">
+                             <div className="flex items-center gap-1 text-[10px] font-black text-slate-500 font-mono">
+                               <Clock className="w-3 h-3 text-slate-400" /> {item.time}
+                             </div>
+                             <div className={`text-sm font-black font-mono leading-none ${item.winning ? 'text-emerald-600' : 'text-rose-600'}`}>
+                               ${item.bid.toLocaleString()}
+                             </div>
+                           </div>
+                         </div>
                       </div>
-                      <div>
-                        <div className="text-xs font-bold text-slate-500 mb-0.5 leading-none">{t('home.rightSidebar.buyingPower')}</div>
-                        <div className="text-lg font-black text-slate-900 font-mono leading-none">${currentUser.buyingPower?.toLocaleString()}</div>
-                      </div>
-                    </div>
-                    <button title="إضافة رصيد" aria-label="إضافة رصيد إلى القوة الشرائية" onClick={() => navigate('/dashboard/user?view=wallet')} className="p-2 rounded-lg hover:bg-white text-slate-400 hover:text-emerald-500 transition-all">
-                      <Plus className="w-5 h-5" />
+                    ))}
+                    
+                    <button onClick={() => navigate('/dashboard/user?view=bids')} className="w-full mt-2 py-2.5 bg-slate-50 border border-slate-200 text-slate-600 rounded-xl font-black text-[11px] hover:bg-slate-100 hover:text-slate-900 transition-all flex items-center justify-center gap-2">
+                      عرض جميع المزايدات <ArrowUpRight className="w-3 h-3" />
                     </button>
                   </div>
-
-                  <div className="space-y-4">
-                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2 text-right">{t('home.rightSidebar.activeAuctions')} (2)</h4>
-                    <div className="space-y-3">
-                      {[
-                        { make: 'BMW', model: 'X5', bid: 15400, leading: true },
-                        { make: 'Lexus', model: 'ES350', bid: 9200, leading: false },
-                      ].map((item, idx) => (
-                        <div key={idx} className="flex items-center justify-between p-4 rounded-2xl bg-slate-50 border border-slate-100 hover:bg-slate-100 transition-colors cursor-pointer group">
-                          <div className="flex items-center gap-3">
-                            <div className={`w-2 h-2 rounded-full ${item.leading ? 'bg-emerald-500' : 'bg-red-500 animate-pulse'}`}></div>
-                            <div>
-                              <div className="text-xs font-black text-slate-900 leading-none mb-1">{item.make} {item.model}</div>
-                              <div className="text-[9px] font-bold text-slate-400 leading-none">${item.bid.toLocaleString()}</div>
-                            </div>
-                          </div>
-                          <div className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-tighter ${item.leading ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'}`}>
-                            {item.leading ? t('home.rightSidebar.youAreWinning') : t('home.rightSidebar.outbid')}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                <button onClick={() => navigate('/dashboard/user?view=bids')} className="w-full mt-8 py-4 bg-slate-900 text-white rounded-2xl font-black text-xs hover:bg-slate-800 transition-all flex items-center justify-center gap-2 group">
-                  {t('home.rightSidebar.viewAllBids')}
-                  <ArrowUpRight className="w-4 h-4 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
-                </button>
-              </div>
-
-              <div className="bg-orange-500 rounded-[2.5rem] p-8 text-white shadow-2xl shadow-orange-500/20 text-right">
-                <h3 className="text-xl font-black mb-2">{t('home.rightSidebar.needHelp')}</h3>
-                <p className="text-orange-100 text-xs font-bold mb-6">{t('home.rightSidebar.supportTeam')}</p>
-                <button className="w-full bg-white text-orange-600 py-3 rounded-2xl font-black text-xs hover:bg-orange-50 transition-all active:scale-95">{t('home.rightSidebar.talkToAgent')}</button>
+                )}
               </div>
             </aside>
           )
         }
       </div>
+
+      {/* Mobile Advanced Filters Drawer */}
+      {isMobileMenuOpen && (
+        <div className="fixed inset-0 z-[200] lg:hidden flex">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsMobileMenuOpen(false)}></div>
+          <div className="relative w-[85%] max-w-md ml-auto bg-slate-50 h-full overflow-hidden animate-in slide-in-from-right duration-300 rtl:slide-in-from-left flex flex-col shadow-2xl">
+            
+            {/* Header */}
+            <div className="bg-white px-6 py-4 flex justify-between items-center border-b border-slate-100 z-10 sticky top-0 shadow-sm">
+              <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
+                <Filter className="w-5 h-5 text-orange-500" /> الفلاتر المتقدمة
+              </h2>
+              <div className="flex items-center gap-3">
+                <button onClick={() => { setSearchTerm(''); setFilterMake(''); setFilterModel(''); setFilterYearMin(''); setFilterYearMax(''); setFilterMileageMin(''); setFilterMileageMax(''); setFilterPriceMin(''); setFilterPriceMax(''); setFilterAuctionTypes([]); }} className="text-[11px] font-bold text-slate-400 hover:text-slate-900 transition-colors uppercase tracking-wider">إعادة ضبط</button>
+                <button aria-label="إغلاق" onClick={() => setIsMobileMenuOpen(false)} className="p-2 bg-slate-100 rounded-full text-slate-500 hover:text-slate-800 hover:bg-slate-200 transition-all">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Scrollable Filters Content */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-8 pb-24">
+               {/* Search */}
+               <div className="space-y-3">
+                 <label className="text-xs font-black text-slate-900 uppercase tracking-wider">البحث (Search)</label>
+                 <div className="relative group">
+                    <Search className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-orange-500 transition-colors" />
+                    <input
+                      type="text"
+                      placeholder="رقم اللوت، الشاصي، الخ..."
+                      className="w-full bg-white border border-slate-200 shadow-sm rounded-xl py-3 pr-12 pl-4 outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 transition-all font-bold text-sm"
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                    />
+                 </div>
+               </div>
+
+               {/* Make & Model */}
+               <div className="grid grid-cols-2 gap-4">
+                 <div className="space-y-3 cursor-pointer group relative">
+                   <label className="text-xs font-black text-slate-900 uppercase tracking-wider">المصنع (Make)</label>
+                   <select title="المصنع" aria-label="المصنع" value={filterMake} onChange={(e) => { setFilterMake(e.target.value); setFilterModel(''); }} className="w-full bg-white border border-slate-200 shadow-sm rounded-xl py-3 px-4 outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 transition-all font-bold text-sm text-slate-700 appearance-none cursor-pointer">
+                     <option value="">الكل (All)</option>
+                     {Object.keys(CAR_MAKES_AND_MODELS).map(make => (
+                        <option key={make} value={make}>{make}</option>
+                     ))}
+                   </select>
+                   <ChevronDown className="absolute left-3 top-10 w-4 h-4 text-slate-400 group-hover:text-orange-500 transition-colors pointer-events-none" />
+                 </div>
+                 <div className="space-y-3 relative group">
+                   <label className="text-xs font-black text-slate-900 uppercase tracking-wider">الموديل (Model)</label>
+                   <select title="الموديل" aria-label="الموديل" value={filterModel} onChange={(e) => setFilterModel(e.target.value)} disabled={!filterMake} className="w-full bg-white border border-slate-200 shadow-sm rounded-xl py-3 px-4 outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 transition-all font-bold text-sm text-slate-700 appearance-none disabled:bg-slate-50 disabled:text-slate-400 cursor-pointer">
+                     <option value="">الكل (All)</option>
+                     {filterMake && (CAR_MAKES_AND_MODELS[filterMake] || []).map(m => (
+                        <option key={m} value={m}>{m}</option>
+                     ))}
+                   </select>
+                   <ChevronDown className="absolute left-3 top-10 w-4 h-4 text-slate-400 group-hover:text-orange-500 transition-colors pointer-events-none" />
+                 </div>
+               </div>
+
+               {/* Price Range */}
+               <div className="space-y-3">
+                 <div className="flex justify-between items-center">
+                    <label className="text-xs font-black text-slate-900 uppercase tracking-wider">السعر (Price)</label>
+                    <span className="text-xs font-bold text-slate-500">{filterPriceMin || 0}$ - {filterPriceMax || '1M+'}$</span>
+                 </div>
+                 <DualRangeSlider 
+                    min={0} max={150000} step={500} 
+                    value={[Number(filterPriceMin) || 0, Number(filterPriceMax) || 150000]} 
+                    onChange={(val) => { setFilterPriceMin(val[0]); setFilterPriceMax(val[1]); }} 
+                 />
+                 <div className="flex items-center gap-4 mt-2">
+                   <input type="number" value={filterPriceMin} onChange={(e) => setFilterPriceMin(e.target.value ? Number(e.target.value) : '')} placeholder="Min $" className="w-full bg-white border border-slate-200 shadow-sm rounded-xl py-2 px-3 outline-none focus:border-orange-500 transition-all font-mono font-bold text-[11px] text-center" />
+                   <span className="text-slate-400 font-black">-</span>
+                   <input type="number" value={filterPriceMax} onChange={(e) => setFilterPriceMax(e.target.value ? Number(e.target.value) : '')} placeholder="Max $" className="w-full bg-white border border-slate-200 shadow-sm rounded-xl py-2 px-3 outline-none focus:border-orange-500 transition-all font-mono font-bold text-[11px] text-center" />
+                 </div>
+               </div>
+
+               {/* Year Range */}
+               <div className="space-y-3">
+                 <div className="flex justify-between items-center">
+                    <label className="text-xs font-black text-slate-900 uppercase tracking-wider">سنة الصنع (Year)</label>
+                    <span className="text-xs font-bold text-slate-500">{filterYearMin || '<1901'} - {filterYearMax || '2027'}</span>
+                 </div>
+                 <DualRangeSlider 
+                    min={1990} max={2027} step={1} 
+                    value={[Number(filterYearMin) || 1990, Number(filterYearMax) || 2027]} 
+                    onChange={(val) => { setFilterYearMin(val[0]); setFilterYearMax(val[1]); }} 
+                 />
+                 <div className="flex items-center gap-4 mt-2">
+                   <input type="number" value={filterYearMin} onChange={(e) => setFilterYearMin(e.target.value ? Number(e.target.value) : '')} placeholder="من سنة" className="w-full bg-white border border-slate-200 shadow-sm rounded-xl py-2 px-3 outline-none focus:border-orange-500 transition-all font-mono font-bold text-[11px] text-center" />
+                   <span className="text-slate-400 font-black">-</span>
+                   <input type="number" value={filterYearMax} onChange={(e) => setFilterYearMax(e.target.value ? Number(e.target.value) : '')} placeholder="إلى سنة" className="w-full bg-white border border-slate-200 shadow-sm rounded-xl py-2 px-3 outline-none focus:border-orange-500 transition-all font-mono font-bold text-[11px] text-center" />
+                 </div>
+               </div>
+
+               {/* Mileage Range */}
+               <div className="space-y-3">
+                 <div className="flex justify-between items-center">
+                    <label className="text-xs font-black text-slate-900 uppercase tracking-wider">المسافة (Mileage)</label>
+                    <span className="text-xs font-bold text-slate-500">{filterMileageMin || 0} - {filterMileageMax || 'مفتوح'}</span>
+                 </div>
+                 <DualRangeSlider 
+                    min={0} max={300000} step={5000} 
+                    value={[Number(filterMileageMin) || 0, Number(filterMileageMax) || 300000]} 
+                    onChange={(val) => { setFilterMileageMin(val[0]); setFilterMileageMax(val[1]); }} 
+                 />
+                 <div className="flex items-center gap-4 mt-2">
+                   <input type="number" value={filterMileageMin} onChange={(e) => setFilterMileageMin(e.target.value ? Number(e.target.value) : '')} placeholder="Min mi" className="w-full bg-white border border-slate-200 shadow-sm rounded-xl py-2 px-3 outline-none focus:border-orange-500 transition-all font-mono font-bold text-[11px] text-center" />
+                   <span className="text-slate-400 font-black">-</span>
+                   <input type="number" value={filterMileageMax} onChange={(e) => setFilterMileageMax(e.target.value ? Number(e.target.value) : '')} placeholder="Max mi" className="w-full bg-white border border-slate-200 shadow-sm rounded-xl py-2 px-3 outline-none focus:border-orange-500 transition-all font-mono font-bold text-[11px] text-center" />
+                 </div>
+               </div>
+
+               {/* Auction Type */}
+               <div className="space-y-3">
+                 <label className="text-xs font-black text-slate-900 uppercase tracking-wider">نوع المزاد (Auction Type)</label>
+                 <div className="space-y-2">
+                   {['بيع مباشر', 'سعر احتياطي', 'اشتري الآن', 'تصفية معارض', 'سيارات الخليج'].map(type => (
+                      <label key={type} className="flex items-center gap-3 p-3 bg-white border border-slate-100 shadow-sm rounded-xl cursor-pointer hover:bg-slate-50 transition-colors group">
+                        <input type="checkbox" checked={filterAuctionTypes.includes(type)} onChange={(e) => {
+                             if (e.target.checked) setFilterAuctionTypes([...filterAuctionTypes, type]);
+                             else setFilterAuctionTypes(filterAuctionTypes.filter(a => a !== type));
+                           }} className="w-5 h-5 rounded border-slate-300 text-orange-500 focus:ring-orange-500/20" />
+                        <span className="font-bold text-sm text-slate-700 group-hover:text-slate-900">{type}</span>
+                      </label>
+                   ))}
+                 </div>
+               </div>
+
+            </div>
+
+            {/* Footer Sticky Button */}
+            <div className="bg-white p-6 border-t border-slate-100 shadow-[0_-10px_30px_rgba(0,0,0,0.05)] z-10 sticky bottom-0">
+               <button onClick={() => setIsMobileMenuOpen(false)} className="w-full bg-orange-600 hover:bg-orange-700 text-white py-4 rounded-2xl font-black text-sm active:scale-95 transition-all shadow-lg shadow-orange-500/25 flex items-center justify-center gap-2">
+                 <CheckCircle2 className="w-5 h-5" /> عرض النتائج ({filteredCars.length})
+               </button>
+            </div>
+            
+          </div>
+        </div>
+      )}
+
+      {/* Mobile Bottom Sheet (Sticky above Bottom Nav) */}
+      <div className={`fixed left-0 right-0 z-[95] lg:hidden bg-white shadow-[0_-10px_40px_rgba(0,0,0,0.1)] rounded-t-3xl transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] border-t border-slate-200 ${isBottomSheetOpen ? 'bottom-16 h-[80vh] overflow-y-auto pb-6' : 'bottom-16 h-16 cursor-pointer'} `}>
+        {!isBottomSheetOpen ? (
+          <div className="w-full h-full flex items-center justify-between px-6 hover:bg-slate-50 transition-colors" onClick={() => setIsBottomSheetOpen(true)}>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-gradient-to-tr from-orange-600 to-orange-400 text-white rounded-full flex items-center justify-center shadow-lg shadow-orange-500/30 animate-pulse">
+                <ChevronDown className="w-5 h-5 rotate-180" />
+              </div>
+              <span className="font-black text-slate-900 tracking-wide">حالة المزايدات والملخص</span>
+            </div>
+            {currentUser && (
+               <div className="text-right">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">القوة الشرائية</div>
+                  <div className="text-sm font-black font-mono text-emerald-600">${currentUser.buyingPower?.toLocaleString()}</div>
+               </div>
+            )}
+          </div>
+        ) : (
+          <div className="relative h-full flex flex-col">
+            <div className="sticky top-0 bg-white/90 backdrop-blur-md pt-4 pb-4 z-10 border-b border-slate-100 mb-6">
+              <button
+                title="سحب الدرج"
+                aria-label="سحب الدرج"
+                onClick={() => setIsBottomSheetOpen(false)}
+                className="mx-auto w-12 h-1.5 bg-slate-300 rounded-full mb-4 focus:ring-2 focus:ring-orange-500 outline-none block"
+              />
+              <div className="px-6 flex items-center justify-between">
+                <h3 className="font-black text-xl text-slate-900">حالة المزايدات والملخص</h3>
+                <button title="إغلاق الدرج" aria-label="إغلاق الدرج" onClick={() => setIsBottomSheetOpen(false)} className="p-2 bg-slate-100 rounded-full text-slate-500 hover:text-slate-800 transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+            
+            <div className="px-6 space-y-8 pb-10 flex-1">
+              {currentUser ? (
+                <>
+                  {/* Bids Status content cloned from right sidebar */}
+                  <div className="p-6 rounded-3xl bg-slate-50 border border-slate-100 flex items-center justify-between shadow-sm">
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center">
+                          <Wallet className="w-6 h-6" />
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold text-slate-500 mb-1 leading-none">{t('home.rightSidebar.buyingPower')}</div>
+                          <div className="text-xl font-black text-slate-900 font-mono leading-none">${currentUser.buyingPower?.toLocaleString()}</div>
+                        </div>
+                      </div>
+                      <button title="إضافة رصيد" onClick={() => navigate('/dashboard/user?view=wallet')} className="w-10 h-10 bg-white rounded-xl shadow-sm text-slate-400 hover:text-emerald-500 transition-all flex items-center justify-center">
+                        <Plus className="w-5 h-5" />
+                      </button>
+                  </div>
+                  
+                  <div className="space-y-4">
+                      <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-right flex items-center gap-2">
+                        <Gavel className="w-4 h-4 text-orange-500" />
+                        {t('home.rightSidebar.activeAuctions')} (2)
+                      </h4>
+                      <div className="space-y-3">
+                        {[
+                          { year: 2016, make: 'Chevrolet', model: 'Silverado 25...', trim: 'LT 1LT • 4WD • 8cyl', miles: '131,332 miles', time: '26:37', bid: 22550, winning: true, image: 'https://images.unsplash.com/photo-1559416523-140ddc3d238c?auto=format&fit=crop&q=80&w=300', lot: '448555' },
+                          { year: 2014, make: 'Chevrolet', model: 'Corvette', trim: 'Stingray Z51 2LT', miles: '48,565 miles', time: '38:44', bid: 28500, winning: false, image: 'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?auto=format&fit=crop&q=80&w=300', lot: '184920' },
+                          { year: 2010, make: 'Toyota', model: '4Runner', trim: 'Limited • AWD • 6cyl', miles: '133,456 miles', time: '42:26', bid: 11100, winning: true, image: 'https://images.unsplash.com/photo-1590362891991-f7000bf49dc2?auto=format&fit=crop&q=80&w=300', lot: '194857' }
+                        ].map((item, idx) => (
+                          <div key={idx} className={`flex gap-3 p-2.5 rounded-2xl bg-white border cursor-pointer hover:shadow-md transition-all ${item.winning ? 'border-emerald-500/50 shadow-emerald-500/5 bg-emerald-50/10' : 'border-rose-500/50 bg-rose-50/30 shadow-rose-500/5'}`}>
+                             <div className="relative w-20 h-[60px] shrink-0 rounded-xl overflow-hidden bg-slate-100">
+                                <img src={item.image} alt="car" className="w-full h-full object-cover" />
+                                <div className="absolute top-1 left-1 w-4 h-4 bg-black/60 backdrop-blur rounded-full flex items-center justify-center">
+                                  <Heart className="w-2.5 h-2.5 text-rose-500 fill-current" />
+                                </div>
+                             </div>
+                             <div className="flex-1 flex flex-col justify-between min-w-0">
+                               <div className="flex justify-between items-start">
+                                 <div className="min-w-0 pr-1">
+                                   <h4 className="text-[12px] font-black text-slate-900 truncate leading-none mb-1">{item.year || '2016'} {item.make} {item.model}</h4>
+                                   <div className="text-[9px] text-slate-500 truncate mt-0.5 leading-none">{item.trim}</div>
+                                   <div className="text-[9px] text-slate-400 mt-0.5">{item.miles}</div>
+                                 </div>
+                                 <div className={`w-4 h-4 rounded-full flex items-center justify-center shrink-0 ${item.winning ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`}>
+                                   <CheckCircle2 className="w-3 h-3" />
+                                 </div>
+                               </div>
+                               <div className="flex justify-between items-end mt-1">
+                                 <div className="flex items-center gap-1 text-[10px] font-black text-slate-500 font-mono">
+                                   <Clock className="w-3 h-3 text-slate-400" /> {item.time}
+                                 </div>
+                                 <div className={`text-sm font-black font-mono leading-none ${item.winning ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                   ${item.bid.toLocaleString()}
+                                 </div>
+                               </div>
+                             </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <button onClick={() => navigate('/dashboard/user?view=bids')} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-sm active:scale-95 transition-all flex items-center justify-center gap-2 shadow-xl shadow-slate-900/20">
+                      {t('home.rightSidebar.viewAllBids')}
+                      <ArrowUpRight className="w-4 h-4" />
+                    </button>
+                </>
+              ) : (
+                <div className="py-12 text-center bg-slate-50 rounded-3xl border border-slate-100">
+                    <Shield className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+                    <h3 className="font-black text-lg text-slate-900 mb-2">قم بتسجيل الدخول للمنصة</h3>
+                    <p className="text-xs text-slate-500 font-bold mb-8 px-6 leading-relaxed">لعرض وتتبع حالة المزايدات الخاصة بك والقوة الشرائية وتلقي تنبيهات فورية بحالة سياراتك.</p>
+                    <button onClick={() => navigate('/auth')} className="bg-orange-600 text-white px-8 py-3.5 rounded-2xl font-black text-sm hover:bg-orange-700 active:scale-95 transition-all shadow-lg shadow-orange-500/20">
+                      {t('nav.loginRegister')}
+                    </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Scroll-Aware FABs for Mobile */}
+      {!isBottomSheetOpen && (
+        <div className="fixed bottom-40 right-4 z-[90] flex flex-col gap-3 lg:hidden items-end">
+          {/* Sort FAB */}
+          <button onClick={() => setIsMobileSortOpen(true)} className={`bg-slate-900 text-white shadow-lg shadow-slate-900/20 rounded-full flex items-center justify-center transition-all duration-300 overflow-hidden ${isScrollingDown ? 'w-[48px] h-[48px]' : 'px-5 h-[48px] w-auto'}`}>
+            <div className="flex items-center justify-center gap-2 w-max text-center">
+              <SlidersHorizontal className="w-5 h-5 shrink-0" />
+              <span className={`font-black text-sm transition-all duration-300 ${isScrollingDown ? 'w-0 opacity-0 hidden' : 'opacity-100 block'}`}>ترتيب</span>
+            </div>
+          </button>
+          {/* Search & Filters FAB */}
+          <button onClick={() => setIsMobileMenuOpen(true)} className={`bg-orange-500 text-white shadow-xl shadow-orange-500/30 rounded-full flex items-center justify-center transition-all duration-300 overflow-hidden ${isScrollingDown ? 'w-[56px] h-[56px]' : 'px-5 h-[56px] w-auto'}`}>
+            <div className="flex items-center justify-center gap-2 w-max">
+              <Filter className="w-5 h-5 shrink-0" />
+              <span className={`font-black text-sm transition-all duration-300 ${isScrollingDown ? 'w-0 opacity-0 hidden' : 'opacity-100 block'}`}>بحث وفلاتر</span>
+            </div>
+          </button>
+        </div>
+      )}
+
+      {/* Mobile Sort Menu Popup */}
+      {isMobileSortOpen && (
+        <div className="fixed inset-0 z-[210] flex items-end justify-center px-4 pb-20">
+           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsMobileSortOpen(false)}></div>
+           <div className="relative w-full max-w-sm bg-white rounded-[2.5rem] shadow-2xl p-6 animate-in slide-in-from-bottom duration-300">
+             <div className="flex justify-between items-center mb-6">
+               <h3 className="font-black text-xl text-slate-900">ترتيب النتائج</h3>
+               <button title="إغلاق الترتيب" aria-label="إغلاق" onClick={() => setIsMobileSortOpen(false)} className="p-2 bg-slate-100 rounded-full text-slate-500 hover:text-slate-800 transition-colors">
+                 <X className="w-5 h-5" />
+               </button>
+             </div>
+             <div className="space-y-3">
+               <button onClick={() => { setSortBy('ending_soonest'); setIsMobileSortOpen(false); }} className={`flex items-center justify-between w-full p-4 rounded-2xl border-2 transition-all ${sortBy === 'ending_soonest' ? 'border-orange-500 bg-orange-50 text-orange-700' : 'border-slate-100 bg-slate-50 text-slate-600'}`}>
+                 <span className="font-black text-sm">ينتهي أولاً (Ending Soon)</span>
+                 {sortBy === 'ending_soonest' && <CheckCircle2 className="w-5 h-5" />}
+               </button>
+               <button onClick={() => { setSortBy('recommended'); setIsMobileSortOpen(false); }} className={`flex items-center justify-between w-full p-4 rounded-2xl border-2 transition-all ${sortBy === 'recommended' ? 'border-orange-500 bg-orange-50 text-orange-700' : 'border-slate-100 bg-slate-50 text-slate-600'}`}>
+                 <span className="font-black text-sm">مُوصى به (Recommended)</span>
+                 {sortBy === 'recommended' && <CheckCircle2 className="w-5 h-5" />}
+               </button>
+               <button onClick={() => { setSortBy('priced_to_sell'); setIsMobileSortOpen(false); }} className={`flex items-center justify-between w-full p-4 rounded-2xl border-2 transition-all ${sortBy === 'priced_to_sell' ? 'border-orange-500 bg-orange-50 text-orange-700' : 'border-slate-100 bg-slate-50 text-slate-600'}`}>
+                 <span className="font-black text-sm">سعر منافس (Priced to Sell)</span>
+                 {sortBy === 'priced_to_sell' && <CheckCircle2 className="w-5 h-5" />}
+               </button>
+             </div>
+           </div>
+        </div>
+      )}
+
     </div>
   );
 };
+

@@ -9,11 +9,13 @@ export interface Car {
   odometer: number;
   engine?: string;
   engineSize?: string;
+  engineCylinders?: string;
   horsepower?: string;
   transmission?: string;
   drive?: string;
   drivetrain?: string;
   fuelType?: string;
+  bodyType?: string;
   exteriorColor?: string;
   interiorColor?: string;
   primaryDamage?: string;
@@ -44,6 +46,12 @@ export interface Car {
   offerMarketEndTime?: string;
   ultimoEndTime?: string;
   description?: string;
+  auctionLights?: string;
+  conditionReportType?: string;
+  dealershipType?: string;
+  mobilityOptions?: string;
+  equipmentOptions?: string;
+  isRecommended?: boolean;
 }
 
 export interface FeeEstimate {

@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Bell, Mail, Menu, X, LogOut, ChevronDown, Car, Calculator, Gavel, Search, LayoutDashboard, ShieldCheck, Wallet, Globe } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Bell, Mail, Menu, X, LogOut, ChevronDown, Car, Calculator, Gavel, Search, LayoutDashboard, ShieldCheck, Wallet, Globe, User, Store } from 'lucide-react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '../context/StoreContext';
@@ -7,6 +7,7 @@ import { AuthModal } from './AuthModal';
 import { NotificationDropdown } from './NotificationDropdown';
 import { MessageDropdown } from './MessageDropdown';
 import { BranchSelector } from './BranchSelector';
+import { useClickOutside } from '../hooks/useClickOutside';
 
 const getNavLinks = (t: any) => [
   { label: t('nav.liveAuction'), href: '/marketplace?tab=live' },
@@ -33,6 +34,15 @@ export const Navbar = () => {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showMessages, setShowMessages] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
+
+  // Refs for outside click detection
+  const messagesRef = useRef<HTMLDivElement>(null);
+  const notificationsRef = useRef<HTMLDivElement>(null);
+  const userDropdownRef = useRef<HTMLDivElement>(null);
+
+  useClickOutside(messagesRef, () => setShowMessages(false));
+  useClickOutside(notificationsRef, () => setShowNotifications(false));
+  useClickOutside(userDropdownRef, () => setShowDropdown(false));
 
   /* ── scroll effect ── */
   useEffect(() => {
@@ -120,7 +130,7 @@ export const Navbar = () => {
             <BranchSelector />
 
             {/* Messages */}
-            <div className="relative">
+            <div className="relative" ref={messagesRef}>
               <button
                 onClick={() => { setShowMessages(!showMessages); setShowNotifications(false); }}
                 className={`p-2.5 rounded-xl transition-all relative ${showMessages ? 'bg-white/10 text-orange-400' : 'text-slate-300 hover:text-white hover:bg-white/10'}`}
@@ -134,7 +144,7 @@ export const Navbar = () => {
             </div>
 
             {/* Notifications */}
-            <div className="relative">
+            <div className="relative" ref={notificationsRef}>
               <button
                 onClick={() => { setShowNotifications(!showNotifications); setShowMessages(false); }}
                 className={`p-2.5 rounded-xl transition-all relative ${showNotifications ? 'bg-white/10 text-orange-400' : 'text-slate-300 hover:text-white hover:bg-white/10'}`}
@@ -151,7 +161,7 @@ export const Navbar = () => {
 
             {/* User / Login */}
             {currentUser ? (
-              <div className="relative flex items-center gap-2">
+              <div className="relative flex items-center gap-2" ref={userDropdownRef}>
                 {/* Dashboard quick link */}
                 <button
                   onClick={() => navigate(dashboardPath)}
@@ -190,6 +200,20 @@ export const Navbar = () => {
                       <LayoutDashboard className="w-4 h-4 text-orange-500" />
                       {t('nav.dashboard')}
                     </Link>
+                    {currentUser.role === 'admin' && (
+                      <>
+                        <Link to="/dashboard/user" onClick={() => setShowDropdown(false)}
+                          className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 border-b border-slate-100 font-bold text-sm transition-colors">
+                          <User className="w-4 h-4 text-green-500" />
+                          عرض كـ مشتري (اختبار)
+                        </Link>
+                        <Link to="/dashboard/seller" onClick={() => setShowDropdown(false)}
+                          className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 border-b border-slate-100 font-bold text-sm transition-colors">
+                          <Store className="w-4 h-4 text-blue-500" />
+                          عرض كـ بائع (اختبار)
+                        </Link>
+                      </>
+                    )}
                     {currentUser?.role !== 'admin' && (
                       <Link to="/wallet" onClick={() => setShowDropdown(false)}
                         className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 border-b border-slate-100 font-bold text-sm transition-colors">
@@ -206,12 +230,12 @@ export const Navbar = () => {
                 )}
               </div>
             ) : (
-              <button
-                onClick={() => setIsAuthOpen(true)}
+              <Link
+                to="/auth"
                 className="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2.5 rounded-xl font-black text-sm transition-all shadow-lg shadow-orange-500/20 hover:scale-105 active:scale-95"
               >
-                {t('nav.registerNow')}
-              </button>
+                {t('nav.loginRegister')}
+              </Link>
             )}
           </div>
 
@@ -237,6 +261,19 @@ export const Navbar = () => {
                 </Link>
               ))}
 
+              <div className="border-t border-slate-700/50 pt-3 mt-3 space-y-1 px-4">
+                <button
+                  onClick={toggleLanguage}
+                  className="w-full flex items-center justify-between px-4 py-3 rounded-xl text-base font-bold text-slate-300 hover:text-white hover:bg-white/10 transition-colors border border-slate-700/50"
+                >
+                  <div className="flex items-center gap-3">
+                    <Globe className="w-5 h-5" />
+                    <span>{i18n.language === 'ar' ? 'English' : 'اللغة العربية'}</span>
+                  </div>
+                  <ChevronDown className="w-4 h-4" />
+                </button>
+              </div>
+
               <div className="border-t border-slate-700/50 pt-3 mt-3 space-y-1">
                 {currentUser ? (
                   <>
@@ -244,10 +281,29 @@ export const Navbar = () => {
                       {t('nav.welcome')}، {currentUser.role === 'seller' && currentUser.companyName ? currentUser.companyName : (currentUser.firstName || 'مستخدم')}
                     </div>
                     <Link to={dashboardPath} onClick={() => setMobileOpen(false)}
-                      className="flex items-center gap-3 px-4 py-3 rounded-xl text-base font-bold text-orange-400 hover:bg-orange-500/10 transition-colors">
+                      className="flex items-center gap-3 px-4 py-3 rounded-xl text-base font-bold text-slate-300 hover:text-white hover:bg-white/10 transition-colors">
                       <LayoutDashboard className="w-5 h-5" />
                       {t('nav.dashboard')}
                     </Link>
+                    <Link to={`${dashboardPath}?view=profile`} onClick={() => setMobileOpen(false)}
+                      className="flex items-center gap-3 px-4 py-3 rounded-xl text-base font-bold text-slate-300 hover:text-white hover:bg-white/10 transition-colors">
+                      <User className="w-5 h-5" />
+                      {t('nav.profile')}
+                    </Link>
+                    {currentUser.role === 'admin' && (
+                      <>
+                        <Link to="/dashboard/user" onClick={() => setMobileOpen(false)}
+                          className="flex items-center gap-3 px-4 py-3 rounded-xl text-base font-bold text-slate-300 hover:text-white hover:bg-white/10 transition-colors">
+                          <User className="w-5 h-5 text-green-500" />
+                          عرض كـ مشتري (اختبار)
+                        </Link>
+                        <Link to="/dashboard/seller" onClick={() => setMobileOpen(false)}
+                          className="flex items-center gap-3 px-4 py-3 rounded-xl text-base font-bold text-slate-300 hover:text-white hover:bg-white/10 transition-colors">
+                          <Store className="w-5 h-5 text-blue-500" />
+                          عرض كـ بائع (اختبار)
+                        </Link>
+                      </>
+                    )}
                     <button onClick={handleLogout}
                       className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-base font-bold text-red-400 hover:bg-red-500/10 transition-colors">
                       <LogOut className="w-5 h-5" />
@@ -255,12 +311,13 @@ export const Navbar = () => {
                     </button>
                   </>
                 ) : (
-                  <button
-                    onClick={() => { setIsAuthOpen(true); setMobileOpen(false); }}
-                    className="w-full bg-orange-500 text-white py-3 rounded-xl font-black text-base hover:bg-orange-600 transition-colors"
+                  <Link
+                    to="/auth"
+                    onClick={() => setMobileOpen(false)}
+                    className="block w-full bg-orange-500 text-white py-3 rounded-xl font-black text-base hover:bg-orange-600 transition-colors text-center"
                   >
                     {t('nav.loginRegister')}
-                  </button>
+                  </Link>
                 )}
               </div>
             </div>

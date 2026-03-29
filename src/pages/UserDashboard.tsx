@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Users, Clock, Wallet, Shield, MapPin, Search, Filter,
@@ -6,9 +6,10 @@ import {
   CheckCircle2, CreditCard, Heart, Trophy, Gavel, ArrowUpRight,
   Package, Truck, Ship, MessageSquare, Plus, Trash2, Edit, Building2,
   FileText, Mail, ShieldCheck, Store, List, File, HelpCircle, Settings,
-  MoreVertical, UploadCloud, Globe, ShoppingCart, Check, Reply,
+  MoreVertical, UploadCloud, Globe, ShoppingCart, Check, Reply, Hash,
   Link as LinkIcon, Calculator, Info, BookOpen, TrendingUp, Handshake, Map, Camera,
-  AlertCircle, Wallet as WalletIcon, FileCheck, User, BarChart3, ChevronRight, ChevronDown, Car, Home, DollarSign
+  AlertCircle, Wallet as WalletIcon, FileCheck, User, BarChart3, ChevronRight, ChevronDown, Car, Home, DollarSign,
+  RefreshCw, Send
 } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { NotificationDropdown } from '../components/NotificationDropdown';
@@ -16,7 +17,7 @@ import { MessageDropdown } from '../components/MessageDropdown';
 import { SHIPMENT_STATUS_LABELS } from '../types';
 import { KycPanel } from '../components/KycPanel';
 import { useTranslation } from 'react-i18next';
-
+import { useClickOutside } from '../hooks/useClickOutside';
 
 export const UserDashboard = () => {
   const { t, i18n } = useTranslation();
@@ -71,6 +72,16 @@ export const UserDashboard = () => {
   const [depositAmount, setDepositAmount] = useState('1000');
   const [isSubmittingDeposit, setIsSubmittingDeposit] = useState(false);
 
+  // Payment System State
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
+  const [paymentMethod, setPaymentMethod] = useState<'wallet' | 'bank_transfer' | 'cash' | 'card'>('wallet');
+  const [referenceNo, setReferenceNo] = useState('');
+  const [receiptUrl, setReceiptUrl] = useState('');
+  const [paymentSuccess, setPaymentSuccess] = useState(false);
+  const [paymentLoading, setPaymentLoading] = useState(false);
+  const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
+
   // Profile Edit State
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [profileForm, setProfileForm] = useState({
@@ -86,6 +97,16 @@ export const UserDashboard = () => {
 
   const [notificationSettings, setNotificationSettings] = useState({ emailNotifications: true, whatsappNotifications: true });
   const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  // Refs for outside click
+  const sidebarRef = useRef<HTMLDivElement>(null);
+  const notificationsRef = useRef<HTMLDivElement>(null);
+  const messagesRef = useRef<HTMLDivElement>(null);
+
+  useClickOutside(sidebarRef, () => setIsSidebarOpen(false));
+  useClickOutside(notificationsRef, () => setShowNotifications(false));
+  useClickOutside(messagesRef, () => setShowMessages(false));
 
   const navigate = useNavigate();
 
@@ -310,16 +331,78 @@ export const UserDashboard = () => {
     }
   };
 
-  const handlePayInvoice = async (id: string) => {
+  const submitPayment = async () => {
+    if (!selectedInvoice) return;
+    
+    // Validate Wallet Balance if selected
+    if (paymentMethod === 'wallet') {
+      const currentBalance = effectiveUser.deposit || 0;
+      if (currentBalance < selectedInvoice.amount) {
+        showAlert('رصيد المحفظة غير كافٍ لسداد هذه الفاتورة. يرجى شحن الرصيد أولاً.', 'error');
+        return;
+      }
+    }
+
+    setPaymentLoading(true);
     try {
-      const res = await fetch(`/api/invoices/${id}/pay`, { method: 'POST' });
+      if (!paymentMethod) {
+        showAlert('يرجى اختيار طريقة الدفع أولاً', 'error');
+        setPaymentLoading(false);
+        return;
+      }
+
+      const res = await fetch(`/api/invoices/${selectedInvoice.id}/pay`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          method: paymentMethod,
+          referenceNo,
+          receiptUrl,
+          userId: effectiveUser.id
+        })
+      });
+
       if (res.ok) {
         const data = await res.json();
-        setInvoices(prev => prev.map(inv => inv.id === id ? { ...inv, status: 'paid', pickupAuthCode: data.pickupAuthCode } : inv));
-        showAlert('تم الدفع بنجاح! كود الاستلام متاح الآن.', 'success');
+        // Update local state
+        setInvoices(prev => prev.map(inv => 
+          inv.id === selectedInvoice.id 
+            ? { ...inv, status: data.status, pickupAuthCode: data.pickupAuthCode, paidVia: paymentMethod } 
+            : inv
+        ));
+        
+        // Update user balance if wallet was used
+        if (paymentMethod === 'wallet' && data.status === 'paid') {
+           setCurrentUser({ ...effectiveUser, deposit: (effectiveUser.deposit || 0) - selectedInvoice.amount });
+        }
+
+        showAlert(data.message || 'تمت العملية بنجاح', 'success');
+        setPaymentSuccess(true);
+        setReferenceNo('');
+        setReceiptUrl('');
+        
+        // Finalize
+        setTimeout(() => {
+          setShowPaymentModal(false);
+          setPaymentSuccess(false);
+        }, 1500);
+
+      } else {
+        const err = await res.json();
+        showAlert(err.error || 'فشل عملية الدفع', 'error');
       }
     } catch (e) {
-      showAlert('فشل الدفع', 'error');
+      showAlert('حدث خطأ أثناء الاتصال بالخادم', 'error');
+    } finally {
+      setPaymentLoading(false);
+    }
+  };
+
+  const handlePayInvoice = (id: string) => {
+    const inv = invoices.find(i => i.id === id);
+    if (inv) {
+      setSelectedInvoice(inv);
+      setShowPaymentModal(true);
     }
   };
 
@@ -389,6 +472,35 @@ export const UserDashboard = () => {
       showAlert('خطأ في الاتصال بالخادم', 'error');
     } finally {
       setIsSubmittingDeposit(false);
+    }
+  };
+
+  const handleInspectionSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inspectionForm.carDetails) {
+      showAlert('يرجى إدخال تفاصيل السيارة', 'error');
+      return;
+    }
+
+    const res = await fetch('/api/inspections', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: effectiveUser.id,
+        carMake: inspectionForm.carDetails.split(' ')[0] || 'Unknown',
+        carModel: inspectionForm.carDetails.split(' ').slice(1).join(' ') || 'Unknown',
+        carYear: new Date().getFullYear(),
+        vin: 'PENDING',
+        notes: `Location: ${inspectionForm.location}, Urgency: ${inspectionForm.urgency}`
+      })
+    });
+
+    if (res.ok) {
+      showAlert('تم إرسال طلب الفحص بنجاح', 'success');
+      setShowInspectionModal(false);
+      setInspectionForm({ carDetails: '', location: '', urgency: 'normal' });
+    } else {
+      showAlert('فشل إرسال طلب الفحص', 'error');
     }
   };
 
@@ -619,10 +731,14 @@ export const UserDashboard = () => {
   );
 
   const renderInvoices = () => {
-    // Group invoices by carId
-    const groupedInvoices = invoices.reduce((acc: Record<string, any[]>, inv: any) => {
+    // Group invoices by carId and Deduplicate
+    const groupedInvoices = (invoices || []).reduce((acc: Record<string, any[]>, inv: any) => {
       if (!acc[inv.carId]) acc[inv.carId] = [];
-      acc[inv.carId].push(inv);
+      // Deduplicate: check if an invoice with same TYPE and carId already exists in this group
+      // This is safer than just ID if there's any ID mismatch causing double rendering
+      if (!acc[inv.carId].some(existing => existing.type === inv.type)) {
+        acc[inv.carId].push(inv);
+      }
       return acc;
     }, {} as Record<string, typeof invoices>);
 
@@ -640,23 +756,29 @@ export const UserDashboard = () => {
             {Object.entries(groupedInvoices).map(([carId, carInvoices]) => {
               const primaryInv = carInvoices.find((i: any) => i.type === 'purchase') || carInvoices[0];
               const sortedInvoices = [...carInvoices].sort((a: any, b: any) => {
-                const t = { 'purchase': 1, 'transport': 2, 'shipping': 3 };
-                return (t[a.type as keyof typeof t] || 9) - (t[b.type as keyof typeof t] || 9);
+                const orderMap = { 'purchase': 1, 'transport': 2, 'shipping': 3 };
+                return (orderMap[a.type as keyof typeof orderMap] || 9) - (orderMap[b.type as keyof typeof orderMap] || 9);
               });
 
               return (
                 <div key={carId} className="bg-white p-8 md:p-10 rounded-[2.5rem] border border-slate-200 shadow-xl relative overflow-hidden group">
                   {/* Car Header */}
                   <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-100 pb-6 mb-8 gap-4">
-                    <div>
-                      <h3 className="text-3xl font-black text-slate-900">{primaryInv.year} {primaryInv.make} {primaryInv.model}</h3>
-                      <div className="flex flex-wrap items-center gap-3 mt-3">
-                        <span className="text-xs font-mono font-bold text-slate-500 bg-slate-50 px-3 py-1 rounded-lg border border-slate-100">
-                          LOT: {primaryInv.lotNumber || 'N/A'}
-                        </span>
-                        <span className="text-xs font-mono font-bold text-slate-500 bg-slate-50 px-3 py-1 rounded-lg border border-slate-100 flex items-center gap-1">
-                          <span className="text-slate-400">VIN:</span> {primaryInv.vin || 'N/A'}
-                        </span>
+                    <div className="flex items-center gap-6">
+                      <div className="w-20 h-20 bg-slate-950 rounded-3xl flex items-center justify-center text-white shrink-0 shadow-2xl shadow-slate-950/20">
+                         <Car className="w-10 h-10 text-orange-500" />
+                      </div>
+                      <div>
+                        <h3 className="text-3xl font-black text-slate-900 tracking-tight">{primaryInv.year} {primaryInv.make} {primaryInv.model}</h3>
+                        <div className="flex flex-wrap items-center gap-3 mt-3">
+                          <span className="text-xs font-mono font-black text-slate-900 bg-orange-100 border border-orange-200 px-4 py-1.5 rounded-xl flex items-center gap-2">
+                             <div className="w-2 h-2 bg-orange-500 rounded-full animate-pulse" />
+                             LOT: {primaryInv.lotNumber || 'غير متوفر'}
+                          </span>
+                          <span className="text-xs font-mono font-bold text-slate-400 bg-slate-50 px-4 py-1.5 rounded-xl border border-slate-100 flex items-center gap-1">
+                            <Hash className="w-3.5 h-3.5" /> VIN: {primaryInv.vin || 'بانتظار التأكيد'}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -686,10 +808,11 @@ export const UserDashboard = () => {
                             ${inv.amount.toLocaleString()}
                           </div>
 
-                          <div className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest w-full text-center md:w-auto ${['paid', 'release_issued', 'delivered_to_buyer', 'seller_paid_by_admin'].includes(inv.status) ? 'bg-emerald-100 text-emerald-700' : inv.status === 'pending' ? 'bg-slate-100 text-slate-500' : inv.status === 'cancelled_self_pickup' ? 'bg-slate-200 text-slate-600' : 'bg-orange-100 text-orange-700'}`}>
+                          <div className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest w-full text-center md:w-auto ${['paid', 'release_issued', 'delivered_to_buyer', 'seller_paid_by_admin'].includes(inv.status) ? 'bg-emerald-100 text-emerald-700' : (inv.status === 'pending_confirmation' || inv.status === 'pending') ? 'bg-slate-100 text-slate-500' : inv.status === 'cancelled_self_pickup' ? 'bg-slate-200 text-slate-600' : 'bg-orange-100 text-orange-700'}`}>
                             {['paid', 'release_issued', 'delivered_to_buyer', 'seller_paid_by_admin'].includes(inv.status) ? t('userDashboard.invoices.paidSuccess') :
-                              inv.status === 'pending' ? t('userDashboard.invoices.pendingWaitingPrevious') :
-                                inv.status === 'cancelled_self_pickup' ? t('userDashboard.invoices.cancelledSelfPickup') : t('userDashboard.invoices.waitingPayment')}
+                              inv.status === 'pending_confirmation' ? 'بانتظار تأكيد الإدارة ⏳' :
+                                inv.status === 'pending' ? t('userDashboard.invoices.pendingWaitingPrevious') :
+                                  inv.status === 'cancelled_self_pickup' ? t('userDashboard.invoices.cancelledSelfPickup') : t('userDashboard.invoices.waitingPayment')}
                           </div>
 
                           {inv.status === 'unpaid' && (
@@ -1214,23 +1337,47 @@ export const UserDashboard = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 flex font-sans" dir="rtl">
+      {/* Mobile Sidebar Overlay */}
+      {isSidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] lg:hidden animate-in fade-in duration-300"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
+
       {/* Dynamic Sidebar */}
-      <aside className="w-80 bg-white border-l border-slate-100 p-8 flex flex-col gap-10 shadow-sm sticky top-0 h-screen">
-        <div className="flex items-center gap-4 cursor-pointer" onClick={() => navigateTo('overview')}>
-          <div className="w-12 h-12 bg-orange-500 rounded-[1.25rem] flex items-center justify-center text-white shadow-2xl shadow-orange-500/40 rotate-12 group-hover:rotate-0 transition-transform">
-            <Car className="w-7 h-7" />
+      <aside 
+        ref={sidebarRef}
+        className={`
+        fixed inset-y-0 right-0 z-[101] w-80 bg-white p-8 pb-12 flex flex-col gap-8 shadow-2xl 
+        transition-transform duration-300 lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 lg:shadow-sm lg:border-l lg:border-slate-100
+        overflow-y-auto
+        ${isSidebarOpen ? 'translate-x-0' : 'translate-x-full'}
+      `}>
+        <div className="flex items-center justify-between lg:justify-start">
+          <div className="flex items-center gap-4 cursor-pointer" onClick={() => { navigateTo('overview'); setIsSidebarOpen(false); }}>
+            <div className="w-12 h-12 bg-orange-500 rounded-[1.25rem] flex items-center justify-center text-white shadow-2xl shadow-orange-500/40 rotate-12 group-hover:rotate-0 transition-transform">
+              <Car className="w-7 h-7" />
+            </div>
+            <div>
+              {branchConfig ? (
+                <div className="text-xl font-black text-slate-950 tracking-tighter leading-tight">
+                  {branchConfig.logoText?.split(' ')?.[0]}<br />
+                  <span className="text-orange-500">{branchConfig.logoText?.split(' ')?.slice(1)?.join(' ')}</span>
+                </div>
+              ) : (
+                <div className="text-xl font-black text-slate-950 tracking-tighter leading-tight">ليبيا<br /><span className="text-orange-500">AUTO PRO</span></div>
+              )}
+              <div className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">{branchConfig?.logoSubtext || 'Libya'}</div>
+            </div>
           </div>
-          <div>
-            {branchConfig ? (
-              <div className="text-xl font-black text-slate-950 tracking-tighter leading-tight">
-                {branchConfig.logoText?.split(' ')?.[0]}<br />
-                <span className="text-orange-500">{branchConfig.logoText?.split(' ')?.slice(1)?.join(' ')}</span>
-              </div>
-            ) : (
-              <div className="text-xl font-black text-slate-950 tracking-tighter leading-tight">ليبيا<br /><span className="text-orange-500">AUTO PRO</span></div>
-            )}
-            <div className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">{branchConfig?.logoSubtext || 'Libya'}</div>
-          </div>
+          <button 
+            onClick={() => setIsSidebarOpen(false)}
+            className="lg:hidden p-2 text-slate-400 hover:text-slate-600"
+            title="إغلاق القائمة"
+          >
+            <X className="w-6 h-6" />
+          </button>
         </div>
 
         <nav className="flex flex-col gap-3">
@@ -1240,6 +1387,7 @@ export const UserDashboard = () => {
             { id: 'bids', label: 'مزاداتي النشطة', icon: Gavel },
             { id: 'watchlist', label: 'المفضلة', icon: Heart },
             { id: 'wallet', label: 'المحفظة والتمويل', icon: WalletIcon },
+            { id: 'transactions', label: 'سجل العمليات', icon: History },
             { id: 'invoices', label: 'الفواتير والاستلام', icon: FileText },
             { id: 'logistics', label: 'التتبع والشحن', icon: Truck, badge: shipments.filter(s => s.status !== 'delivered' && s.status !== 'awaiting_payment').length || 0 },
             { id: 'services', label: 'تقارير السوق', icon: BookOpen },
@@ -1255,6 +1403,7 @@ export const UserDashboard = () => {
                   window.location.href = '/marketplace';
                 } else {
                   navigateTo(item.id);
+                  setIsSidebarOpen(false);
                 }
               }}
               className={`flex items-center justify-between px-6 py-4 rounded-[1.5rem] font-black text-sm transition-all group ${view === item.id
@@ -1282,9 +1431,10 @@ export const UserDashboard = () => {
           onClick={() => {
             setCurrentUser(null);
             localStorage.removeItem('currentUser');
-            window.location.href = '/login';
+            window.location.href = '/auth';
           }}
-          className="flex items-center gap-3 px-6 py-4 rounded-[1.5rem] font-black text-sm text-red-500 hover:bg-red-50 transition-all mt-4"
+          className="flex items-center gap-3 px-6 py-4 rounded-[1.5rem] font-black text-sm text-red-500 hover:bg-red-50 transition-all mt-4 w-full"
+          title="تسجيل الخروج"
         >
           <LogOut className="w-5 h-5" />
           تسجيل الخروج
@@ -1311,23 +1461,32 @@ export const UserDashboard = () => {
       </aside>
 
       {/* Primary Content Viewport */}
-      <main className="flex-1 p-12 overflow-y-auto min-h-screen">
-        <header className="flex justify-between items-center mb-16 pb-8 border-b border-slate-100">
-          <div className="flex items-center gap-6 text-right" dir="rtl">
-            <div className="w-16 h-16 bg-slate-950 rounded-2xl flex items-center justify-center text-white shadow-2xl shadow-slate-950/20 relative group">
-              <User className="w-8 h-8 text-orange-500 group-hover:scale-110 transition-transform" />
-              <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-emerald-500 rounded-full border-4 border-white"></div>
-            </div>
-            <div>
-              <h1 className="text-3xl font-black text-slate-950 tracking-tight">
-                أهلاً بك، {effectiveUser.firstName} 👋
-              </h1>
-              <p className="text-slate-500 font-bold text-sm mt-1">لديك {invoices.filter(i => i.status === 'unpaid').length} فواتير بانتظار الدفع أو المراجعة.</p>
+      <main className="flex-1 p-4 md:p-8 pb-20 lg:pb-12 overflow-y-auto min-h-screen pt-0">
+        <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-4 pb-6 border-b border-slate-100">
+          <div className="flex items-center justify-between w-full md:w-auto gap-6 transition-all">
+            <div className="flex items-center gap-4 md:gap-6 text-right" dir="rtl">
+              <button 
+                onClick={() => setIsSidebarOpen(true)}
+                className="lg:hidden p-3 bg-white border border-slate-100 rounded-2xl text-slate-600 hover:bg-slate-50 transition-all shadow-sm"
+                title="فتح القائمة"
+              >
+                <Menu className="w-6 h-6" />
+              </button>
+              <div className="w-12 h-12 md:w-16 md:h-16 bg-slate-950 rounded-2xl flex items-center justify-center text-white shadow-2xl shadow-slate-950/20 relative group cursor-pointer" onClick={() => navigateTo('profile')}>
+                <User className="w-6 h-6 md:w-8 md:h-8 text-orange-500 group-hover:scale-110 transition-transform" />
+                <div className="absolute -bottom-1 -right-1 w-4 h-4 md:w-5 md:h-5 bg-emerald-500 rounded-full border-4 border-white"></div>
+              </div>
+              <div>
+                <h1 className="text-xl md:text-3xl font-black text-slate-950 tracking-tight">
+                  أهلاً بك، {effectiveUser.firstName} 👋
+                </h1>
+                <p className="hidden md:block text-slate-500 font-bold text-sm mt-1">لديك {invoices.filter(i => i.status === 'unpaid').length} فواتير بانتظار الدفع أو المراجعة.</p>
+              </div>
             </div>
           </div>
-          <div className="flex items-center gap-6">
-            <div className="flex bg-white p-2 rounded-2xl border border-slate-100 shadow-sm gap-2">
-              <div className="relative">
+          <div className="flex items-center justify-between w-full md:w-auto gap-4 md:gap-6">
+            <div className="flex bg-white p-2 rounded-2xl border border-slate-100 shadow-sm gap-1 md:gap-2">
+              <div className="relative" ref={notificationsRef}>
                 <button
                   onClick={() => { setShowNotifications(!showNotifications); setShowMessages(false); }}
                   className={`p-3 rounded-xl transition-all relative ${showNotifications ? 'bg-orange-50 text-orange-500' : 'hover:bg-slate-50 text-slate-400'}`}
@@ -1342,7 +1501,7 @@ export const UserDashboard = () => {
                 {showNotifications && <NotificationDropdown onClose={() => setShowNotifications(false)} />}
               </div>
 
-              <div className="relative">
+              <div className="relative" ref={messagesRef}>
                 <button
                   onClick={() => { setShowMessages(!showMessages); setShowNotifications(false); }}
                   className={`p-3 rounded-xl transition-all relative ${showMessages ? 'bg-orange-50 text-orange-500' : 'hover:bg-slate-50 text-slate-400'}`}
@@ -1357,13 +1516,13 @@ export const UserDashboard = () => {
                 {showMessages && <MessageDropdown onClose={() => setShowMessages(false)} />}
               </div>
             </div>
-            <div className="h-14 w-px bg-slate-200"></div>
-            <div className="flex items-center gap-4 group cursor-pointer">
-              <div className="text-left">
+            <div className="h-10 md:h-14 w-px bg-slate-200"></div>
+            <div className="flex items-center gap-3 md:gap-4 group cursor-pointer" onClick={() => navigateTo('profile')}>
+              <div className="text-left hidden md:block">
                 <div className="text-sm font-black text-slate-900 group-hover:text-orange-500 transition-colors">{effectiveUser.firstName} {effectiveUser.lastName}</div>
                 <div className="text-[10px] font-bold text-slate-400 text-right uppercase tracking-[0.2em]">{effectiveUser.role}</div>
               </div>
-              <div className="w-14 h-14 bg-slate-950 rounded-[1.25rem] flex items-center justify-center text-white font-black text-xl border-4 border-white shadow-2xl group-hover:rotate-6 transition-transform">
+              <div className="w-10 h-10 md:w-14 md:h-14 bg-slate-950 rounded-xl md:rounded-[1.25rem] flex items-center justify-center text-white font-black text-lg md:text-xl border-2 md:border-4 border-white shadow-2xl group-hover:rotate-6 transition-transform">
                 {effectiveUser.firstName?.[0] || 'U'}
               </div>
             </div>
@@ -1373,6 +1532,61 @@ export const UserDashboard = () => {
         {view === 'overview' && renderOverview()}
         {view === 'bids' && renderBids()}
         {view === 'wallet' && renderWallet()}
+        {view === 'transactions' && (
+          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+            <div className="flex justify-between items-center">
+              <h2 className="text-3xl font-black text-slate-900">سجل العمليات 📜</h2>
+              <div className="bg-orange-100 text-orange-600 px-4 py-2 rounded-2xl text-xs font-black">
+                {effectiveUser?.deposit ? `الرصيد الحالي: $${effectiveUser.deposit.toLocaleString()}` : ''}
+              </div>
+            </div>
+
+            <div className="bg-white rounded-[3rem] border border-slate-100 shadow-xl overflow-hidden">
+              <div className="p-8 border-b border-slate-50 bg-slate-50/30">
+                <p className="text-slate-500 font-bold">تتبع كافة الحركات المالية والمزادات في حسابك.</p>
+              </div>
+              
+              {transactions.length === 0 ? (
+                <div className="p-20 text-center">
+                  <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6 text-slate-200">
+                    <History className="w-10 h-10" />
+                  </div>
+                  <h3 className="text-xl font-black text-slate-900 mb-2">لا توجد عمليات مسجلة</h3>
+                  <p className="text-slate-400 font-bold">ابدأ بالمزايدة أو شحن المحفظة لتظهر حركاتك هنا.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-right" dir="rtl">
+                    <thead className="bg-slate-50 text-slate-400 text-[10px] font-black uppercase tracking-widest">
+                      <tr>
+                        <th className="py-6 px-8">العملية / الوصف</th>
+                        <th className="py-6 px-8">المبلغ</th>
+                        <th className="py-6 px-8">التاريخ</th>
+                        <th className="py-6 px-8">الحالة</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50 font-bold">
+                      {transactions.map((tx: any) => (
+                        <tr key={tx.id} className="hover:bg-slate-50 transition-colors">
+                          <td className="py-6 px-8 text-slate-900">{tx.description}</td>
+                          <td className={`py-6 px-8 font-mono ${tx.type === 'credit' ? 'text-emerald-600' : 'text-rose-500'}`}>
+                            {tx.type === 'credit' ? '+' : '-'}${tx.amount.toLocaleString()}
+                          </td>
+                          <td className="py-6 px-8 text-slate-400 text-sm">{new Date(tx.timestamp).toLocaleString('ar-LY')}</td>
+                          <td className="py-6 px-8">
+                            <span className="px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-black uppercase">
+                              مكتملة ✅
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
         {view === 'invoices' && renderInvoices()}
         {view === 'sell' && renderSellCar()}
         {view === 'admin' && effectiveUser.role === 'admin' && renderAdminPanel()}
@@ -1490,7 +1704,7 @@ export const UserDashboard = () => {
                               </div>
                             )}
                             {ship.createdAt && ship.status !== 'delivered' && (
-                              <div className="text-xs font-bold text-orange-600 bg-orange-50 px-3 py-1 rounded-lg border border-orange-100 flex items-center gap-1" title="الزمن المستغرق في عملية الشحن النشطة حتى الآن">
+                              <div className="text-xs font-bold text-orange-600 bg-orange-100 flex items-center gap-1" title="الزمن المستغرق في عملية الشحن النشطة حتى الآن">
                                 <Truck className="w-3.5 h-3.5 text-orange-400" />
                                 {(() => {
                                   const diff = Math.floor((new Date().getTime() - new Date(ship.createdAt).getTime()) / (1000 * 3600 * 24));
@@ -1502,7 +1716,6 @@ export const UserDashboard = () => {
                         </div>
                       </div>
 
-                      {/* Timeline */}
                       <div className="relative pt-8 pb-4">
                         <div className="flex items-center justify-between relative z-10">
                           {steps.map((s, i) => (
@@ -1518,9 +1731,7 @@ export const UserDashboard = () => {
                             </div>
                           ))}
                         </div>
-                        {/* Progress bar background */}
                         <div className="absolute top-5 left-8 right-8 h-1 bg-slate-100 rounded-full">
-                          {/* Animated progress fill */}
                           <div
                             className="h-full bg-emerald-500 transition-all duration-1000 ease-out shadow-[0_0_10px_rgba(16,185,129,0.3)]"
                             ref={(el) => { if (el) el.style.width = `${(currentIdx / (steps.length - 1)) * 100}%`; }}
@@ -1564,7 +1775,6 @@ export const UserDashboard = () => {
               </button>
             </div>
 
-            {/* Message list */}
             <div className="bg-white rounded-[3rem] border border-slate-100 shadow-xl overflow-hidden">
               {messages.length === 0 ? (
                 <div className="p-20 text-center">
@@ -1611,9 +1821,8 @@ export const UserDashboard = () => {
               )}
             </div>
 
-            {/* ── New Message Modal ── */}
             {showNewMessageModal && (
-              <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center z-[120] p-4" dir="rtl">
+              <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex items-start justify-center pt-8 md:pt-16 z-[120] p-4 overflow-y-auto" dir="rtl">
                 <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg p-8 animate-in zoom-in-95 duration-200">
                   <div className="flex justify-between items-center mb-6">
                     <h3 className="text-xl font-black text-slate-900">إرسال رسالة للدعم</h3>
@@ -1623,7 +1832,6 @@ export const UserDashboard = () => {
                   </div>
 
                   <div className="space-y-4">
-                    {/* Category */}
                     <div>
                       <label className="block text-[11px] font-black text-slate-400 uppercase mb-1.5">نوع الطلب</label>
                       <select aria-label="تحديد" title="تحديد"
@@ -1641,7 +1849,6 @@ export const UserDashboard = () => {
                       </select>
                     </div>
 
-                    {/* Subject */}
                     <div>
                       <label className="block text-[11px] font-black text-slate-400 uppercase mb-1.5">موضوع الرسالة</label>
                       <input aria-label="مدخل" title="مدخل" placeholder="مدخل"
@@ -1652,7 +1859,6 @@ export const UserDashboard = () => {
                       />
                     </div>
 
-                    {/* Content */}
                     <div>
                       <label className="block text-[11px] font-black text-slate-400 uppercase mb-1.5">نص الرسالة</label>
                       <textarea
@@ -1677,7 +1883,7 @@ export const UserDashboard = () => {
                               headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify({
                                 senderId: effectiveUser.id,
-                                receiverId: 'admin-1', // Admin
+                                receiverId: 'admin-1',
                                 subject: newMessageData.subject,
                                 content: newMessageData.content,
                                 category: newMessageData.category,
@@ -1687,7 +1893,6 @@ export const UserDashboard = () => {
                               showAlert('✅ تم إرسال رسالتك! سيرد عليك فريق الدعم خلال 24 ساعة.', 'success');
                               setShowNewMessageModal(false);
                               setNewMessageData({ subject: '', content: '', category: 'general' });
-                              // Refresh messages
                               fetch(`/api/messages/user/${effectiveUser.id}`)
                                 .then(r => r.json())
                                 .then(data => setMessages(data))
@@ -1715,10 +1920,8 @@ export const UserDashboard = () => {
               </div>
             )}
           </div>
-        )
-        }
-        {
-          view === 'services' && (
+        )}
+        {view === 'services' && (
             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
               <h2 className="text-3xl font-black text-slate-900">تقارير السوق والأسعار 📊</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -1746,7 +1949,6 @@ export const UserDashboard = () => {
                 ))}
               </div>
 
-              {/* Reports Modal */}
               {showReportModal && selectedReport && !showDetailedReport && (
                 <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center z-[110] p-4 text-right" dir="rtl">
                   <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-2xl p-10 animate-in zoom-in-95 duration-200">
@@ -1826,7 +2028,6 @@ export const UserDashboard = () => {
               </button>
             </div>
 
-            {/* Inspection Request Modal */}
             {showInspectionModal && (
               <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center z-[110] p-4 text-right" dir="rtl">
                 <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-lg p-10 animate-in zoom-in-95 duration-200">
@@ -2024,7 +2225,6 @@ export const UserDashboard = () => {
               )}
             </div>
 
-            {/* Change Password Section */}
             <div className="bg-white p-10 rounded-[3rem] border border-slate-100 shadow-xl overflow-hidden">
               <h3 className="text-xl font-black text-slate-900 mb-6 flex items-center gap-3">
                 <Shield className="w-6 h-6 text-orange-500" />
@@ -2062,7 +2262,6 @@ export const UserDashboard = () => {
               )}
             </div>
 
-            {/* Notification Preferences Section */}
             <div className="bg-white p-10 rounded-[3rem] border border-slate-100 shadow-xl overflow-hidden mt-8">
               <h3 className="text-xl font-black text-slate-900 mb-6 flex items-center gap-3">
                 <Bell className="w-6 h-6 text-orange-500" />
@@ -2083,6 +2282,8 @@ export const UserDashboard = () => {
                   <button
                     onClick={() => toggleNotificationSetting('emailNotifications')}
                     disabled={isSavingSettings}
+                    title={notificationSettings.emailNotifications ? 'إيقاف إشعارات البريد' : 'تفعيل إشعارات البريد'}
+                    aria-label={notificationSettings.emailNotifications ? 'إيقاف إشعارات البريد' : 'تفعيل إشعارات البريد'}
                     className={`relative w-14 h-8 rounded-full transition-colors ${notificationSettings.emailNotifications ? 'bg-orange-500' : 'bg-slate-300'}`}
                   >
                     <span className={`absolute top-1 w-6 h-6 bg-white rounded-full transition-all ${notificationSettings.emailNotifications ? 'right-1' : 'left-1 rtl:right-auto rtl:left-7'}`}></span>
@@ -2102,6 +2303,8 @@ export const UserDashboard = () => {
                   <button
                     onClick={() => toggleNotificationSetting('whatsappNotifications')}
                     disabled={isSavingSettings}
+                    title={notificationSettings.whatsappNotifications ? 'إيقاف إشعارات الواتساب' : 'تفعيل إشعارات الواتساب'}
+                    aria-label={notificationSettings.whatsappNotifications ? 'إيقاف إشعارات الواتساب' : 'تفعيل إشعارات الواتساب'}
                     className={`relative w-14 h-8 rounded-full transition-colors ${notificationSettings.whatsappNotifications ? 'bg-orange-500' : 'bg-slate-300'}`}
                   >
                     <span className={`absolute top-1 w-6 h-6 bg-white rounded-full transition-all ${notificationSettings.whatsappNotifications ? 'right-1' : 'left-1 rtl:right-auto rtl:left-7'}`}></span>
@@ -2113,12 +2316,10 @@ export const UserDashboard = () => {
           </div>
         )}
 
-        {/* Detailed Interactive Report Modal */}
         {showDetailedReport && selectedReport && (
           <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-md z-[115] overflow-y-auto" dir="rtl">
             <div className="min-h-screen flex items-center justify-center p-4">
               <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-4xl p-8 md:p-12 animate-in zoom-in-95 duration-300 relative my-8">
-                {/* Header */}
                 <div className="flex justify-between items-start mb-10 border-b border-slate-100 pb-8">
                   <div>
                     <div className="flex items-center gap-3 mb-2">
@@ -2136,7 +2337,6 @@ export const UserDashboard = () => {
                   </button>
                 </div>
 
-                {/* Data Sources Indicators */}
                 <div className="flex flex-wrap gap-4 justify-center mb-10">
                   <div className="px-4 py-2 bg-blue-50 text-blue-700 border border-blue-100 rounded-xl text-xs font-black flex items-center gap-2">
                     <Globe className="w-4 h-4" /> مُحلل من فيسبوك (السوق الليبي)
@@ -2149,7 +2349,6 @@ export const UserDashboard = () => {
                   </div>
                 </div>
 
-                {/* Market Price Analysis Report */}
                 {selectedReport.title === 'تحليل أسعار السوق' && (
                   <div className="bg-slate-50 p-8 rounded-[2rem] border border-slate-100 mb-10">
                     <h3 className="text-xl font-black text-slate-800 mb-8 flex items-center gap-2">
@@ -2164,7 +2363,6 @@ export const UserDashboard = () => {
                       </div>
                     ) : (
                       <div className="space-y-6">
-                        {/* Local Market Bar */}
                         <div>
                           <div className="flex justify-between text-sm font-bold text-slate-600 mb-2">
                             <span>السوق المحلي (ليبيا - معارض وصفحات فيسبوك)</span>
@@ -2175,7 +2373,6 @@ export const UserDashboard = () => {
                           </div>
                         </div>
 
-                        {/* OpenSooq Bar */}
                         <div>
                           <div className="flex justify-between text-sm font-bold text-slate-600 mb-2">
                             <span>{marketData?.source || 'السوق المفتوح (ليبيا)'}</span>
@@ -2186,7 +2383,6 @@ export const UserDashboard = () => {
                           </div>
                         </div>
 
-                        {/* Import Bar */}
                         <div>
                           <div className="flex justify-between text-sm font-black text-orange-600 mb-2">
                             <span>استيراد مباشر عبر أوتو برو (شامل الشحن والجمارك)</span>
@@ -2203,7 +2399,6 @@ export const UserDashboard = () => {
                   </div>
                 )}
 
-                {/* Monthly Sales Report */}
                 {selectedReport.title === 'تقرير مبيعات الشهر' && (
                   <div className="bg-slate-50 p-8 rounded-[2rem] border border-slate-100 mb-10 text-right" dir="rtl">
                     <h3 className="text-xl font-black text-slate-800 mb-8 flex items-center gap-2">
@@ -2220,7 +2415,7 @@ export const UserDashboard = () => {
                       <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm text-center">
                         <div className="text-sm font-bold text-slate-500 mb-2">حجم المبيعات (دولار)</div>
                         <div className="text-3xl font-black text-orange-500">$1.2M</div>
-                        <div className="text-xs text-emerald-500 font-bold mt-2">+8% عن الشهر الماضي</div>
+                        <div className="text-xs text-emerald-500 font-bold mt-8">+8% عن الشهر الماضي</div>
                       </div>
                       <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm text-center">
                         <div className="text-sm font-bold text-slate-500 mb-2">متوسط التوفير للعملاء</div>
@@ -2270,7 +2465,6 @@ export const UserDashboard = () => {
                   </div>
                 )}
 
-                {/* Updated Shipping Prices */}
                 {selectedReport.title === 'أسعار الشحن المحدثة' && (
                   <div className="bg-slate-50 p-8 rounded-[2rem] border border-slate-100 mb-10 text-right" dir="rtl">
                     <h3 className="text-xl font-black text-slate-800 mb-8 flex items-center gap-2">
@@ -2279,7 +2473,6 @@ export const UserDashboard = () => {
                     </h3>
 
                     <div className="space-y-6">
-                      {/* US to Arab */}
                       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden p-6 shadow-sm mb-4">
                         <h4 className="font-black text-lg text-slate-900 mb-4 border-b border-slate-100 pb-2">من موانئ أمريكا إلى الوجهات العربية</h4>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm font-bold">
@@ -2292,7 +2485,6 @@ export const UserDashboard = () => {
                         </div>
                       </div>
 
-                      {/* Libya to Arab */}
                       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden p-6 shadow-sm mb-4">
                         <h4 className="font-black text-lg text-slate-900 mb-4 border-b border-slate-100 pb-2">من موانئ ليبيا إلى الوجهات العربية</h4>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm font-bold">
@@ -2303,7 +2495,6 @@ export const UserDashboard = () => {
                         </div>
                       </div>
 
-                      {/* UAE to Arab */}
                       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden p-6 shadow-sm mb-4">
                         <h4 className="font-black text-lg text-slate-900 mb-4 border-b border-slate-100 pb-2">من الإمارات إلى الوجهات العربية</h4>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm font-bold">
@@ -2314,7 +2505,6 @@ export const UserDashboard = () => {
                         </div>
                       </div>
 
-                      {/* Saudi to Arab */}
                       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden p-6 shadow-sm mb-4">
                         <h4 className="font-black text-lg text-slate-900 mb-4 border-b border-slate-100 pb-2">من السعودية إلى الوجهات العربية</h4>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm font-bold">
@@ -2328,7 +2518,6 @@ export const UserDashboard = () => {
                   </div>
                 )}
 
-                {/* Market Insights Text */}
                 <div className="bg-emerald-50 text-emerald-800 p-6 rounded-2xl mb-10 border border-emerald-100">
                   <div className="flex items-start gap-4">
                     <TrendingUp className="w-8 h-8 text-emerald-600 shrink-0 mt-1" />
@@ -2341,7 +2530,6 @@ export const UserDashboard = () => {
                   </div>
                 </div>
 
-                {/* Marketing Call to Action Banner */}
                 <div className="bg-slate-900 text-white p-8 md:p-10 rounded-[2rem] relative overflow-hidden shadow-2xl">
                   <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-8 text-center md:text-right">
                     <div className="flex-1">
@@ -2363,7 +2551,6 @@ export const UserDashboard = () => {
                     </div>
                   </div>
 
-                  {/* Abstract Graphic representing connection */}
                   <div className="absolute top-0 left-0 w-64 h-64 bg-orange-500/10 rounded-full blur-3xl -translate-y-1/2 -translate-x-1/2"></div>
                   <div className="absolute bottom-0 right-0 w-48 h-48 bg-blue-500/10 rounded-full blur-2xl translate-y-1/2 translate-x-1/2"></div>
                 </div>
@@ -2373,7 +2560,6 @@ export const UserDashboard = () => {
           </div>
         )}
 
-        {/* Phase 15 — KYC Identity Verification */}
         {view === 'kyc' && (
           <div className="p-6 md:p-8 max-w-3xl">
             <KycPanel
@@ -2384,7 +2570,192 @@ export const UserDashboard = () => {
           </div>
         )}
 
-        {/* Modal overlays are handled globally at the end of the viewport */}
+        {showDepositModal && (
+          <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+              <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                <h3 className="text-xl font-black text-slate-800 flex items-center gap-2">
+                  <WalletIcon className="w-6 h-6 text-orange-500" />
+                  شحن رصيد المحفظة
+                </h3>
+                <button aria-label="إغلاق" title="إغلاق" onClick={() => setShowDepositModal(false)} className="p-2 text-slate-400 hover:text-rose-500 transition-colors bg-slate-100 rounded-full">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="p-6">
+                <label className="block text-sm font-bold text-slate-700 mx-1 mb-2">المبلغ (USD)</label>
+                <input 
+                  type="number" 
+                  title="المبلغ"
+                  placeholder="أدخل المبلغ بالشكل الصحيح"
+                  value={depositAmount} 
+                  onChange={(e) => setDepositAmount(e.target.value)} 
+                  className="w-full border-2 border-slate-200 rounded-2xl p-4 font-bold outline-none focus:border-orange-500 transition-all text-xl text-center"
+                />
+                <button 
+                  aria-label="طلب شحن" title="طلب شحن"
+                  onClick={handleDeposit} 
+                  disabled={isSubmittingDeposit}
+                  className="w-full mt-6 bg-slate-900 text-white rounded-2xl py-4 font-black hover:bg-orange-500 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {isSubmittingDeposit ? <RefreshCw className="w-5 h-5 animate-spin" /> : <CreditCard className="w-5 h-5" />}
+                  طلب شحن
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showInspectionModal && (
+          <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-[2rem] shadow-2xl w-full max-md overflow-hidden animate-in zoom-in-95 duration-200">
+              <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                <h3 className="text-xl font-black text-slate-800 flex items-center gap-2">
+                  <ShieldCheck className="w-6 h-6 text-indigo-500" />
+                  طلب فحص فني
+                </h3>
+                <button aria-label="إغلاق" title="إغلاق" onClick={() => setShowInspectionModal(false)} className="p-2 text-slate-400 hover:text-rose-500 transition-colors bg-slate-100 rounded-full">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <form onSubmit={handleInspectionSubmit} className="p-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mx-1 mb-2">السيارة (النوع والموديل)</label>
+                  <input title="السيارة" required placeholder="مثال: Toyota Camry 2022" value={inspectionForm.carDetails} onChange={(e) => setInspectionForm({...inspectionForm, carDetails: e.target.value})} className="w-full border-2 border-slate-200 rounded-2xl p-3 font-bold outline-none focus:border-indigo-500 transition-all" />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mx-1 mb-2">موقع السيارة</label>
+                  <input title="موقع السيارة" required placeholder="مثال: مزاد دبي أو معرض سيارات" value={inspectionForm.location} onChange={(e) => setInspectionForm({...inspectionForm, location: e.target.value})} className="w-full border-2 border-slate-200 rounded-2xl p-3 font-bold outline-none focus:border-indigo-500 transition-all" />
+                </div>
+                <button 
+                  title="تقديم طلب الفحص"
+                  type="submit"
+                  className="w-full mt-4 bg-indigo-600 text-white rounded-2xl py-4 font-black hover:bg-indigo-700 transition-all flex items-center justify-center gap-2"
+                >
+                  <Send className="w-5 h-5" />
+                  تقديم طلب الفحص
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {showPaymentModal && selectedInvoice && (
+          <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-xl z-[150] flex items-center justify-center p-4 overflow-y-auto" dir="rtl">
+            <div className="bg-white rounded-[3rem] shadow-2xl w-full max-w-xl overflow-hidden animate-in zoom-in-95 duration-300">
+              <div className="p-8 border-b border-slate-50 flex justify-between items-center bg-slate-50/50">
+                <div>
+                  <h3 className="text-2xl font-black text-slate-900">دفع فاتورة {selectedInvoice.type === 'purchase' ? 'شراء سيارة' : selectedInvoice.type === 'transport' ? 'نقل داخلي' : 'شحن دولي'}</h3>
+                  <p className="text-sm font-bold text-slate-400 mt-1">الرقم المرجعي: INV-{selectedInvoice.id.substring(0, 8).toUpperCase()}</p>
+                </div>
+                <button
+                    onClick={() => setShowPaymentModal(false)}
+                    className="p-3 bg-slate-50 text-slate-400 hover:text-orange-500 rounded-2xl transition-all"
+                    title="إغلاق نافذة الدفع"
+                  >
+                    <X className="w-6 h-6" />
+                  </button>
+              </div>
+
+              <div className="p-8 space-y-8">
+                <div className="bg-slate-900 text-white p-8 rounded-[2rem] flex items-center justify-between shadow-2xl shadow-slate-900/20">
+                  <div>
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">المبلغ المطلوب سداده</div>
+                    <div className="text-4xl font-black">${selectedInvoice.amount.toLocaleString()}</div>
+                  </div>
+                  <DollarSign className="w-12 h-12 text-orange-500 opacity-50" />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-black text-slate-900 mb-4 px-2 tracking-wide">اختر طريقة الدفع المناسبة:</label>
+                  <div className="grid grid-cols-2 gap-4">
+                    {[
+                      { id: 'wallet', label: 'المحفظة الرقمية', icon: Wallet, desc: 'دفع فوري من رصيدك' },
+                      { id: 'bank_transfer', label: 'تحويل بنكي', icon: Building2, desc: 'يتطلب مراجعة الإدارة' },
+                      { id: 'cash', label: 'دفع نقدي', icon: DollarSign, desc: 'في أقرب مكتب لنا' },
+                      { id: 'card', label: 'بطاقة إئتمان', icon: CreditCard, desc: 'دفع إلكتروني سريع' },
+                    ].map((m) => (
+                      <button
+                        key={m.id}
+                        onClick={() => setPaymentMethod(m.id as any)}
+                        className={`p-6 rounded-[2rem] border-2 transition-all text-right flex flex-col gap-3 group relative overflow-hidden ${paymentMethod === m.id ? 'border-orange-500 bg-orange-50/50 shadow-lg' : 'border-slate-100 hover:border-slate-300 hover:bg-slate-50'}`}
+                      >
+                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${paymentMethod === m.id ? 'bg-orange-500 text-white shadow-lg' : 'bg-slate-100 text-slate-400 group-hover:bg-slate-200'}`}>
+                          <m.icon className="w-6 h-6" />
+                        </div>
+                        <div>
+                          <div className={`font-black text-sm ${paymentMethod === m.id ? 'text-orange-900' : 'text-slate-900'}`}>{m.label}</div>
+                          <div className="text-[10px] font-bold text-slate-400 mt-0.5">{m.desc}</div>
+                        </div>
+                        {paymentMethod === m.id && <div className="absolute top-4 left-4 w-6 h-6 bg-orange-500 rounded-full flex items-center justify-center text-white shadow-sm"><Check className="w-3.5 h-3.5" /></div>}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Conditional Fields for Manual Methods */}
+                {(paymentMethod === 'bank_transfer' || paymentMethod === 'cash') && (
+                  <div className="space-y-6 bg-slate-50 p-6 rounded-[2rem] border border-slate-100 animate-in fade-in slide-in-from-top-4 duration-500">
+                    <div className="flex items-center gap-4 mb-2">
+                       <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-orange-500 shadow-sm">
+                          <Info className="w-5 h-5" />
+                       </div>
+                       <div>
+                          <div className="text-sm font-black text-slate-900">معلومات إضافية</div>
+                          <p className="text-[10px] font-bold text-slate-400">يرجى إرفاق تفاصيل الدفع لتسريع عملية التأكيد</p>
+                       </div>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 mr-2">رقم الحوالة أو المرجع</label>
+                      <input 
+                        type="text" 
+                        title="رقم المرجع"
+                        placeholder="مثال: REF-12345678"
+                        className="w-full bg-white border-2 border-slate-100 rounded-2xl p-4 font-bold outline-none focus:border-orange-500 transition-all text-sm"
+                        value={referenceNo}
+                        onChange={(e) => setReferenceNo(e.target.value)}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 mr-2">إرفاق إيصال الدفع (صورة)</label>
+                      <div className="relative group cursor-pointer">
+                        <input 
+                          type="text" 
+                          title="رابط الإيصال"
+                          placeholder="رابط صورة الإيصال (اختياري)"
+                          className="w-full bg-white border-2 border-slate-100 rounded-2xl p-4 font-bold outline-none focus:border-orange-500 transition-all text-sm pr-12"
+                          value={receiptUrl}
+                          onChange={(e) => setReceiptUrl(e.target.value)}
+                        />
+                        <UploadCloud className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300 group-hover:text-orange-500 transition-all" />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Footer Actions */}
+                <div className="flex gap-4 pt-4">
+                  <button
+                    onClick={submitPayment}
+                    disabled={isSubmittingPayment}
+                    className="flex-[2] bg-slate-900 hover:bg-orange-600 text-white py-5 rounded-[1.5rem] font-black transition-all shadow-xl hover:shadow-orange-500/20 active:scale-95 disabled:opacity-50 flex items-center justify-center gap-3"
+                  >
+                    {isSubmittingPayment ? <RefreshCw className="w-6 h-6 animate-spin" /> : <ShieldCheck className="w-6 h-6" />}
+                    أتعهد بأني قمت بالدفع - تأكيد العملية
+                  </button>
+                  <button
+                    onClick={() => setShowPaymentModal(false)}
+                    className="flex-1 bg-slate-100 text-slate-500 py-5 rounded-[1.5rem] font-black hover:bg-slate-200 transition-all"
+                  >
+                    إلغاء
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </main >
     </div >
   );

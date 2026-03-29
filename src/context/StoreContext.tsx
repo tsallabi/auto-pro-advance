@@ -233,7 +233,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const fetchMarketEstimates = async () => {
     try {
       const res = await fetch('/api/admin/market-estimates');
-      if (res.ok) setMarketEstimates(await res.json());
+      if (res.ok) {
+        const data = await res.json();
+        setMarketEstimates(Array.isArray(data) ? data : []);
+      }
     } catch (e) { console.error('Failed to fetch market estimates', e); }
   };
 

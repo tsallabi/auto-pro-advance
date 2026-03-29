@@ -2,6 +2,8 @@ import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Home, Gavel, Calculator, Wallet, User } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
+import { useTranslation } from 'react-i18next';
+import i18n from '../i18n';
 
 /**
  * MobileBottomNav — Phase 14
@@ -11,30 +13,31 @@ import { useStore } from '../context/StoreContext';
 export const MobileBottomNav: React.FC = () => {
     const location = useLocation();
     const { currentUser } = useStore();
+    const { t } = useTranslation();
 
     const tabs = [
         {
             href: '/marketplace?tab=live',
-            label: 'المزادات',
+            label: t('nav.liveAuction'),
             icon: Gavel,
             match: ['/marketplace'],
         },
         {
             href: '/calculator',
-            label: 'الحاسبة',
+            label: t('nav.calculator'),
             icon: Calculator,
             match: ['/calculator'],
         },
         {
             href: '/',
-            label: 'الرئيسية',
+            label: t('nav.home'),
             icon: Home,
             match: ['/'],
             exact: true,
         },
         {
             href: currentUser ? '/wallet' : '/auth',
-            label: 'محفظتي',
+            label: t('nav.myWallet'),
             icon: Wallet,
             match: ['/wallet'],
         },
@@ -44,7 +47,7 @@ export const MobileBottomNav: React.FC = () => {
                     : currentUser.role === 'seller' ? '/dashboard/seller'
                         : '/dashboard/user'
                 : '/auth',
-            label: currentUser ? 'حسابي' : 'دخول',
+            label: currentUser ? (i18n.language === 'ar' ? 'حسابي' : 'Account') : (i18n.language === 'ar' ? 'دخول' : 'Login'),
             icon: User,
             match: ['/dashboard', '/auth'],
         },

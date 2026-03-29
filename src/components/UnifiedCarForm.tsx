@@ -16,6 +16,9 @@ const DRIVETRAINS = ['دفع أمامي (FWD)', 'دفع خلفي (RWD)', 'دفع
 const SALE_STATUSES = ['البائع وضع حد أدنى للقبول (Minimum Bid)', 'بيع خالص (Pure Sale)', 'بناء على موافقة البائع (On Approval)'];
 const BOOLEANS = [{ label: 'نعم (Yes)', value: 'yes' }, { label: 'لا (No)', value: 'no' }];
 const ACCEPTED_OFFER_OPTIONS = ['مفتوح (أي عرض)', 'أقل بـ 0% من السعر الاحتياطي', 'أقل بـ 10% من السعر الاحتياطي'];
+const BODY_TYPES = ['سيدان (Sedan)', 'دفع رباعي (SUV)', 'شاحنة (Truck)', 'كوبيه (Coupe)', 'فان (Van)', 'هاتشباك (Hatchback)', 'مكشوفة (Convertible)', 'أخرى (Other)'];
+const AUCTION_LIGHTS = ['أخضر (يعمل ويسير)', 'أخضر/أصفر (يعمل ويسير مع ملاحظات)', 'أزرق (تحتاج إصلاحات)', 'أحمر (لا تعمل)'];
+const CONDITION_REPORT_TYPES = ['فحص داخلي (In-Network)', 'فحص خارجي (External)', 'بدون فحص (None)'];
 
 const ComboSelect = ({ label, icon: Icon, value, options, onChange, required = false }: any) => {
     const [isOpen, setIsOpen] = useState(false);
@@ -76,7 +79,9 @@ export const UnifiedCarForm: React.FC<UnifiedCarFormProps> = ({ initialData, onS
         auctionLane: '', showroomName: '', startingBid: '', reservePrice: '',
         saleStatus: SALE_STATUSES[0], locationDetails: '', exchangeRate: '1', minPrice: '',
         specialNote: '', buyNowPrice: '', acceptedOfferPercentage: ACCEPTED_OFFER_OPTIONS[0],
+        bodyType: BODY_TYPES[0], interiorColor: '', auctionLights: AUCTION_LIGHTS[0], conditionReportType: CONDITION_REPORT_TYPES[0],
         youtubeVideoUrl: initialData?.youtubeVideoUrl || '',
+        isRecommended: initialData?.isRecommended || false,
     });
 
     const [isDecodingVin, setIsDecodingVin] = useState(false);
@@ -240,7 +245,7 @@ export const UnifiedCarForm: React.FC<UnifiedCarFormProps> = ({ initialData, onS
     const iptClass = "w-full bg-slate-900 border border-slate-700/50 text-white p-3 rounded-lg text-sm font-bold placeholder-slate-500 focus:border-orange-500 focus:ring-1 focus:ring-orange-500 outline-none transition-all";
 
     return (
-        <div className="bg-slate-950 min-h-screen p-4 md:p-8 text-slate-300 font-cairo" dir="rtl">
+        <div className="bg-slate-950 min-h-screen p-4 pb-24 md:p-8 md:pb-8 text-slate-300 font-cairo" dir="rtl">
             <div className="max-w-7xl mx-auto">
                 <div className="flex items-center justify-between mb-8">
                     <h1 className="text-3xl font-black text-orange-500 flex items-center gap-3">
@@ -342,6 +347,13 @@ export const UnifiedCarForm: React.FC<UnifiedCarFormProps> = ({ initialData, onS
                                     <label className="block text-xs font-black text-orange-500 mb-2">اللون الخارجي</label>
                                     <input type="text" aria-label="اللون الخارجي" title="اللون الخارجي" value={formData.exteriorColor || ''} onChange={e => handleFieldChange('exteriorColor', e.target.value)} className={iptClass} placeholder="أسود، أبيض، فضي..." />
                                 </div>
+                                <div>
+                                    <label className="block text-xs font-black text-orange-500 mb-2">اللون الداخلي</label>
+                                    <input type="text" aria-label="اللون الداخلي" title="اللون الداخلي" value={formData.interiorColor || ''} onChange={e => handleFieldChange('interiorColor', e.target.value)} className={iptClass} placeholder="بيج، أسود، أحمر..." />
+                                </div>
+                                <ComboSelect label="شكل الهيكل" value={formData.bodyType} options={BODY_TYPES} onChange={(v: string) => handleFieldChange('bodyType', v)} />
+                                <ComboSelect label="إضاءة المزاد (حالة عامة)" value={formData.auctionLights} options={AUCTION_LIGHTS} onChange={(v: string) => handleFieldChange('auctionLights', v)} />
+                                <ComboSelect label="نوع تقرير الفحص" value={formData.conditionReportType} options={CONDITION_REPORT_TYPES} onChange={(v: string) => handleFieldChange('conditionReportType', v)} />
                                 <ComboSelect label="حالة السيارة" value={formData.runsDrives || 'تعمل وتسير'} options={['تعمل وتسير', 'المحرك يعمل فقط', 'لا تعمل ولا تسير']} onChange={(v: string) => handleFieldChange('runsDrives', v)} />
                             </div>
                         </div>
@@ -384,10 +396,22 @@ export const UnifiedCarForm: React.FC<UnifiedCarFormProps> = ({ initialData, onS
                                 </div>
                                 <ComboSelect label="نسبة العرض المقبولة" value={formData.acceptedOfferPercentage} options={ACCEPTED_OFFER_OPTIONS} onChange={(v: string) => handleFieldChange('acceptedOfferPercentage', v)} />
 
-                                <ComboSelect label="حالة البيع" value={formData.saleStatus} options={SALE_STATUSES} onChange={(v: string) => handleFieldChange('saleStatus', v)} />
-                                <div>
-                                    <label className="block text-xs font-black text-orange-500 mb-2">الموقع (Location Details)</label>
-                                    <input type="text" aria-label="الموقع" title="الموقع" value={formData.locationDetails} onChange={e => handleFieldChange('locationDetails', e.target.value)} className={iptClass} placeholder="طرابلس, ليبيا..." />
+                                <div className="col-span-2 bg-slate-800/20 p-4 rounded-xl border border-slate-800/50 flex items-center justify-between">
+                                    <div className="flex flex-col">
+                                        <label className="text-sm font-black text-orange-500 mb-1 leading-none">تمييز السيارة (Recommended Badge)</label>
+                                        <p className="text-[10px] text-slate-500 font-bold">هذه الميزة تظهر السيارة في النتائج الأولى كسيارة موصى بها</p>
+                                    </div>
+                                    <label className="relative inline-flex items-center cursor-pointer group">
+                                        <input 
+                                            type="checkbox" 
+                                            title="إضافة توصية"
+                                            aria-label="إضافة توصية للسيارة"
+                                            checked={formData.isRecommended} 
+                                            onChange={e => handleFieldChange('isRecommended', e.target.checked)}
+                                            className="sr-only peer" 
+                                        />
+                                        <div className="w-14 h-7 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-orange-600 group-hover:shadow-[0_0_15px_rgba(234,88,12,0.3)] transition-all"></div>
+                                    </label>
                                 </div>
                             </div>
                         </div>

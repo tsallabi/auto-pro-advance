@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import React, { useState, useEffect, useRef } from 'react';
+import { useClickOutside } from '../hooks/useClickOutside';
+import { useSearchParams, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import {
@@ -7,7 +8,7 @@ import {
   Plus, Trash2, Edit, Building2, FileText, Mail, Wallet, Truck, ShieldCheck,
   Store, Gavel, List, File, History, HelpCircle, Settings, Filter, MessageSquare, MoreVertical,
   Code2, UploadCloud, Globe, Search, ShoppingCart, Ship, Check, Reply, Link as LinkIcon, Calculator, Info,
-  Shield, BookOpen, TrendingUp, Bell, Handshake, CreditCard, MapPin, Clock, X, XCircle, Map, Zap, Trophy, Eye, UserPlus, ClipboardCheck, Download, Share2, Send, AlertCircle
+  Shield, BookOpen, TrendingUp, Bell, Handshake, CreditCard, MapPin, Clock, X, XCircle, Map, Zap, Trophy, Eye, UserPlus, ClipboardCheck, Download, Share2, Send, AlertCircle, Receipt, PlusCircle, Menu, ShieldAlert
 } from 'lucide-react';
 
 import { NotificationDropdown } from '../components/NotificationDropdown';
@@ -17,6 +18,8 @@ import { Car as CarType } from '../types';
 import { CopartAuctionSystem } from '../components/CopartAuctionSystem';
 import { UnifiedCarForm } from '../components/UnifiedCarForm';
 import { ConfirmModal } from '../components/ConfirmModal';
+import { ReportsPanel } from '../components/admin/ReportsPanel';
+import { KycReviewPanel } from '../components/admin/KycReviewPanel';
 
 /* ============================================================
    FooterSettingsPanel — Admin panel to control SiteFooter
@@ -47,10 +50,21 @@ export const FOOTER_DEFAULT = {
   ],
 };
 
+const TEAM_PERMISSIONS: Record<string, string[]> = {
+  'registration': ['overview', 'user_management', 'kyc_review', 'messages'],
+  'accounting': ['overview', 'financial_approvals', 'payment_requests', 'withdrawal_requests', 'all_invoices', 'financial_ledger', 'expenses', 'payment_gateways'],
+  'purchasing': ['overview', 'cars', 'inventory_review', 'manage_live_auctions', 'marketplace_management', 'reports'],
+  'transport': ['overview', 'shipments_tracking', 'document_approvals'],
+  'clearance': ['overview', 'shipments_tracking', 'document_approvals'],
+  'shipping': ['overview', 'shipments_tracking', 'document_approvals', 'shipping_settings'],
+  'complaints': ['overview', 'messages', 'user_management'],
+  'admin': ['*'],
+};
 
 /* ============================================================
    ManageLiveAuctionsPanel
    ============================================================ */
+
 const ManageLiveAuctionsPanel: React.FC<{ currentUser: any }> = ({ currentUser }) => {
   const [data, setData] = useState<any>({ wonCars: [], offerCars: [], scheduledCars: [], counterCars: [], unscheduledCars: [] });
   const [loading, setLoading] = useState(true);
@@ -138,7 +152,8 @@ const ManageLiveAuctionsPanel: React.FC<{ currentUser: any }> = ({ currentUser }
       {/* Content Area */}
       <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
         {activeTab === 'won' && (
-          <table className="w-full text-right text-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full text-right text-sm min-w-[1000px]">
             <thead className="bg-slate-50 text-slate-500">
               <tr>
                 <th className="p-4">السيارة</th>
@@ -199,10 +214,12 @@ const ManageLiveAuctionsPanel: React.FC<{ currentUser: any }> = ({ currentUser }
               ))}
             </tbody>
           </table>
+          </div>
         )}
 
         {activeTab === 'offer' && (
-          <table className="w-full text-right text-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full text-right text-sm min-w-[1000px]">
             <thead className="bg-slate-50 text-slate-500">
               <tr>
                 <th className="p-4">السيارة</th>
@@ -240,10 +257,12 @@ const ManageLiveAuctionsPanel: React.FC<{ currentUser: any }> = ({ currentUser }
               ))}
             </tbody>
           </table>
+          </div>
         )}
 
         {activeTab === 'counter' && (
-          <table className="w-full text-right text-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full text-right text-sm min-w-[1000px]">
             <thead className="bg-slate-50 text-slate-500">
               <tr>
                 <th className="p-4">السيارة</th>
@@ -275,10 +294,12 @@ const ManageLiveAuctionsPanel: React.FC<{ currentUser: any }> = ({ currentUser }
               ))}
             </tbody>
           </table>
+          </div>
         )}
 
         {(activeTab === 'scheduled' || activeTab === 'unscheduled') && (
-          <table className="w-full text-right text-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full text-right text-sm min-w-[900px]">
             <thead className="bg-slate-50 text-slate-500">
               <tr>
                 <th className="p-4">السيارة (VIN)</th>
@@ -366,6 +387,7 @@ const ManageLiveAuctionsPanel: React.FC<{ currentUser: any }> = ({ currentUser }
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
     </div>
@@ -1224,7 +1246,7 @@ const PaymentRequestsPanel: React.FC = () => {
                 <Wallet className="w-6 h-6 text-orange-500" />
                 شحن وتسوية محفظة (Admin)
               </h3>
-              <button onClick={() => setShowTopupModal(false)} className="p-2 hover:bg-rose-100 hover:text-rose-600 rounded-full text-slate-400 transition-colors">
+              <button onClick={() => setShowTopupModal(false)} title="إغلاق" aria-label="إغلاق" className="p-2 hover:bg-rose-100 hover:text-rose-600 rounded-full text-slate-400 transition-colors">
                 <X className="w-5 h-5"/>
               </button>
             </div>
@@ -1264,7 +1286,7 @@ const PaymentRequestsPanel: React.FC = () => {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm min-w-[600px]">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
                   {['المستخدم', 'النوع', 'المبلغ', 'طريقة الدفع', 'المرجع', 'التاريخ', 'الحالة', 'إجراء'].map(h => (
@@ -1850,7 +1872,7 @@ const MarketingPanel: React.FC = () => {
                 الجمهور المستهدف
               </h3>
               <div className="max-h-60 overflow-y-auto border border-slate-100 rounded-xl">
-                <table className="w-full text-right text-sm">
+                <table className="w-full text-right text-sm min-w-[600px]">
                   <thead className="bg-slate-50 sticky top-0">
                     <tr>
                       <th className="p-3">
@@ -1928,6 +1950,8 @@ const MarketingPanel: React.FC = () => {
                 <select
                   value={templateType}
                   onChange={e => setTemplateType(e.target.value as any)}
+                  title="نوع القالب"
+                  aria-label="نوع القالب"
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 font-bold text-slate-800 outline-none focus:border-indigo-500 transition-all cursor-pointer"
                 >
                   <option value="upcoming">سيارات قريباً</option>
@@ -1941,6 +1965,9 @@ const MarketingPanel: React.FC = () => {
                   type="text"
                   value={subject}
                   onChange={e => setSubject(e.target.value)}
+                  title="عنوان الإيميل"
+                  aria-label="عنوان الإيميل"
+                  placeholder="أدخل عنوان الرسالة هنا..."
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 font-bold text-slate-800 outline-none focus:border-indigo-500 transition-all"
                 />
               </div>
@@ -2014,6 +2041,9 @@ const MarketingPanel: React.FC = () => {
                       type="text"
                       value={editTemplate.subject || ''}
                       onChange={e => setEditTemplate({ ...editTemplate, subject: e.target.value })}
+                      title="عنوان الرسالة (Subject)"
+                      aria-label="عنوان الرسالة (Subject)"
+                      placeholder="أدخل عنوان القالب هنا..."
                       className="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 text-slate-800 font-bold outline-none focus:border-indigo-500"
                     />
                   </div>
@@ -2029,6 +2059,9 @@ const MarketingPanel: React.FC = () => {
                             dir="ltr"
                             value={editTemplate.body_html || ''}
                             onChange={e => setEditTemplate({ ...editTemplate, body_html: e.target.value })}
+                            title="محتوى البريد (HTML)"
+                            aria-label="محتوى البريد (HTML)"
+                            placeholder="<!-- أدخل كود HTML هنا -->"
                             className="w-full bg-slate-900 text-emerald-400 font-mono text-xs rounded-2xl p-6 min-h-[400px] outline-none border-2 border-slate-800 focus:border-indigo-500"
                           />
                         </div>
@@ -2040,6 +2073,9 @@ const MarketingPanel: React.FC = () => {
                           <textarea
                             value={editTemplate.body_whatsapp || ''}
                             onChange={e => setEditTemplate({ ...editTemplate, body_whatsapp: e.target.value })}
+                            title="محتوى الواتساب (WhatsApp)"
+                            aria-label="محتوى الواتساب (WhatsApp)"
+                            placeholder="أدخل نص الرسالة هنا..."
                             className="w-full bg-emerald-50 text-emerald-900 font-bold text-sm rounded-2xl p-6 min-h-[400px] outline-none border-2 border-emerald-100 focus:border-emerald-500"
                           />
                           <div className="text-[10px] text-slate-500 bg-slate-50 p-4 rounded-xl border border-slate-200">
@@ -2109,23 +2145,36 @@ export const AdminDashboard = () => {
   const INVOICE_STATUS_LABELS: any = {
     unpaid: 'بانتظار الدفع',
     pending: 'قيد المراجعة',
-    paid: 'تم الدفع',
-    release_issued: 'تم إصدار الإفراج',
+    paid: 'تم الدفع بالكامل',
+    awaiting_dispatch: 'بانتظار النقل الداخلي',
+    picked_up: 'تم التحميل (Picked Up)',
+    at_port: 'في الميناء (At Port)',
+    title_received: 'استلام المستندات (Title)',
+    in_transit: 'في الشحن البحري',
+    arrived_khoms: 'وصلت ميناء الوصول',
+    ready_for_delivery: 'جاهزة للتسليم',
     delivered_to_buyer: 'تم التسليم للمشتري',
     seller_paid: 'تم الدفع للبائع',
-    seller_paid_by_admin: 'تم الدفع للبائع'
+    seller_paid_by_admin: 'دورة مكتملة ✔️'
   };
 
   const INVOICE_TYPE_LABELS: any = {
     purchase: 'شراء سيارة',
-    shipping: 'شحن داخلي',
-    transport: 'نقل دولي',
-    customs: 'تخليص جمركي'
+    shipping: 'شحن بحري',
+    transport: 'نقل داخلي',
+    customs: 'تخليص جمركي',
+    storage_fine: 'غرامة تخزين',
+    extra_service: 'خدمة إضافية'
   };
 
-  const { cars, addCar, updateCar, deleteCar, stats, users, setUsers, addUser, showAlert, showConfirm, socket, messages, notifications, unreadCounts, markMessageAsRead, markNotificationAsRead, sendMessage, marketEstimates, addMarketEstimate, updateMarketEstimate, deleteMarketEstimate, exchangeRate, updateExchangeRate } = useStore();
+  const { cars, addCar, updateCar, deleteCar, stats, users, setUsers, addUser, showAlert, showConfirm, socket, messages, notifications, unreadCounts, markMessageAsRead, markNotificationAsRead, sendMessage, marketEstimates, addMarketEstimate, updateMarketEstimate, deleteMarketEstimate, exchangeRate, updateExchangeRate, currentUser } = useStore();
   const [searchParams, setSearchParams] = useSearchParams();
   const view = searchParams.get('view') || 'overview';
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+
+  const [showAddFeeModal, setShowAddFeeModal] = useState<{ isOpen: boolean; carId: string; userId: string } | null>(null);
+  const [feeForm, setFeeForm] = useState({ amount: '', type: 'storage_fine', dueDate: '' });
+  const [isAddingFee, setIsAddingFee] = useState(false);
 
   const [estimateSearch, setEstimateSearch] = useState('');
   const [showEstimateModal, setShowEstimateModal] = useState(false);
@@ -2139,6 +2188,15 @@ export const AdminDashboard = () => {
   const [filter, setFilter] = useState('all');
   const [showNotifications, setShowNotifications] = useState(false);
   const [showMessages, setShowMessages] = useState(false);
+
+  // Click Outside Refs
+  const notificationsRef = useRef<HTMLDivElement>(null);
+  const messagesRef = useRef<HTMLDivElement>(null);
+  const sidebarRef = useRef<HTMLElement>(null);
+
+  useClickOutside(notificationsRef, () => setShowNotifications(false));
+  useClickOutside(messagesRef, () => setShowMessages(false));
+  useClickOutside(sidebarRef, () => setMobileSidebarOpen(false));
 
   // Accordion state for sidebar categories
   const [openGroup, setOpenGroup] = useState<string>('INITIAL');
@@ -2173,45 +2231,77 @@ export const AdminDashboard = () => {
   const [showInvoiceConfirmModal, setShowInvoiceConfirmModal] = useState<{ isOpen: boolean; invoice: any; nextStatus: string }>({ isOpen: false, invoice: null, nextStatus: '' });
   const [rejectReason, setRejectReason] = useState('');
   const [editingInvoice, setEditingInvoice] = useState<any>(null);
+  const [showLibyanModal, setShowLibyanModal] = useState(false);
+  const [libyanModalForm, setLibyanModalForm] = useState<any>({ make: '', model: '', year: 2024, price: '' });
+  const [showReportModal, setShowReportModal] = useState<{ title: string; data: any } | null>(null);
+  const [selectedUser, setSelectedUser] = useState<any>(null);
+
   // Auto-fetch data based on view
   useEffect(() => {
     if (view === 'messages') {
       setFetchingMessages(true);
       Promise.all([
-        fetch('/api/admin/all-messages').then(res => res.json()),
-        fetch('/api/admin/all-notifications').then(res => res.json())
+        fetch('/api/admin/all-messages').then(res => res.ok ? res.json() : []),
+        fetch('/api/admin/all-notifications').then(res => res.ok ? res.json() : [])
       ]).then(([msgs, notes]) => {
-        setAllSystemMessages(msgs);
-        setAllSystemNotifications(notes);
+        setAllSystemMessages(Array.isArray(msgs) ? msgs : []);
+        setAllSystemNotifications(Array.isArray(notes) ? notes : []);
+        setFetchingMessages(false);
+      }).catch(err => {
+        console.error('System feed error:', err);
         setFetchingMessages(false);
       });
     }
     if (view === 'marketplace_management' || view === 'offer_market') {
       fetch('/api/admin/offer-market-cars')
-        .then(res => res.json())
-        .then(setOfferMarketCars);
+        .then(res => res.ok ? res.json() : [])
+        .then(data => setOfferMarketCars(Array.isArray(data) ? data : []))
+        .catch(() => setOfferMarketCars([]));
     }
     if (view === 'financials' || view === 'financial_ledger') {
-      fetch('/api/admin/all-transactions').then(res => res.json()).then(setAllTransactions);
-      fetch('/api/admin/all-invoices').then(res => res.json()).then(setAllInvoices);
+      fetch('/api/admin/all-transactions').then(res => res.ok ? res.json() : []).then(txs => setAllTransactions(Array.isArray(txs) ? txs : [])).catch(() => setAllTransactions([]));
+      fetch('/api/admin/all-invoices').then(res => res.ok ? res.json() : []).then(invs => setAllInvoices(Array.isArray(invs) ? invs : [])).catch(() => setAllInvoices([]));
     }
     if (view === 'reports') {
-      fetch('/api/admin/reports-analytics').then(res => res.json()).then(setReportsAnalytics);
-      fetch('/api/libyan-market').then(res => res.json()).then(data => setLibyanMarketPrices(Array.isArray(data) ? data : []));
+      fetch('/api/admin/reports-analytics').then(res => res.ok ? res.json() : null).then(setReportsAnalytics).catch(() => {});
+      fetch('/api/libyan-market').then(res => res.ok ? res.json() : []).then(data => setLibyanMarketPrices(Array.isArray(data) ? data : [])).catch(() => setLibyanMarketPrices([]));
     }
   }, [view]);
 
+  // Handle initial sidebar expansion based on current view
+  useEffect(() => {
+    if (openGroup === 'INITIAL') {
+      const groups = [
+        { group: 'Overview & Reports', items: ['overview', 'reports', 'messages'] },
+        { group: 'User Management', items: ['user_management', 'kyc_review'] },
+        { group: 'Vehicles & Auctions', items: ['cars', 'inventory_review', 'manage_live_auctions', 'marketplace_management', 'inspections'] },
+        { group: 'Treasury & Accounting', items: ['financial_approvals', 'payment_requests', 'withdrawal_requests', 'all_invoices', 'financial_ledger', 'expenses', 'payment_gateways'] },
+        { group: 'Logistics & Shipping', items: ['inventory_review', 'shipments_tracking', 'shipping_settings', 'calculator'] },
+        { group: 'Platform Settings', items: ['system_global', 'marketing', 'offices', 'footer_settings'] }
+      ];
+      const activeGroup = groups.find(g => g.items.includes(view));
+      if (activeGroup) {
+        setOpenGroup(activeGroup.group);
+      } else {
+        setOpenGroup('Overview & Reports'); // Fallback
+      }
+    }
+  }, [view, openGroup]);
+
+  const [invoiceActiveTab, setInvoiceActiveTab] = useState('all');
+
   // Unified system activity log
   const systemActivity = [
-    ...allSystemMessages.map(m => ({ ...m, activityType: 'message' })),
-    ...allSystemNotifications.map(n => ({ ...n, activityType: 'notification' }))
-  ].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    ...(Array.isArray(allSystemMessages) ? allSystemMessages : []).map(m => ({ ...m, activityType: 'message' })),
+    ...(Array.isArray(allSystemNotifications) ? allSystemNotifications : []).map(n => ({ ...n, activityType: 'notification' }))
+  ].sort((a, b) => (new Date(b.timestamp || 0).getTime() || 0) - (new Date(a.timestamp || 0).getTime() || 0));
 
   // ✅ PHASE 6: Wallet overview stats
   const [walletStats, setWalletStats] = useState({ totalAvailable: 0, totalPending: 0, totalEarned: 0, totalWithdrawn: 0 });
   const [withdrawalStats, setWithdrawalStats] = useState({ pendingCount: 0, pendingAmount: 0, completedAmount: 0 });
   // ✅ PHASE 7: KYC review
   const [kycUsers, setKycUsers] = useState<any[]>([]);
+  const [libyanMarketPrices, setLibyanMarketPrices] = useState<any[]>([]);
   const [buyerWalletStats, setBuyerWalletStats] = useState({ totalCashBalance: 0, totalDeposited: 0, pendingTopups: 0, pendingTopupAmount: 0 });
   const [receivables, setReceivables] = useState({ unpaidPurchase: 0, unpaidTransport: 0, unpaidShipping: 0 });
   const [calculatorSettings, setCalculatorSettings] = useState({
@@ -2221,14 +2311,8 @@ export const AdminDashboard = () => {
     other: 100
   });
   const [calcInput, setCalcInput] = useState<number>(5000);
-  const { currentUser } = useStore();
   const [reportsAnalytics, setReportsAnalytics] = useState<any>({ activeUsers: 0, totalBids: 0, salesVol: 0, dbHitRate: 99.8, geoSalesRaw: [] });
-  const [libyanMarketPrices, setLibyanMarketPrices] = useState<any[]>([]);
-  const [showReportModal, setShowReportModal] = useState<any>(null);
-  const [showLibyanModal, setShowLibyanModal] = useState(false);
-  const [libyanModalForm, setLibyanModalForm] = useState({
-    id: '', condition: 'جديد', make: '', makeEn: '', model: '', modelEn: '', year: 2024, transmission: 'اوتوماتيك', fuel: 'بنزين', mileage: '0', priceLYD: ''
-  });
+
 
   useEffect(() => {
     // 1. Fetch System Summary for badges and Overview
@@ -2306,7 +2390,7 @@ export const AdminDashboard = () => {
   // ✅ PHASE 5: Approve/Reject withdrawal handlers
   const handleApproveWithdrawal = async (id: string) => {
     try {
-      const res = await fetch(`/ api / admin / withdrawal - requests / ${id}/approve`, {
+      const res = await fetch(`/api/admin/withdrawal-requests/${id}/approve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ note: withdrawalNote })
@@ -2385,6 +2469,44 @@ export const AdminDashboard = () => {
     } catch (e) { showAlert('فشل تحديث الشحنة'); }
   };
 
+  // ======= MANUAL INVOICE HANDLER =======
+  const handleCreateManualInvoice = async () => {
+    if (!showAddFeeModal || !feeForm.amount || !feeForm.type) {
+      showAlert('يرجى ملء كافة البيانات المطلوبة', 'error');
+      return;
+    }
+
+    setIsAddingFee(true);
+    try {
+      const res = await fetch('/api/admin/invoices/manual', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: showAddFeeModal.userId,
+          carId: showAddFeeModal.carId,
+          amount: parseFloat(feeForm.amount),
+          type: feeForm.type,
+          dueDate: feeForm.dueDate || undefined
+        })
+      });
+
+      if (res.ok) {
+        showAlert('✅ تم إصدار الفاتورة الإضافية بنجاح وإشعار العميل', 'success');
+        setShowAddFeeModal(null);
+        setFeeForm({ amount: '', type: 'storage_fine', dueDate: '' });
+        // Refresh invoices
+        fetch('/api/admin/invoices').then(r => r.json()).then(setAdminInvoices);
+      } else {
+        const err = await res.json();
+        showAlert(err.error || 'فشل إصدار الفاتورة', 'error');
+      }
+    } catch (e) {
+      showAlert('خطأ في الاتصال بالخادم', 'error');
+    } finally {
+      setIsAddingFee(false);
+    }
+  };
+
   const [showAddCarModal, setShowAddCarModal] = useState(false);
   const [editingCarId, setEditingCarId] = useState<string | null>(null);
   const [showOpenSooqModal, setShowOpenSooqModal] = useState(false);
@@ -2395,7 +2517,6 @@ export const AdminDashboard = () => {
   const [showAddUserModal, setShowAddUserModal] = useState(false);
   const [showEditUserModal, setShowEditUserModal] = useState(false);
   const [showMessageModal, setShowMessageModal] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<any>(null);
   const [messageForm, setMessageForm] = useState({ subject: '', content: '' });
 
   // New Car Form State (Comprehensive)
@@ -3052,7 +3173,7 @@ export const AdminDashboard = () => {
             </div>
 
             {/* Quick Filters */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {[
                 { label: 'كافة المستخدمين', count: users.length, icon: Users, color: 'slate', active: filter === 'all', id: 'all' },
                 { label: 'بانتظار التفعيل KYC', count: pendingUsers.length, icon: ShieldCheck, color: 'orange', active: filter === 'pending', id: 'pending' },
@@ -3093,7 +3214,7 @@ export const AdminDashboard = () => {
               </div>
 
               <div className="overflow-x-auto">
-                <table className="w-full text-right">
+                <table className="w-full text-right min-w-[1000px]">
                   <thead>
                     <tr className="bg-slate-50/50 text-slate-400 text-[10px] font-black uppercase tracking-widest border-b border-slate-100">
                       <th className="p-6">العضو والبيانات</th>
@@ -3265,7 +3386,8 @@ export const AdminDashboard = () => {
             </div>
 
             <div className="bg-white rounded-[2.5rem] border border-slate-200 shadow-xl overflow-hidden">
-              <table className="w-full text-right">
+              <div className="overflow-x-auto">
+                <table className="w-full text-right min-w-[1000px]">
                 <thead className="bg-slate-50 text-slate-400 text-[10px] font-black uppercase tracking-widest">
                   <tr>
                     <th className="p-6">المزايد</th>
@@ -3338,6 +3460,7 @@ export const AdminDashboard = () => {
                 </tbody>
               </table>
             </div>
+          </div>
           </div>
         );
 
@@ -3506,7 +3629,7 @@ export const AdminDashboard = () => {
           ...messages.map(m => ({ ...m, activityType: 'message', content: m.content || m.message, timestamp: m.timestamp })),
           ...notifications.map(n => ({ ...n, activityType: 'notification', content: n.message, timestamp: n.timestamp })),
           ...allSystemNotifications.map(n => ({ ...n, activityType: 'notification' }))
-        ].filter((v, i, a) => a.findIndex(t => (t.id === v.id)) === i).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+        ].filter((v, i, a) => a.findIndex(t => (t.id === v.id)) === i).sort((a, b) => (new Date(b.timestamp || 0).getTime() || 0) - (new Date(a.timestamp || 0).getTime() || 0));
 
         return (
           <div className="space-y-6 animate-in fade-in duration-500">
@@ -3772,7 +3895,8 @@ export const AdminDashboard = () => {
             </div>
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
               <div className="p-4 border-b border-slate-100 font-bold text-slate-800">آخر العمليات المالية</div>
-              <table className="w-full text-right">
+              <div className="overflow-x-auto">
+                <table className="w-full text-right min-w-[600px]">
                 <thead className="bg-slate-50 text-slate-500 text-xs">
                   <tr>
                     <th className="p-4">العملية</th>
@@ -3802,116 +3926,9 @@ export const AdminDashboard = () => {
               </table>
             </div>
           </div>
-        );
-
-      case 'logistics':
-        const delayedShipments = adminShipments.filter(s => s.status === 'customs' || s.status === 'shipping_requested');
-
-        return (
-          <div className="space-y-6 animate-in fade-in duration-500">
-            <div className="flex justify-between items-center">
-              <div>
-                <h2 className="text-2xl font-bold text-slate-800">إدارة اللوجستيات والشحن 🚢</h2>
-                <p className="text-slate-500 text-sm mt-1">إدارة الشحنات، تحديث الحالات، ومراقبة التأخيرات.</p>
-              </div>
-              <button aria-label="زر" title="زر"
-                onClick={() => fetch('/api/admin/shipments').then(r => r.json()).then(setAdminShipments)}
-                className="p-2 text-slate-500 hover:text-slate-800 bg-white rounded-xl shadow-sm border border-slate-100"
-              >
-                <RefreshCw className="w-5 h-5" />
-              </button>
-            </div>
-
-            {delayedShipments.length > 0 && (
-              <div className="bg-rose-50 border border-rose-200 p-5 rounded-2xl flex items-start gap-4">
-                <div className="p-2 bg-rose-500 text-white rounded-xl mt-1">
-                  <AlertTriangle className="w-6 h-6" />
-                </div>
-                <div>
-                  <h3 className="font-black text-rose-800 text-lg">تنبيه تأخير شحنات ({delayedShipments.length})</h3>
-                  <p className="text-sm font-bold text-rose-600 mt-1">
-                    توجد شحنات عالقة إما في التخليص الجمركي أو بانتظار الشحن. يرجى مراجعة البائع أو المخلص الجمركي.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-right">
-                  <thead className="bg-slate-50 text-slate-500 text-sm border-b border-slate-100">
-                    <tr>
-                      <th className="p-6 font-black uppercase tracking-widest text-xs">السيارة / المشتري</th>
-                      <th className="p-6 font-black uppercase tracking-widest text-xs">الحالة الحالية</th>
-                      <th className="p-6 font-black uppercase tracking-widest text-xs">الموقع</th>
-                      <th className="p-6 font-black uppercase tracking-widest text-xs text-center">تحديث الحالة</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {adminShipments.map(ship => (
-                      <tr key={ship.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="p-6">
-                          <div className="flex items-center gap-4">
-                            <img alt="صورة" src={ship.images?.[0]} className="w-14 h-14 rounded-xl object-cover border border-slate-200" />
-                            <div>
-                              <div className="font-black text-slate-900">{ship.make} {ship.model}</div>
-                              <div className="text-xs font-bold text-slate-500 mt-1">{ship.firstName} {ship.lastName}</div>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="p-6">
-                          <span className={`px-4 py-1.5 rounded-full text-xs font-black flex items-center w-fit gap-1 ${ship.status === 'delivered' ? 'bg-green-100 text-green-700' :
-                            ship.status === 'awaiting_payment' ? 'bg-yellow-100 text-yellow-700' :
-                              ship.status === 'customs' || ship.status === 'shipping_requested' ? 'bg-rose-100 text-rose-700' : 'bg-blue-100 text-blue-700'
-                            }`}>
-                            {(ship.status === 'customs' || ship.status === 'shipping_requested') && <AlertTriangle className="w-3 h-3" />}
-                            {(() => {
-                              const labels: any = {
-                                'awaiting_payment': 'بانتظار الدفع',
-                                'paid': 'تم الدفع',
-                                'shipping_requested': 'طلب شحن 🚚',
-                                'in_transport': 'قيد النقل',
-                                'in_warehouse': 'في المستودع',
-                                'in_shipping': 'جاري الشحن',
-                                'customs': 'الجمارك',
-                                'delivered': 'تم التوصيل'
-                              };
-                              return labels[ship.status] || ship.status;
-                            })()}
-                          </span>
-                        </td>
-                        <td className="p-6 text-sm font-bold text-slate-600">{ship.currentLocation || 'قيد المعالجة'}</td>
-                        <td className="p-6 text-center">
-                          <select
-                            className="text-xs font-bold border rounded-lg p-2 outline-none focus:border-orange-500"
-                            onChange={(e) => {
-                              const notes = window.prompt('أدخل ملاحظات التحديث (اختياري):');
-                              const tracking = window.prompt('أدخل كود التتبع (اختياري) - مطلوب للشحن الدولي:');
-                              const location = window.prompt('أدخل الموقع الحالي للسيارة (اختياري):');
-                              if (e.target.value) handleUpdateShipment(ship.id, e.target.value, notes || '', tracking || '', location || '');
-                            }}
-                            title="حالة الشحنة"
-                            aria-label="حالة الشحنة"
-                            value={ship.status}
-                          >
-                            <option value="awaiting_payment">بانتظار الدفع</option>
-                            <option value="paid">تم الدفع</option>
-                            <option value="shipping_requested">تم طلب الشحن 🚚</option>
-                            <option value="in_transport">قيد النقل الداخلي</option>
-                            <option value="in_warehouse">في المستودع</option>
-                            <option value="in_shipping">جاري الشحن الدولي</option>
-                            <option value="customs">التخليص الجمركي</option>
-                            <option value="delivered">تم التوصيل</option>
-                          </select>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
           </div>
         );
+
 
       case 'inventory_review':
         return (
@@ -3920,7 +3937,7 @@ export const AdminDashboard = () => {
               <ShieldCheck className="w-6 h-6 text-orange-500" />
               مراجعة وقبول السيارات الجديدة
             </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
               {adminPendingCars.map(car => (
                 <div key={car.id} className="bg-white rounded-[2rem] border border-slate-200 overflow-hidden shadow-sm hover:shadow-xl transition-all group">
                   <div className="relative aspect-[4/3]">
@@ -3994,7 +4011,7 @@ export const AdminDashboard = () => {
             </div>
 
 
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
               <div className="bg-slate-900 p-6 rounded-[2rem] text-white">
                 <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">إجمالي السيولة (الإيداعات)</div>
                 <div className="text-2xl font-black font-mono text-emerald-400">
@@ -4026,7 +4043,8 @@ export const AdminDashboard = () => {
                 <h3 className="font-black text-slate-800">سجل المعاملات المالية الموثق</h3>
                 <button onClick={() => fetch('/api/admin/all-transactions').then(res => res.json()).then(setAllTransactions)} className="text-blue-500 text-xs font-black">تحديث البيانات ↺</button>
               </div>
-              <table className="w-full text-right">
+              <div className="overflow-x-auto">
+                <table className="w-full text-right min-w-[800px]">
                 <thead className="bg-slate-50 text-slate-400 text-[10px] font-black uppercase">
                   <tr>
                     <th className="p-4">المستخدم</th>
@@ -4057,6 +4075,7 @@ export const AdminDashboard = () => {
                 </tbody>
               </table>
             </div>
+          </div>
 
             {/* Invoices Table */}
             <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden">
@@ -4068,7 +4087,7 @@ export const AdminDashboard = () => {
                 <button onClick={() => fetch('/api/admin/all-invoices').then(res => res.json()).then(setAllInvoices)} className="text-blue-500 text-xs font-black">تحديث البيانات ↺</button>
               </div>
               <div className="overflow-x-auto">
-                <table className="w-full text-right">
+                <table className="w-full text-right min-w-[1000px]">
                   <thead className="bg-slate-50 text-slate-400 text-[10px] font-black uppercase">
                     <tr>
                       <th className="p-4">الفاتورة / المشتري</th>
@@ -4215,7 +4234,8 @@ export const AdminDashboard = () => {
           <div className="space-y-6 animate-in fade-in duration-500">
             <h2 className="text-2xl font-bold text-slate-800">سجل العمليات (Transactions)</h2>
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-              <table className="w-full text-right">
+              <div className="overflow-x-auto">
+                <table className="w-full text-right min-w-[800px]">
                 <thead className="bg-slate-50 text-slate-500 text-sm">
                   <tr>
                     <th className="p-4">التاريخ</th>
@@ -4247,6 +4267,7 @@ export const AdminDashboard = () => {
               </table>
             </div>
           </div>
+          </div>
         );
 
       case 'offer_market':
@@ -4268,7 +4289,7 @@ export const AdminDashboard = () => {
 
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
               <div className="overflow-x-auto">
-                <table className="w-full text-right">
+                <table className="w-full text-right min-w-[1000px]">
                   <thead className="bg-slate-50 text-slate-500 text-sm">
                     <tr>
                       <th className="p-4 font-medium">السيارة</th>
@@ -4423,7 +4444,7 @@ export const AdminDashboard = () => {
         return (
           <div className="space-y-6 animate-in fade-in duration-500">
             {/* Stats Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
               <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow group">
                 <div className="flex justify-between items-start">
                   <div>
@@ -4490,7 +4511,7 @@ export const AdminDashboard = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
                 {[
                   { label: 'سيولة محافظ المشترين', value: `$${buyerWalletStats.totalCashBalance.toLocaleString()}`, sub: 'نقدي متاح للمزايدين', color: 'orange', icon: Wallet },
                   { label: 'أرصدة البائعين (المتاحة)', value: `$${walletStats.totalAvailable.toLocaleString()}`, sub: 'جاهز للسحب فوراً', color: 'emerald', icon: TrendingUp },
@@ -4552,7 +4573,14 @@ export const AdminDashboard = () => {
                 <h3 className="text-lg font-bold text-slate-800 mb-6">تحليلات الأداء</h3>
                 <div className="h-[320px] w-full min-w-0" dir="ltr">
                   <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-                    <BarChart data={data}>
+                    <BarChart data={[
+                      { name: 'Jan', مبيعات: 4000 },
+                      { name: 'Feb', مبيعات: 3000 },
+                      { name: 'Mar', مبيعات: 2000 },
+                      { name: 'Apr', مبيعات: 2780 },
+                      { name: 'May', مبيعات: 1890 },
+                      { name: 'Jun', مبيعات: 2390 },
+                    ]}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                       <XAxis dataKey="name" axisLine={false} tickLine={false} stroke="#94a3b8" />
                       <YAxis axisLine={false} tickLine={false} stroke="#94a3b8" />
@@ -4562,6 +4590,7 @@ export const AdminDashboard = () => {
                       />
                       <Bar dataKey="مبيعات" fill="#f97316" radius={[4, 4, 0, 0]} />
                     </BarChart>
+
                   </ResponsiveContainer>
                 </div>
               </div>
@@ -4627,7 +4656,7 @@ export const AdminDashboard = () => {
 
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
               <div className="overflow-x-auto">
-                <table className="w-full text-right">
+                <table className="w-full text-right min-w-[1100px]">
                   <thead className="bg-slate-50 text-slate-500 text-sm">
                     <tr>
                       <th className="p-4 font-medium">السيارة</th>
@@ -4741,7 +4770,7 @@ export const AdminDashboard = () => {
 
             <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden">
               <div className="overflow-x-auto">
-                <table className="w-full text-right">
+                <table className="w-full text-right min-w-[1000px]">
                   <thead className="bg-slate-50 text-slate-400 text-xs uppercase tracking-widest border-b border-slate-100">
                     <tr>
                       <th className="p-6 font-black">السيارة</th>
@@ -4829,319 +4858,10 @@ export const AdminDashboard = () => {
         );
 
       case 'reports':
-        // Live data driven from reportsAnalytics state
-        const activeBiddersCount = reportsAnalytics?.totalBids || 0;
-        const liveUsersCount = reportsAnalytics?.activeUsers || 0;
-
-        return (
-          <div className="space-y-6 animate-in fade-in duration-500 text-right" dir="rtl">
-            <div className="flex justify-between items-center bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
-              <div>
-                <h2 className="text-2xl font-black text-slate-800">التقارير التحليلية والذكاء التسويقي 📈</h2>
-                <p className="text-slate-500 text-sm mt-1">نظرة شاملة لأداء المنصة ومؤشرات السوق</p>
-              </div>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setShowOpenSooqModal(true)}
-                  className="bg-indigo-50 text-indigo-600 hover:bg-indigo-100 px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 border border-indigo-100 transition-all shadow-sm"
-                >
-                  <Download className="w-5 h-5" />
-                  استيراد تقارير السوق المفتوح
-                </button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {/* Geographical Sales Analysis */}
-              <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm group hover:border-blue-500 transition-all">
-                <div className="flex justify-between items-start mb-6">
-                  <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center">
-                    <Globe className="w-6 h-6" />
-                  </div>
-                </div>
-                <h3 className="text-lg font-black text-slate-800 mb-1">تحليل الدفع والمبيعات</h3>
-                <div className="text-4xl font-black text-slate-900 mb-6 font-mono">${(reportsAnalytics?.salesVol || 0).toLocaleString()}</div>
-                <button onClick={() => setShowReportModal({ type: 'geo', title: 'تقرير الدفع والمبيعات', data: reportsAnalytics.geoSalesRaw })} className="w-full py-3.5 bg-slate-50 text-slate-600 rounded-2xl font-black text-xs hover:bg-blue-600 hover:text-white transition-all shadow-inner">
-                  عرض التقرير المفصل
-                </button>
-              </div>
-
-              {/* Data Extraction Efficiency */}
-              <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm group hover:border-emerald-500 transition-all">
-                <div className="flex justify-between items-start mb-6">
-                  <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center">
-                    <RefreshCw className="w-6 h-6" />
-                  </div>
-                </div>
-                <h3 className="text-lg font-black text-slate-800 mb-1">كفاءة محرك المزامنة</h3>
-                <div className="text-4xl font-black text-slate-900 mb-6 font-mono">{reportsAnalytics?.dbHitRate || 99}%</div>
-                <button onClick={() => setShowReportModal({ type: 'sync', title: 'تقرير المحرك المزامنة', data: reportsAnalytics.dbHitRate })} className="w-full py-3.5 bg-slate-50 text-slate-600 rounded-2xl font-black text-xs hover:bg-emerald-600 hover:text-white transition-all shadow-inner">
-                  عرض التقرير المفصل
-                </button>
-              </div>
-
-              {/* User Growth Rate */}
-              <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm group hover:border-orange-500 transition-all">
-                <div className="flex justify-between items-start mb-6">
-                  <div className="w-12 h-12 bg-blue-50 text-blue-500 text-blue-600 rounded-2xl flex items-center justify-center">
-                    <TrendingUp className="w-6 h-6" />
-                  </div>
-                </div>
-                <h3 className="text-lg font-black text-slate-800 mb-1">عدد الأعضاء النشطين</h3>
-                <div className="text-4xl font-black text-slate-900 mb-6 font-mono">{liveUsersCount}</div>
-                <button onClick={() => setShowReportModal({ type: 'users', title: 'تقرير الأعضاء', data: liveUsersCount })} className="w-full py-3.5 bg-slate-50 text-slate-600 rounded-2xl font-black text-xs hover:bg-orange-600 hover:text-white transition-all shadow-inner">
-                  عرض التقرير المفصل
-                </button>
-              </div>
-            </div>
-
-            {/* Additional Stats Section */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
-              <div className="bg-gradient-to-br from-slate-900 to-slate-800 p-8 rounded-[2.5rem] shadow-xl text-white relative overflow-hidden group">
-                <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl -mr-20 -mt-20 group-hover:bg-emerald-500/20 transition-all duration-700"></div>
-                <div className="relative z-10 flex items-center justify-between">
-                  <div>
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className="w-3 h-3 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(16,185,129,0.8)]"></div>
-                      <h3 className="text-slate-300 font-bold">مستخدم متواجد لايف</h3>
-                    </div>
-                    <div className="text-5xl font-black text-white font-mono mt-2">{liveUsersCount}</div>
-                    <p className="text-xs text-emerald-400 mt-3 font-bold bg-emerald-500/10 inline-block px-3 py-1 rounded-full">+15% عن الأسبوع الماضي</p>
-                  </div>
-                  <div className="w-20 h-20 bg-white/5 backdrop-blur-sm rounded-3xl border border-white/10 flex items-center justify-center rotate-12 group-hover:rotate-0 transition-transform duration-500">
-                    <Users className="w-10 h-10 text-emerald-400" />
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-gradient-to-br from-indigo-900 to-indigo-800 p-8 rounded-[2.5rem] shadow-xl text-white relative overflow-hidden group">
-                <div className="absolute top-0 left-0 w-64 h-64 bg-orange-500/10 rounded-full blur-3xl -ml-20 -mt-20 group-hover:bg-orange-500/20 transition-all duration-700"></div>
-                <div className="relative z-10 flex items-center justify-between">
-                  <div>
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className="w-3 h-3 bg-orange-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(249,115,22,0.8)]"></div>
-                      <h3 className="text-indigo-200 font-bold">مزايد يزايد على سيارات</h3>
-                    </div>
-                    <div className="text-5xl font-black text-white font-mono mt-2">{activeBiddersCount}</div>
-                    <p className="text-xs text-orange-400 mt-3 font-bold bg-orange-500/10 inline-block px-3 py-1 rounded-full">+24% نشاط المزايدة</p>
-                  </div>
-                  <div className="w-20 h-20 bg-white/5 backdrop-blur-sm rounded-3xl border border-white/10 flex items-center justify-center -rotate-12 group-hover:rotate-0 transition-transform duration-500">
-                    <Gavel className="w-10 h-10 text-orange-400" />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm mt-8 overflow-hidden">
-              <div className="p-6 border-b border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-slate-50">
-                <div className="flex flex-col md:flex-row items-start md:items-center gap-4 w-full md:w-auto">
-                  <h3 className="text-lg font-black text-slate-800 flex items-center gap-3">
-                    <Car className="w-6 h-6 text-indigo-500" />
-                    تقارير أسواق السيارات (ليبيا المتوقع)
-                  </h3>
-                  <div className="flex flex-row-reverse items-center gap-2 bg-slate-100 p-1.5 rounded-xl border border-slate-200 shadow-inner">
-                    <span className="text-xs font-bold text-slate-600 px-2 flex items-center gap-1">
-                      <DollarSign className="w-3 h-3 text-emerald-600" />
-                      سعر الصرف (د.ل):
-                    </span>
-                    <input 
-                      type="number" 
-                      step="0.01"
-                      className="w-20 text-center font-mono font-black text-indigo-700 bg-white border border-slate-300 rounded-lg p-1.5 outline-none focus:border-indigo-500 shadow-sm"
-                      value={exchangeRate || 7.00}
-                      onChange={async (e) => {
-                        const val = Number(e.target.value);
-                        await updateExchangeRate(val);
-                      }}
-                    />
-                  </div>
-                  <div className="relative w-full md:w-64">
-                    <input aria-label="مدخل" title="مدخل"
-                      type="text"
-                      placeholder="بحث بالماركة، الموديل، السنة..."
-                      value={estimateSearch}
-                      onChange={(e) => setEstimateSearch(e.target.value)}
-                      className="pr-10 pl-4 py-2 border border-slate-200 rounded-xl text-sm focus:border-indigo-500 outline-none w-full bg-white shadow-sm"
-                    />
-                    <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
-                  </div>
-                </div>
-                <div className="flex items-center gap-3 w-full md:w-auto">
-                  <span className="text-xs font-bold text-slate-500 bg-white px-3 py-1.5 rounded-full border border-slate-100 shadow-sm hidden md:flex">تحديث: اليوم</span>
-                  <button onClick={() => {
-                    setLibyanModalForm({ id: '', condition: 'جديد', make: '', model: '', year: 2024, transmission: 'اوتوماتيك', fuel: 'بنزين', mileage: '0', priceLYD: '' });
-                    setShowLibyanModal(true);
-                  }} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-colors w-full md:w-auto shadow-md">
-                    <Plus className="w-4 h-4" />
-                    إضافة تسعيرة جديدة
-                  </button>
-                </div>
-              </div>
-              <div className="p-0 overflow-x-auto">
-                <table className="w-full text-sm text-right">
-                  <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
-                    <tr>
-                      <th className="px-6 py-4 text-center">#</th>
-                      <th className="px-6 py-4">الماركة والموديل</th>
-                      <th className="px-6 py-4">السنة</th>
-                      <th className="px-6 py-4 flex justify-center">الحالة</th>
-                      <th className="px-6 py-4">الوقود وناقل الحركة</th>
-                      <th className="px-6 py-4 text-center">الممشى</th>
-                      <th className="px-6 py-4">متوسط السعر</th>
-                      <th className="px-6 py-4 text-left">إجراءات</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {libyanMarketPrices.filter(e =>
-                      !estimateSearch ||
-                      e.make?.toLowerCase().includes(estimateSearch.toLowerCase()) ||
-                      e.model?.toLowerCase().includes(estimateSearch.toLowerCase()) ||
-                      e.year?.toString().includes(estimateSearch)
-                    ).map((car: any, idx) => (
-                      <tr key={car.id || idx} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-6 py-4 text-center font-mono font-bold text-slate-400">
-                          {idx + 1}
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="font-black text-slate-800 text-base">{car.make} {car.model}</div>
-                          <div className="text-[11px] font-bold text-slate-400 font-mono tracking-wider mt-0.5 uppercase" dir="ltr">{car.makeEn} {car.modelEn}</div>
-                        </td>
-                        <td className="px-6 py-4 font-bold text-slate-700">{car.year}</td>
-                        <td className="px-6 py-4 text-center">
-                          <span className={`text-xs px-3 py-1 font-bold rounded-full border ${car.condition === 'جديد' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-blue-50 text-blue-600 border-blue-100'}`}>
-                            {car.condition}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="text-slate-700 font-medium">{car.fuel}</div>
-                          <div className="text-xs text-slate-400">{car.transmission}</div>
-                        </td>
-                        <td className="px-6 py-4 text-slate-500 font-mono text-center" dir="ltr">{car.mileage}</td>
-                        <td className="px-6 py-4">
-                          <div className="font-mono font-black text-indigo-600 text-lg" dir="ltr">
-                            {Number(car.priceLYD).toLocaleString()} د.ل
-                          </div>
-                          <div className="text-[11px] font-bold text-slate-400 font-mono tracking-wider mt-0.5" dir="ltr">
-                            ≈ ${(Number(car.priceLYD) / (exchangeRate || 7)).toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 text-left space-x-2 space-x-reverse whitespace-nowrap">
-                          <button onClick={() => {
-                            setLibyanModalForm(car);
-                            setShowLibyanModal(true);
-                          }} title="تعديل التسعيرة" aria-label="تعديل التسعيرة" className="p-2 text-indigo-500 hover:bg-indigo-50 border border-transparent hover:border-indigo-100 rounded-lg transition-all inline-block">
-                            <Edit className="w-4 h-4" />
-                          </button>
-                          <button onClick={() => {
-                            showConfirm('هل أنت متأكد من حذف هذا السعر؟', async () => {
-                              try {
-                                const res = await fetch(`/api/libyan-market/${car.id}`, { method: 'DELETE' });
-                                if (res.ok) {
-                                  showAlert('تم الحذف بنجاح', 'success');
-                                  setLibyanMarketPrices(prev => prev.filter(c => c.id !== car.id));
-                                }
-                              } catch(e) { showAlert('حدث خطأ أثناء الحذف', 'error'); }
-                            });
-                          }} title="حذف التسعيرة" aria-label="حذف التسعيرة" className="p-2 text-rose-500 hover:bg-rose-50 border border-transparent hover:border-rose-100 rounded-lg transition-all inline-block">
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                    {libyanMarketPrices.length === 0 && (
-                      <tr><td colSpan={7} className="px-6 py-12 text-center text-slate-400">لا توجد تسعيرات متوفرة</td></tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        );
+        return <ReportsPanel reportsAnalytics={reportsAnalytics} setReportsAnalytics={setReportsAnalytics} />;
 
       case 'kyc_review':
-        return (
-          <div className="space-y-6 animate-in fade-in duration-500" dir="rtl">
-            <div className="flex justify-between items-center mb-8">
-              <div>
-                <h2 className="text-3xl font-black text-slate-800 flex items-center gap-3">
-                  <ShieldCheck className="w-8 h-8 text-violet-500" />
-                  مراجعة التوثيق (KYC)
-                </h2>
-                <p className="text-slate-500 text-sm mt-1">
-                  راجع وثائق هوية البائعين وحدد صلاحية سحب الأرباح.
-                  <span className="mr-3 text-violet-600 font-bold">
-                    {kycUsers.filter(u => u.kycStatus === 'pending').length} بائع قيد المراجعة
-                  </span>
-                </p>
-              </div>
-              <button
-                onClick={() => fetch('/api/admin/kyc-pending').then(r => r.json()).then(d => setKycUsers(Array.isArray(d) ? d : []))}
-                className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-xl font-bold text-sm flex items-center gap-2 transition-all"
-              >
-                <RefreshCw className="w-4 h-4" />
-                تحديث
-              </button>
-            </div>
-
-            {/* Summary Cards */}
-            <div className="grid grid-cols-3 gap-4 mb-6">
-              {[
-                { label: 'قيد المراجعة', count: kycUsers.filter(u => u.kycStatus === 'pending').length, color: 'violet' },
-                { label: 'موثّق', count: kycUsers.filter(u => u.kycStatus === 'approved').length, color: 'emerald' },
-                { label: 'مرفوض', count: kycUsers.filter(u => u.kycStatus === 'rejected').length, color: 'rose' },
-              ].map(card => (
-                <div key={card.label} className={`bg-${card.color}-50 border border-${card.color}-100 rounded-2xl p-5`}>
-                  <div className={`text-3xl font-black text-${card.color}-700`}>{card.count}</div>
-                  <div className={`text-sm font-bold text-${card.color}-500 mt-1`}>{card.label}</div>
-                </div>
-              ))}
-            </div>
-
-            {/* KYC Users List */}
-            {kycUsers.length === 0 ? (
-              <div className="bg-white rounded-[2rem] border border-slate-100 p-16 text-center">
-                <ShieldCheck className="w-16 h-16 text-slate-200 mx-auto mb-4" />
-                <p className="text-slate-400 font-bold">لا توجد طلبات توثيق حالياً</p>
-                <p className="text-slate-300 text-sm mt-1">سيظهر البائعون هنا بعد رفع وثائق التوثيق</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {kycUsers.map((user: any) => (
-                  <KycReviewCard
-                    key={user.id}
-                    user={user}
-                    onApprove={async (userId: string, note: string) => {
-                      const res = await fetch(`/api/admin/kyc/${userId}/approve`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ note })
-                      });
-                      if (res.ok) {
-                        showAlert('✅ تم توثيق البائع بنجاح وإرسال إشعار له', 'success');
-                        setKycUsers(prev => prev.map(u => u.id === userId ? { ...u, kycStatus: 'approved' } : u));
-                      } else {
-                        showAlert('فشل الموافقة', 'error');
-                      }
-                    }}
-                    onReject={async (userId: string, reason: string) => {
-                      const res = await fetch(`/api/admin/kyc/${userId}/reject`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ reason })
-                      });
-                      if (res.ok) {
-                        showAlert('تم رفض الوثائق وإبلاغ البائع', 'success');
-                        setKycUsers(prev => prev.map(u => u.id === userId ? { ...u, kycStatus: 'rejected' } : u));
-                      } else {
-                        showAlert('فشل الرفض', 'error');
-                      }
-                    }}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        );
+        return <KycReviewPanel kycUsers={kycUsers} setKycUsers={setKycUsers} showAlert={showAlert} />;
 
       case 'withdrawal_requests':
 
@@ -5194,7 +4914,7 @@ export const AdminDashboard = () => {
             {/* Withdrawals Table */}
             <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden">
               <div className="overflow-x-auto">
-                <table className="w-full text-right">
+                <table className="w-full text-right min-w-[1000px]">
                   <thead className="bg-slate-50 text-slate-400 text-xs uppercase tracking-wider border-b border-slate-100">
                     <tr>
                       <th className="p-4 font-black">البائع</th>
@@ -5243,147 +4963,414 @@ export const AdminDashboard = () => {
           </div>
         );
 
-      case 'document_cycle':
+      case 'all_invoices':
         return (
           <div className="p-6 md:p-8 animate-in fade-in duration-300 relative min-h-[600px]" dir="rtl">
             <div className="flex justify-between items-center mb-8">
               <div className="flex items-center gap-3">
-                <div className="w-11 h-11 bg-indigo-500 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-500/20">
+                <div className="w-11 h-11 bg-emerald-500 rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-500/20">
                   <FileText className="w-6 h-6 text-white" />
                 </div>
                 <div>
-                  <h2 className="text-2xl font-black text-slate-800">إدارة دورة مستندات السيارات المُباعة</h2>
+                  <h2 className="text-2xl font-black text-slate-800">الخزينة: فواتير المبيعات والمطالبات المالية</h2>
                   <p className="text-slate-500 text-sm mt-1">
-                    تابع حالة الدفع، إصدار كروت الإفراج، واستلام السيارات.
-                    <span className="font-bold text-indigo-600 mr-2">
-                      ({adminInvoices.filter(i => i.status !== 'seller_paid_by_admin').length} إجراءات معلقة)
+                    إدارة الدفع النقدي، المطالبات الإضافية، وتأكيد تحصيل المبالغ.
+                    <span className="font-bold text-emerald-600 mr-2">
+                       ({adminInvoices.filter(i => i.status === 'unpaid').length} فواتير غير محصلة)
                     </span>
                   </p>
                 </div>
               </div>
-              <button
-                onClick={() => fetch('/api/admin/invoices').then(r => r.json()).then(d => setAdminInvoices(Array.isArray(d) ? d : []))}
-                className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-xl font-bold text-sm flex items-center gap-2 transition-colors"
+              <button 
+                onClick={() => fetch('/api/admin/invoices').then(r => r.json()).then(setAdminInvoices)}
+                className="bg-emerald-50 text-emerald-600 hover:bg-emerald-100 px-4 py-2 rounded-xl font-bold text-sm flex items-center gap-2 transition-all"
               >
-                <RefreshCw className="w-4 h-4" /> تحديث بيانات المستندات
+                <RefreshCw className="w-4 h-4" /> تحديث السجل
               </button>
             </div>
 
-            {adminInvoices.length === 0 ? (
-              <div className="bg-white rounded-[2rem] border border-slate-100 p-12 text-center shadow-sm">
-                <FileText className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-                <h3 className="text-xl font-bold text-slate-800">لا توجد فواتير أو مستندات حالياً</h3>
+            <div className="flex gap-2 mb-6 bg-slate-100 p-1 rounded-2xl border border-slate-200 w-fit overflow-x-auto max-w-full">
+              {[
+                { id: 'all', label: 'كافة الفواتير' },
+                { id: 'unpaid', label: 'غير مدفوعة' },
+                { id: 'paid', label: 'مدفوعة' },
+              ].map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => setInvoiceActiveTab(tab.id)}
+                  className={`px-6 py-2 rounded-xl text-xs font-black transition-all ${invoiceActiveTab === tab.id ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="bg-white rounded-[2.5rem] border border-slate-200 shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-right text-sm min-w-[1000px]">
+                <thead className="bg-slate-50 text-slate-500 border-b border-slate-100 font-black">
+                  <tr>
+                    <th className="p-5">المرجع والسيارة</th>
+                    <th className="p-5">العميل</th>
+                    <th className="p-5">القيمة المالية</th>
+                    <th className="p-5 text-center">حالة السداد</th>
+                    <th className="p-5 text-center">الإجراءات المحاسبية</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {adminInvoices.filter(i => invoiceActiveTab === 'all' || i.status === invoiceActiveTab).map((inv: any) => (
+                    <tr key={inv.id} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="p-5">
+                         <div className="font-black text-slate-800">{inv.year} {inv.make} {inv.model}</div>
+                         <div className="text-[10px] text-slate-400 font-mono mt-0.5 uppercase tracking-tighter">ID: {inv.id}</div>
+                         <div className="inline-flex mt-2 px-2 py-0.5 rounded-md bg-slate-100 text-[9px] font-black text-slate-500 uppercase border border-slate-200">
+                            {inv.type === 'purchase' ? 'شراء' : inv.type === 'transport' ? 'نقل' : inv.type === 'shipping' ? 'شحن' : 'رسوم إضافية'}
+                         </div>
+                      </td>
+                      <td className="p-5">
+                         <div className="font-bold text-slate-700">{inv.buyerFirstName} {inv.buyerLastName}</div>
+                         <div className="text-xs text-slate-400 mt-1">{inv.buyerPhone}</div>
+                      </td>
+                      <td className="p-5">
+                         <div className="text-lg font-black text-slate-900">${Number(inv.amount).toLocaleString()}</div>
+                         <div className="text-[10px] text-slate-400 italic">بواسطة: {inv.paidVia || 'N/A'}</div>
+                      </td>
+                      <td className="p-5 text-center">
+                         <span className={`px-4 py-1.5 rounded-full text-[10px] font-black border uppercase
+                           ${inv.status === 'unpaid' ? 'bg-rose-50 text-rose-600 border-rose-100' : 'bg-emerald-50 text-emerald-600 border-emerald-100'}
+                         `}>
+                            {inv.status === 'unpaid' ? 'غير مسددة' : 'تم السداد'}
+                         </span>
+                      </td>
+                      <td className="p-5">
+                         <div className="flex flex-col gap-2">
+                            {inv.status === 'unpaid' && (
+                              <button
+                                onClick={() => setShowInvoiceConfirmModal({ isOpen: true, invoice: inv, nextStatus: 'paid' })}
+                                className="w-full bg-emerald-600 text-white font-black py-2 rounded-xl text-xs shadow-lg shadow-emerald-600/20 hover:bg-emerald-700 transition-all border border-emerald-500"
+                              >
+                                تأكيد تحصيل المبلع
+                              </button>
+                            )}
+                            <button
+                              onClick={() => setShowAddFeeModal({ isOpen: true, carId: inv.carId, userId: inv.userId })}
+                              className="w-full bg-slate-100 text-slate-600 font-black py-2 rounded-xl text-[10px] hover:bg-slate-200 transition-all border border-slate-200 flex items-center justify-center gap-1"
+                            >
+                               <PlusCircle className="w-3.5 h-3.5" /> إضافة مطالبة مالية
+                            </button>
+                         </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          </div>
+        );
+
+      case 'shipments_tracking':
+        return (
+          <div className="p-6 md:p-8 animate-in fade-in duration-300 relative min-h-[600px]" dir="rtl">
+            <div className="flex justify-between items-center mb-8">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 bg-orange-500 rounded-2xl flex items-center justify-center shadow-lg shadow-orange-500/20">
+                  <Truck className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-black text-slate-800">قسم اللوجستيات: تتبع حركة السيارات</h2>
+                  <p className="text-slate-500 text-sm mt-1">تحديث الموقع الجغرافي، رفع الصور، وإدارة خط سير الشحن البحري.</p>
+                </div>
               </div>
-            ) : (
-              <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
-                <table className="w-full text-right text-sm">
+              <button 
+                 onClick={() => fetch('/api/admin/invoices').then(r => r.json()).then(setAdminInvoices)}
+                 className="bg-orange-50 text-orange-600 hover:bg-orange-100 px-4 py-2 rounded-xl font-bold text-sm flex items-center gap-2 transition-all border border-orange-200"
+              >
+                <RefreshCw className="w-4 h-4" /> تحديث المواقع
+              </button>
+            </div>
+
+            <div className="flex gap-2 mb-6 bg-slate-100 p-1.5 rounded-2xl border border-slate-200 w-fit overflow-x-auto max-w-full no-scrollbar">
+              {[
+                { id: 'all', label: 'الكل' },
+                { id: 'awaiting_dispatch', label: 'بانتظار التحميل' },
+                { id: 'picked_up', label: 'تم النقل' },
+                { id: 'at_port', label: 'في الميناء' },
+                { id: 'in_transit', label: 'في البحر' },
+                { id: 'arrived_khoms', label: 'وصلت الوجهة' },
+              ].map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => setInvoiceActiveTab(tab.id)}
+                  className={`px-4 py-2.5 rounded-xl text-xs font-black transition-all ${invoiceActiveTab === tab.id ? 'bg-white text-orange-600 shadow-sm border border-slate-200' : 'text-slate-500 hover:text-slate-800'}`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-right text-sm min-w-[800px]">
                   <thead className="bg-slate-50 text-slate-500 border-b border-slate-100">
                     <tr>
-                      <th className="p-4 font-black">السيارة والفاتورة</th>
-                      <th className="p-4 font-black">المشتري (Buyer)</th>
-                      <th className="p-4 font-black">المبلغ وتاريخ البيع</th>
-                      <th className="p-4 font-black text-center">حالة المستند</th>
-                      <th className="p-4 w-56 font-black text-center">الإجراء القادم المتاح للإدارة</th>
+                      <th className="p-4 font-black">السيارة والوجهة</th>
+                      <th className="p-4 font-black">الموقع الحالي</th>
+                      <th className="p-4 font-black text-center">الإجراءات اللوجستية</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-50">
-                    {adminInvoices.map((inv: any) => (
-                      <tr key={inv.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="p-4 align-top">
-                          <div className="font-black text-slate-800 mb-1">{inv.year} {inv.make} {inv.model}</div>
-                          <div className="text-xs text-slate-500 font-mono mb-2">Lot: {inv.lotNumber} | VIN: {inv.vin}</div>
-                          <div className="text-xs inline-flex items-center gap-1 bg-slate-100 px-2 py-1 rounded text-slate-600 font-bold border border-slate-200">
-                            <span className="text-indigo-600">ID:</span> {inv.id}
-                          </div>
+                  <tbody className="divide-y divide-slate-100">
+                    {adminInvoices.filter(i => invoiceActiveTab === 'all' || i.status === invoiceActiveTab).map((inv: any) => (
+                      <tr key={inv.id} className="hover:bg-slate-50/30 transition-colors">
+                        <td className="p-4">
+                           <div className="font-black text-slate-800">{inv.year} {inv.make} {inv.model}</div>
+                           <div className="text-[10px] text-slate-400 font-mono mt-0.5 uppercase tracking-tighter">Lot: {inv.lotNumber}</div>
+                           <div className="flex items-center gap-2 mt-2">
+                              <div className="text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded font-black border border-indigo-100">
+                                 {inv.destinationPort || 'بانتظار التحديد'}
+                              </div>
+                           </div>
                         </td>
-
-                        <td className="p-4 align-top">
-                          <div className="font-bold text-slate-700">{inv.buyerFirstName} {inv.buyerLastName}</div>
-                          <div className="text-xs text-slate-500 mt-1">{inv.buyerPhone || 'لا يوجد رقم'}</div>
+                        <td className="p-4">
+                           <div className="flex items-center gap-2">
+                              <div className="w-2 h-2 rounded-full bg-orange-500 animate-pulse"></div>
+                              <span className="font-black text-slate-700 text-xs">
+                                 {inv.status === 'arrived_khoms' ? `وصلت ${inv.destinationPort}` : (INVOICE_STATUS_LABELS[inv.status] || inv.status)}
+                              </span>
+                           </div>
+                           <div className="text-[10px] text-slate-400 mt-1 font-bold italic">آخر تحديث: {new Date().toLocaleDateString('ar-EG')}</div>
                         </td>
-
-                        <td className="p-4 align-top left-to-right-num">
-                          <div className="font-black text-lg text-emerald-600">${Number(inv.amount || 0).toLocaleString()}</div>
-                          <div className="text-xs text-slate-400 mt-1" dir="ltr">{new Date(inv.timestamp).toLocaleDateString('ar-EG')}</div>
-                        </td>
-
-                        <td className="p-4 align-top text-center">
-                          <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border
-                            ${inv.status === 'unpaid' ? 'bg-rose-50 text-rose-700 border-rose-100' :
-                              inv.status === 'pending' ? 'bg-amber-50 text-amber-700 border-amber-100' :
-                                inv.status === 'paid' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
-                                  inv.status === 'release_issued' ? 'bg-blue-50 text-blue-700 border-blue-100' :
-                                    inv.status === 'delivered_to_buyer' ? 'bg-purple-50 text-purple-700 border-purple-100' :
-                                      'bg-green-50 text-green-700 border-green-100'}
-                          `}>
-                            {INVOICE_STATUS_LABELS[inv.status] || inv.status}
-                          </span>
-                        </td>
-
-                        <td className="p-4 align-top text-center space-y-2 relative">
-                          {inv.status === 'unpaid' && (
-                            <button
-                              onClick={() => setShowInvoiceConfirmModal({ isOpen: true, invoice: inv, nextStatus: 'paid' })}
-                              className="w-full bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white border border-emerald-200 py-2 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-2"
-                            >
-                              <CheckCircle2 className="w-4 h-4" /> تأكيد دفع المشتري
-                            </button>
-                          )}
-
-                          {inv.status === 'paid' && (
-                            <div className="space-y-2 border border-blue-100 rounded-xl p-2 bg-blue-50/30">
-                              <label className="text-[10px] font-bold text-blue-800 text-center block">رابط كرت الإفراج (Release Card URL)</label>
-                              <input
-                                type="url"
-                                placeholder="https://..."
-                                className="w-full text-xs border border-blue-200 rounded p-1.5 focus:border-blue-500 outline-none text-left"
-                                dir="ltr"
-                                value={inv._newUrl || inv.releaseCardUrl || ''}
-                                onChange={e => {
-                                  // Update the local state for this specific invoice so the user can type the URL before conforming
-                                  setAdminInvoices(prev => prev.map(i => i.id === inv.id ? { ...i, _newUrl: e.target.value } : i))
-                                }}
-                              />
-                              <button
-                                disabled={!(inv._newUrl || inv.releaseCardUrl)}
-                                onClick={() => setShowInvoiceConfirmModal({ isOpen: true, invoice: inv, nextStatus: 'release_issued' })}
-                                className="w-full bg-blue-500 text-white hover:bg-blue-600 py-2 rounded-lg text-xs font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-sm"
-                              >
-                                <UploadCloud className="w-4 h-4" /> إصدار الإفراج
-                              </button>
-                            </div>
-                          )}
-
-                          {inv.status === 'release_issued' && (
-                            <button
-                              onClick={() => setShowInvoiceConfirmModal({ isOpen: true, invoice: inv, nextStatus: 'delivered_to_buyer' })}
-                              className="w-full bg-purple-100 text-purple-700 border border-purple-200 hover:bg-purple-600 hover:text-white py-2 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-2"
-                            >
-                              <Car className="w-4 h-4" /> تأكيد استلام السيارة
-                            </button>
-                          )}
-
-                          {inv.status === 'delivered_to_buyer' && (
-                            <button
-                              onClick={() => setShowInvoiceConfirmModal({ isOpen: true, invoice: inv, nextStatus: 'seller_paid_by_admin' })}
-                              className="w-full bg-orange-100 text-orange-700 border border-orange-200 hover:bg-orange-600 hover:text-white py-2 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-2"
-                            >
-                              <DollarSign className="w-4 h-4" /> تحويل الأرباح للبائع
-                            </button>
-                          )}
-
-                          {inv.status === 'seller_paid_by_admin' && (
-                            <div className="w-full text-center text-xs font-bold text-green-600 bg-green-50 py-2 rounded-xl border border-green-100">
-                              الدورة مكتملة ✔️
-                            </div>
-                          )}
+                        <td className="p-4">
+                           <div className="flex flex-col gap-2 max-w-[200px] mx-auto">
+                              {inv.status === 'awaiting_dispatch' && (
+                                <button
+                                  onClick={() => setShowInvoiceConfirmModal({ isOpen: true, invoice: inv, nextStatus: 'picked_up' })}
+                                  className="w-full bg-orange-500 text-white font-black py-2 rounded-xl text-[10px] shadow-lg shadow-orange-500/20 hover:bg-orange-600 border border-orange-400"
+                                >
+                                  تأكيد التحميل (Picked Up)
+                                </button>
+                              )}
+                              {inv.status === 'picked_up' && (
+                                <button
+                                  onClick={() => setShowInvoiceConfirmModal({ isOpen: true, invoice: inv, nextStatus: 'at_port' })}
+                                  className="w-full bg-blue-500 text-white font-black py-2 rounded-xl text-[10px] hover:bg-blue-600 border border-blue-400"
+                                >
+                                  وصول الميناء (At Port)
+                                </button>
+                              )}
+                              {inv.status === 'at_port' && (
+                                <>
+                                  <input 
+                                    type="text" 
+                                    placeholder="تحديد الميناء الوجهة..." 
+                                    className="w-full text-center text-xs border border-slate-200 rounded-lg p-2 outline-none focus:border-orange-500"
+                                    value={inv.destinationPort || ''}
+                                    onChange={e => setAdminInvoices(prev => prev.map(item => item.id === inv.id ? { ...item, destinationPort: e.target.value } : item))}
+                                  />
+                                  <button
+                                    onClick={() => setShowInvoiceConfirmModal({ isOpen: true, invoice: inv, nextStatus: 'in_transit' })}
+                                    className="w-full bg-indigo-600 text-white font-black py-2 rounded-xl text-[10px] hover:bg-indigo-700 border border-indigo-500"
+                                  >
+                                    بدء الشحن البحري
+                                  </button>
+                                </>
+                              )}
+                              {inv.status === 'in_transit' && (
+                                <button
+                                  onClick={() => setShowInvoiceConfirmModal({ isOpen: true, invoice: inv, nextStatus: 'arrived_khoms' })}
+                                  className="w-full bg-emerald-600 text-white font-black py-2 rounded-xl text-[10px] hover:bg-emerald-700 border border-emerald-500"
+                                >
+                                  تأكيد الوصول النهائي
+                                </button>
+                              )}
+                           </div>
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-            )}
+            </div>
+          </div>
+        );
+
+      case 'expenses':
+        return (
+          <div className="p-6 md:p-8 animate-in fade-in duration-300" dir="rtl">
+            <div className="flex justify-between items-center mb-10">
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 bg-rose-500 rounded-2xl flex items-center justify-center text-white shadow-xl shadow-rose-500/20">
+                  <Receipt className="w-8 h-8" />
+                </div>
+                <div>
+                  <h2 className="text-3xl font-black text-slate-800">إدارة المصاريف التشغيلية 💸</h2>
+                  <p className="text-slate-500 text-sm mt-1">تسجيل ومتابعة كافة المصاريف الإدارية والتشغيلية للمنصة</p>
+                </div>
+              </div>
+              <button className="bg-rose-500 hover:bg-rose-600 text-white px-6 py-3 rounded-2xl font-black flex items-center gap-2 shadow-lg shadow-rose-500/20 transition-all">
+                <Plus className="w-5 h-5" />
+                إضافة مصروف جديد
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+              {[
+                { label: 'مصاريف الشهر الحالي', value: '$12,450', color: 'rose', trend: '+5%' },
+                { label: 'مصاريف الرواتب', value: '$8,000', color: 'indigo', trend: '0%' },
+                { label: 'مصاريف تشغيل المكاتب', value: '$4,450', color: 'amber', trend: '-2%' },
+              ].map((card, i) => (
+                <div key={i} className={`bg-${card.color}-500 p-8 rounded-[2.5rem] text-white shadow-xl relative overflow-hidden group`}>
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-10 -mt-10 blur-2xl group-hover:bg-white/20 transition-all"></div>
+                  <div className="relative z-10">
+                    <div className="text-xs font-black text-white/70 uppercase tracking-widest mb-1">{card.label}</div>
+                    <div className="text-4xl font-black font-mono tracking-tighter mb-4">{card.value}</div>
+                    <div className="flex items-center gap-2">
+                       <span className="bg-white/20 px-3 py-1 rounded-full text-[10px] font-black">{card.trend} عن الشهر الماضي</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="bg-white rounded-[2.5rem] border border-slate-200 shadow-sm overflow-hidden">
+              <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                <h3 className="font-black text-slate-800">سجل المصاريف الأخيرة</h3>
+                <div className="flex gap-2">
+                   <button className="p-2 text-slate-400 hover:text-slate-600 transition-all"><Filter className="w-5 h-5"/></button>
+                   <button className="p-2 text-slate-400 hover:text-slate-600 transition-all"><Download className="w-5 h-5"/></button>
+                </div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-right text-sm min-w-[900px]">
+                <thead className="bg-slate-50/80 text-slate-500 font-black border-b border-slate-100">
+                  <tr>
+                    <th className="p-5">التاريخ</th>
+                    <th className="p-5">البند / الوصف</th>
+                    <th className="p-5">الفئة</th>
+                    <th className="p-5">المبلغ</th>
+                    <th className="p-5 text-center">بواسطة</th>
+                    <th className="p-5 text-left">إجراء</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {[
+                    { date: '2024-03-25', desc: 'إيجار مكتب طرابلس - شهر 3', cat: 'مكاتب', amount: '$1,200', user: 'أحمد مراد' },
+                    { date: '2024-03-24', desc: 'تجديد اشتراكات السيرفرات', cat: 'تقنية', amount: '$450', user: 'نظام آلي' },
+                    { date: '2024-03-22', desc: 'مصاريف صيانة سيارة النقل', cat: 'لوجستيات', amount: '$300', user: 'محمد علي' },
+                  ].map((ex, i) => (
+                    <tr key={i} className="hover:bg-slate-50 transition-all">
+                      <td className="p-5 font-mono text-slate-400">{ex.date}</td>
+                      <td className="p-5 font-black text-slate-800">{ex.desc}</td>
+                      <td className="p-5">
+                        <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold border border-slate-200">{ex.cat}</span>
+                      </td>
+                      <td className="p-5 font-black text-rose-600 text-lg" dir="ltr">{ex.amount}</td>
+                      <td className="p-5 text-center font-bold text-slate-500">{ex.user}</td>
+                      <td className="p-5 text-left">
+                        <button title="حذف" aria-label="حذف" className="p-2 text-slate-300 hover:text-rose-500 transition-all"><Trash2 className="w-4 h-4"/></button>
+                      </td>
+                    </tr>
+                  ))}
+                  <tr>
+                    <td colSpan={6} className="p-10 text-center text-slate-300 font-bold italic">
+                       نهاية السجل — حمل التقرير السنوي لعرض كافة المصاريف
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          </div>
+        );
+
+      case 'payment_gateways':
+        return (
+          <div className="p-6 md:p-8 animate-in fade-in duration-300" dir="rtl">
+            <div className="flex items-center gap-4 mb-10">
+              <div className="w-16 h-16 bg-slate-900 rounded-2xl flex items-center justify-center text-white shadow-2xl">
+                <CreditCard className="w-9 h-9 text-orange-500" />
+              </div>
+              <div>
+                <h2 className="text-3xl font-black text-slate-800">إدارة بوابات الدفع والتحصيل آلياً 💳</h2>
+                <p className="text-slate-500 text-sm mt-1">تفعيل Stripe، PayPal، وتحويل حالات الفواتير آلياً عبر الـ Webhooks</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-10">
+              {/* Stripe Config */}
+              <div className="bg-white rounded-[2.5rem] border border-slate-200 p-8 shadow-sm">
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 bg-[#635BFF] rounded-xl flex items-center justify-center text-white font-black italic">S</div>
+                    <h3 className="font-black text-xl text-slate-800">تكامل Stripe</h3>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" title="تفعيل بوابة Stripe" aria-label="تفعيل بوابة Stripe" className="sr-only peer" checked={paymentSettings.stripe} onChange={e => setPaymentSettings({ ...paymentSettings, stripe: e.target.checked })} />
+                    <div className="w-14 h-7 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-[#635BFF]"></div>
+                  </label>
+                </div>
+                <div className="space-y-4">
+                   <div>
+                     <label className="block text-xs font-black text-slate-400 mb-1.5 uppercase">API Secret Key</label>
+                     <input type="password" placeholder="sk_live_..." className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-mono outline-none focus:border-[#635BFF] text-left" dir="ltr" />
+                   </div>
+                   <div>
+                     <label className="block text-xs font-black text-slate-400 mb-1.5 uppercase">Webhook Endpoint URL</label>
+                     <div className="flex gap-2">
+                       <input readOnly value="https://autopro.ac/api/webhooks/stripe" className="flex-grow bg-slate-100 border border-slate-200 rounded-xl p-3 text-xs font-mono text-slate-500 text-left" dir="ltr" />
+                       <button className="bg-slate-200 hover:bg-slate-300 text-slate-700 font-black px-4 py-2 rounded-xl text-xs transition-colors">نسخ</button>
+                     </div>
+                   </div>
+                   <p className="text-[11px] text-slate-400 font-bold leading-relaxed bg-blue-50/50 p-3 rounded-xl border border-blue-50">
+                     💡 بمجرد تفعيل هذا الرابط في لوحة Stripe، سيقوم النظام آلياً بتحويل حالة أي سيارة إلى <b className="text-blue-600">"تم الدفع"</b> فور نجاح العملية دون تدخل بشري.
+                   </p>
+                </div>
+              </div>
+
+              {/* Buying Power & Wallet Rules */}
+              <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white shadow-2xl relative overflow-hidden group">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-orange-500/10 rounded-full -mr-32 -mt-32 blur-3xl group-hover:bg-orange-500/20 transition-all"></div>
+                <h3 className="font-black text-xl mb-6 relative z-10 flex items-center gap-2">
+                   <Shield className="w-6 h-6 text-orange-500" />
+                   قواعد القوة الشرائية والمحفظة
+                </h3>
+                <div className="space-y-6 relative z-10">
+                  <div className="p-5 bg-white/5 border border-white/10 rounded-2xl">
+                    <div className="flex justify-between items-center mb-4">
+                       <span className="text-xs font-black text-slate-400">القوة الشرائية لكل $1 عربون</span>
+                       <span className="text-orange-500 font-black text-lg">×10</span>
+                    </div>
+                    <input type="range" className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-orange-500" min="1" max="50" defaultValue="10" />
+                    <p className="text-[10px] text-slate-500 mt-3 font-bold italic">
+                      مثال: إذا دفع العميل $1,000 عربون، يمكنه المزايدة حتى $10,000 في المزادات الحية.
+                    </p>
+                  </div>
+                  <button className="w-full bg-orange-500 hover:bg-orange-600 text-white font-black py-4 rounded-2xl shadow-lg shadow-orange-500/20 transition-all mt-4 active:scale-95">
+                    حفظ القواعد المالية الجديدة
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-[2.5rem] border border-slate-200 p-8 shadow-sm">
+                <h3 className="font-black text-xl text-slate-800 mb-6 flex items-center gap-2">
+                   <Zap className="w-6 h-6 text-amber-500" />
+                   محفزات النظام (Webhooks Event Emitters)
+                </h3>
+                <div className="grid md:grid-cols-3 gap-6">
+                   <div className="p-6 bg-slate-50 rounded-3xl border border-slate-200 hover:border-indigo-300 transition-all group">
+                      <div className="text-indigo-600 font-black text-xs mb-2 flex items-center gap-2">
+                         <div className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse"></div>
+                         EVENT: PAYMENT_SUCCESS
+                      </div>
+                      <p className="text-xs text-slate-600 font-bold leading-relaxed">بمجرد التحقق من الدفع، يتم فتح ملف اللوجستيات فوراً وإرسال إشعارات للفريق.</p>
+                   </div>
+                   <div className="p-6 bg-slate-50 rounded-3xl border border-slate-200 hover:border-emerald-300 transition-all">
+                      <div className="text-emerald-600 font-black text-xs mb-2">EVENT: BUYER_WIN_AUCTION</div>
+                      <p className="text-xs text-slate-600 font-bold leading-relaxed">توليد "فاتورة شراء" فورية وإرسال رابط دفع Stripe مباشر للمشتري.</p>
+                   </div>
+                </div>
+            </div>
           </div>
         );
 
@@ -5393,17 +5380,40 @@ export const AdminDashboard = () => {
   };
 
   return (
-    <div className="flex h-screen bg-slate-50 font-sans" dir="rtl">
-      {/* Sidebar - Dedicated Admin Version */}
-      <aside className="w-80 bg-slate-900 text-white flex-shrink-0 flex flex-col p-6 hidden md:flex overflow-y-auto">
-        <div className="flex items-center gap-3 mb-10 px-2 mt-2">
-          <div className="w-12 h-12 bg-orange-500 rounded-2xl flex items-center justify-center text-white shadow-xl shadow-orange-500/20">
-            <Car className="w-7 h-7" />
+    <div className="flex h-screen bg-slate-900 overflow-hidden font-sans" dir="rtl">
+      {/* Mobile Sidebar Overlay */}
+      {mobileSidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[90] lg:hidden"
+          onClick={() => setMobileSidebarOpen(false)}
+        />
+      )}
+
+      {/* Unified Sidebar - Drawer on Mobile, Static on lg+ */}
+      <aside ref={sidebarRef} className={`
+        fixed inset-y-0 right-0 z-[100] w-80 bg-slate-900 text-white flex-shrink-0 flex flex-col p-6 
+        transition-transform duration-300 transform lg:translate-x-0 lg:static lg:inset-0
+        ${mobileSidebarOpen ? 'translate-x-0' : 'translate-x-full lg:translate-x-0'}
+        overflow-y-auto border-l border-slate-800 pb-32 lg:pb-6
+      `}>
+        <div className="flex items-center justify-between mb-10 px-2 mt-2">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 bg-orange-500 rounded-2xl flex items-center justify-center text-white shadow-xl shadow-orange-500/20">
+              <Car className="w-7 h-7" />
+            </div>
+            <div>
+              <h1 className="text-xl font-black tracking-tight leading-none text-white">ليبيا AUTO PRO</h1>
+              <span className="text-[10px] font-black text-orange-500 uppercase tracking-widest">إدارة المنصة (Admin)</span>
+            </div>
           </div>
-          <div>
-            <h1 className="text-xl font-black tracking-tight leading-none text-white">ليبيا AUTO PRO</h1>
-            <span className="text-[10px] font-black text-orange-500 uppercase tracking-widest">إدارة المنصة (Admin)</span>
-          </div>
+          <button 
+            onClick={() => setMobileSidebarOpen(false)}
+            title="إغلاق القائمة"
+            aria-label="إغلاق القائمة"
+            className="lg:hidden p-2 text-slate-400 hover:text-white"
+          >
+            <X className="w-6 h-6" />
+          </button>
         </div>
 
         <nav className="flex-grow space-y-1.5 px-1 pr-2">
@@ -5415,7 +5425,7 @@ export const AdminDashboard = () => {
               items: [
                 { id: 'overview', label: 'الرئيسية (الإحصائيات)', icon: Store },
                 { id: 'reports', label: 'تقارير السوق', icon: BookOpen },
-                { id: 'messages', label: 'مركز الرسائل', icon: MessageSquare, badge: messages.filter(m => !m.isRead).length },
+                { id: 'messages', label: 'مركز الرسائل', icon: MessageSquare, badge: (messages || []).filter((m: any) => !m.isRead).length },
               ]
             },
             {
@@ -5423,8 +5433,8 @@ export const AdminDashboard = () => {
               label: 'إدارة المستخدمين',
               icon: Users,
               items: [
-                { id: 'user_management', label: 'إدارة المشتركين', icon: Users, badge: pendingUsers.length },
-                { id: 'kyc_review', label: 'مراجعة التوثيق KYC', icon: ShieldCheck, badge: kycUsers.filter(u => u.kycStatus === 'pending').length || undefined },
+                { id: 'user_management', label: 'إدارة المشتركين', icon: Users, badge: (pendingUsers?.length || 0) },
+                { id: 'kyc_review', label: 'مراجعة التوثيق KYC', icon: ShieldCheck, badge: (kycUsers || []).filter((u: any) => u.kycStatus === 'pending').length || undefined },
               ]
             },
             {
@@ -5433,22 +5443,35 @@ export const AdminDashboard = () => {
               icon: Car,
               items: [
                 { id: 'cars', label: 'إدارة السيارات', icon: Car },
-                { id: 'inventory_review', label: 'مراجعة السيارات', icon: ShieldCheck, badge: adminPendingCars.length },
+                { id: 'inventory_review', label: 'مراجعة السيارات', icon: ShieldCheck, badge: (adminPendingCars?.length || 0) },
                 { id: 'manage_live_auctions', label: 'إدارة مزاداتنا الحية', icon: Gavel },
                 { id: 'marketplace_management', label: 'سوق العروض', icon: Handshake },
                 { id: 'inspections', label: 'طلبات الفحص', icon: Shield },
               ]
             },
             {
-              group: 'Finance & Billing',
-              label: 'المالية والفواتير',
+              group: 'Treasury & Accounting',
+              label: 'الخزينة والمحاسبة',
               icon: Wallet,
               items: [
-                { id: 'financial_approvals', label: 'تأمينات المزايدة', icon: Wallet, badge: pendingDeposits.length },
-                { id: 'payment_requests', label: 'طلبات الدفع (المشترون) 💳', icon: CreditCard },
-                { id: 'withdrawal_requests', label: 'طلبات سحب البائعين', icon: CreditCard, badge: withdrawalRequests.filter(w => w.status === 'pending').length || undefined },
-                { id: 'document_cycle', label: 'دورة المستندات والفواتير', icon: FileText, badge: adminInvoices.filter(i => i.status !== 'seller_paid_by_admin').length || undefined },
-                { id: 'financial_ledger', label: 'الرقابة المالية', icon: DollarSign },
+                { id: 'financial_approvals', label: 'تأمينات المزايدة', icon: Wallet, badge: (pendingDeposits?.length || 0) },
+                { id: 'payment_requests', label: 'طلبات شحن المحفظة 💳', icon: CreditCard },
+                { id: 'withdrawal_requests', label: 'طلبات سحب الأرباح', icon: CreditCard, badge: (withdrawalRequests || []).filter((w: any) => w.status === 'pending').length || undefined },
+                { id: 'all_invoices', label: 'فواتير المبيعات والمطالبات', icon: FileText, badge: (adminInvoices || []).filter((i: any) => i.status === 'unpaid').length || undefined },
+                { id: 'financial_ledger', label: 'الدفتر المالي والتقارير', icon: DollarSign },
+                { id: 'expenses', label: 'إدارة المصاريف 💸', icon: Receipt },
+                { id: 'payment_gateways', label: 'بوابات الدفع الإلكتروني', icon: ShieldCheck },
+              ]
+            },
+            {
+              group: 'Logistics & Shipping',
+              label: 'اللوجستيات والشحن',
+              icon: Truck,
+              items: [
+                { id: 'inventory_review', label: 'مراجعة السيارات الجديدة', icon: ShieldCheck, badge: (adminPendingCars?.length || 0) },
+                { id: 'shipments_tracking', label: 'تتبع حركة الشحن والسيارات', icon: Truck, badge: (adminShipments?.length || 0) },
+                { id: 'shipping_settings', label: 'تعريفة وأسعار الشحن', icon: Ship },
+                { id: 'calculator', label: 'حاسبة التكلفة الجمركية', icon: Calculator },
               ]
             },
             {
@@ -5456,24 +5479,24 @@ export const AdminDashboard = () => {
               label: 'إعدادات المنصة',
               icon: Settings,
               items: [
-                { id: 'system_global', label: 'إعدادات المنصة ⚙️', icon: Settings },
-                { id: 'marketing', label: 'التسويق والحملات 📧', icon: Mail },
-                { id: 'logistics', label: 'اللوجستيات والشحن', icon: Truck, badge: adminShipments.length },
-                { id: 'shipping_settings', label: 'أسعار الشحن 🚢', icon: Ship },
-                { id: 'calculator', label: 'حاسبة التكلفة 🧮', icon: Calculator },
-                { id: 'offices', label: 'إدارة المكاتب', icon: Building2 },
-                { id: 'system', label: 'إعدادات الفروع والعناوين', icon: MapPin },
-                { id: 'footer_settings', label: 'إعدادات الفوتر 🦶', icon: Settings },
+                { id: 'system_global', label: 'إعدادات النظام الرئيسية ⚙️', icon: Settings },
+                { id: 'marketing', label: 'مركز التسويق 📧', icon: Mail },
+                { id: 'offices', label: 'إدارة الفروع والمكاتب', icon: Building2 },
+                { id: 'footer_settings', label: 'إعدادات الفوتر والروابط', icon: Settings },
               ]
             }
-          ].map((category) => {
+          ]
+          .map(group => {
+            const allowedViews = TEAM_PERMISSIONS[currentUser?.supportTeam || ''] || TEAM_PERMISSIONS['admin'];
+            const filteredItems = group.items.filter(item => 
+              allowedViews.includes('*') || allowedViews.includes(item.id)
+            );
+            return { ...group, items: filteredItems };
+          })
+          .filter(group => group.items.length > 0)
+          .map((category) => {
             const isActiveGroup = category.items.some(item => item.id === view);
             const isOpen = openGroup === category.group || (openGroup === 'INITIAL' && isActiveGroup);
-
-            // Auto open group on first load if an item is selected
-            if (openGroup === 'INITIAL' && isActiveGroup) {
-              setTimeout(() => setOpenGroup(category.group), 0);
-            }
 
             return (
               <div key={category.group} className="mb-2">
@@ -5492,13 +5515,12 @@ export const AdminDashboard = () => {
                   </div>
                 </button>
 
-                {/* Accordion Content */}
                 <div className={`overflow-hidden transition-all duration-300 ease-in-out ${isOpen ? 'max-h-[800px] opacity-100 mt-1' : 'max-h-0 opacity-0'}`}>
                   <div className="pl-4 pr-6 space-y-1 relative before:absolute before:right-8 before:top-2 before:bottom-2 before:w-px before:bg-slate-800">
                     {category.items.map((item) => (
                       <button
                         key={item.id}
-                        onClick={() => setSearchParams({ view: item.id })}
+                        onClick={() => { setSearchParams({ view: item.id }); setMobileSidebarOpen(false); }}
                         className={`w-full group flex items-center justify-between py-2.5 px-3 rounded-xl transition-all duration-300 relative z-10 ${view === item.id
                           ? 'bg-orange-500/10 text-orange-500'
                           : 'text-slate-400 hover:bg-slate-800/50 hover:text-white'
@@ -5509,8 +5531,7 @@ export const AdminDashboard = () => {
                           <span className="text-sm font-bold">{item.label}</span>
                         </div>
                         {item.badge ? (
-                          <span className={`px-2 py-0.5 rounded-lg text-[9px] font-black transition-colors ${view === item.id ? 'bg-orange-500 text-white' : 'bg-red-500/20 text-red-500'
-                            }`}>
+                          <span className={`px-2 py-0.5 rounded-lg text-[9px] font-black transition-colors ${view === item.id ? 'bg-orange-500 text-white' : 'bg-red-500/20 text-red-500'}`}>
                             {item.badge}
                           </span>
                         ) : null}
@@ -5526,13 +5547,18 @@ export const AdminDashboard = () => {
         <div className="mt-auto pt-6 border-t border-slate-800 space-y-2">
           <button
             onClick={() => window.location.href = '/'}
+            title="الذهاب للموقع الخارجي"
+            aria-label="الذهاب للموقع الخارجي"
             className="w-full flex items-center gap-3 p-4 text-slate-400 hover:text-white transition-colors text-sm font-bold"
           >
             <Globe className="w-5 h-5" />
             الذهاب للموقع
           </button>
           <button
-            className="w-full flex items-center gap-3 p-4 bg-slate-800/50 text-slate-300 rounded-2xl hover:bg-red-500/20 hover:text-red-400 transition-all text-sm font-black border border-slate-700/50"
+            title="عرض سجل العمليات"
+            aria-label="عرض سجل العمليات"
+            onClick={() => { setSearchParams({ view: 'financial_ledger' }); setMobileSidebarOpen(false); }}
+            className={`w-full flex items-center gap-3 p-4 rounded-2xl transition-all text-sm font-black border ${view === 'financial_ledger' ? 'bg-orange-500/10 border-orange-500 text-orange-400' : 'bg-slate-800/50 text-slate-300 border-slate-700/50 hover:bg-slate-800 hover:text-white'}`}
           >
             <History className="w-5 h-5" />
             سجل العمليات
@@ -5541,38 +5567,46 @@ export const AdminDashboard = () => {
       </aside>
 
       {/* Main Content Area */}
-      <main className="flex-grow overflow-y-auto p-10 bg-slate-50 relative">
-        <header className="flex justify-between items-center mb-10 pb-6 border-b border-slate-200">
-          <div className="flex items-center gap-6 text-right" dir="rtl">
-            <div className="w-14 h-14 bg-slate-900 rounded-2xl flex items-center justify-center text-white shadow-xl shadow-slate-900/20">
-              <ShieldCheck className="w-8 h-8 text-orange-500" />
+      <main className="flex-grow overflow-y-auto p-4 lg:p-10 pb-28 lg:pb-10 bg-white relative">
+        <header className="flex flex-col lg:flex-row justify-between items-center mb-6 lg:mb-10 pb-6 border-b border-slate-100 gap-4">
+          <div className="flex items-center gap-4 lg:gap-6 text-right w-full lg:w-auto" dir="rtl">
+            <button 
+              onClick={() => setMobileSidebarOpen(true)}
+              title="فتح القائمة الجانبية"
+              aria-label="فتح القائمة الجانبية"
+              className="lg:hidden p-3 bg-slate-100 text-slate-600 rounded-2xl hover:bg-orange-500 hover:text-white transition-all shadow-sm"
+            >
+              <Menu className="w-6 h-6" />
+            </button>
+            <div className="w-12 h-12 lg:w-14 lg:h-14 bg-slate-900 rounded-2xl flex items-center justify-center text-white shadow-xl shadow-slate-900/20">
+              <ShieldCheck className="w-6 h-6 lg:w-8 lg:h-8 text-orange-500" />
             </div>
             <div>
-              <h2 className="text-2xl font-black text-slate-800 tracking-tighter">أهلاً بك، {currentUser?.firstName || 'المدير'} 👋</h2>
-              <p className="text-slate-400 font-bold text-xs mt-1">لديك {pendingUsers.length + adminPendingCars.length} طلبات تحتاج مراجعتك اليوم.</p>
+              <h2 className="text-xl lg:text-2xl font-black text-slate-800 tracking-tighter leading-none">أهلاً بك، {currentUser?.firstName || 'المدير'} 👋</h2>
+              <p className="text-slate-400 font-bold text-[10px] lg:text-xs mt-1">لديك {(pendingUsers?.length || 0) + (adminPendingCars?.length || 0)} طلبات تحتاج مراجعتك.</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
-            <div className="relative group">
+          <div className="flex items-center gap-3 lg:gap-4 w-full lg:w-auto justify-between lg:justify-end">
+            <div className="relative group flex-grow lg:flex-grow-0">
               <input aria-label="البحث عن العناصر" title="البحث الحاضر" placeholder="بحث..."
                 type="text"
-                className="bg-white border border-slate-200 rounded-2xl px-12 py-3.5 text-sm font-bold w-72 focus:ring-2 focus:ring-orange-500/20 outline-none transition-all shadow-sm group-hover:shadow-md text-right"
+                className="bg-slate-50 border border-slate-200 rounded-2xl px-10 lg:px-12 py-3 text-sm font-bold w-full lg:w-64 xl:w-80 focus:ring-2 focus:ring-orange-500/20 outline-none transition-all shadow-sm group-hover:shadow-md text-right"
                 dir="rtl"
               />
-              <Search className="w-5 h-5 text-slate-400 absolute right-4 top-1/2 -translate-y-1/2" />
+              <Search className="w-4 h-4 lg:w-5 lg:h-5 text-slate-400 absolute right-4 top-1/2 -translate-y-1/2" />
             </div>
 
-            <div className="flex bg-white p-1.5 rounded-2xl border border-slate-100 shadow-sm gap-1">
-              <div className="relative">
+            <div className="flex bg-slate-50 p-1 rounded-2xl border border-slate-100 shadow-sm gap-1 shrink-0">
+              <div className="relative" ref={notificationsRef}>
                 <button
                   title="الاشعارات"
                   aria-label="عرض الاشعارات"
                   onClick={() => { setShowNotifications(!showNotifications); setShowMessages(false); }}
-                  className={`p-2.5 rounded-xl transition-all relative ${showNotifications ? 'bg-orange-50 text-orange-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                  className={`p-2 rounded-xl transition-all relative ${showNotifications ? 'bg-orange-50 text-orange-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
                 >
                   <Bell className="w-5 h-5" />
-                  {unreadCounts.notifications > 0 && (
+                  {(unreadCounts?.notifications || 0) > 0 && (
                     <span className="absolute top-2 right-2 w-4 h-4 bg-red-600 text-white text-[9px] font-black rounded-full flex items-center justify-center border-2 border-white animate-pulse">
                       {unreadCounts.notifications}
                     </span>
@@ -5581,15 +5615,15 @@ export const AdminDashboard = () => {
                 {showNotifications && <NotificationDropdown onClose={() => setShowNotifications(false)} />}
               </div>
 
-              <div className="relative">
+              <div className="relative" ref={messagesRef}>
                 <button
                   title="الرسائل"
                   aria-label="عرض الرسائل"
                   onClick={() => { setShowMessages(!showMessages); setShowNotifications(false); }}
-                  className={`p-2.5 rounded-xl transition-all relative ${showMessages ? 'bg-orange-50 text-orange-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                  className={`p-2 rounded-xl transition-all relative ${showMessages ? 'bg-orange-50 text-orange-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
                 >
                   <Mail className="w-5 h-5" />
-                  {unreadCounts.messages > 0 && (
+                  {(unreadCounts?.messages || 0) > 0 && (
                     <span className="absolute top-2 right-2 w-4 h-4 bg-blue-600 text-white text-[9px] font-black rounded-full flex items-center justify-center border-2 border-white">
                       {unreadCounts.messages}
                     </span>
@@ -5599,15 +5633,15 @@ export const AdminDashboard = () => {
               </div>
             </div>
 
-            <div className="flex items-center gap-3 bg-slate-900 text-white p-1.5 pr-4 rounded-2xl shadow-xl shadow-slate-900/20">
+            <Link to="/dashboard/seller" className="flex items-center gap-3 bg-slate-900 text-white p-1.5 pr-4 rounded-2xl shadow-xl shadow-slate-900/20 shrink-0 hover:bg-slate-800 transition-all group">
               <div className="text-right hidden sm:block">
                 <div className="text-xs font-black">{currentUser?.firstName || 'Admin'}</div>
-                <div className="text-[9px] text-orange-500 font-black uppercase tracking-widest">Administrator</div>
+                <div className="text-[9px] text-orange-500 font-black uppercase tracking-widest">Administrator (بائع)</div>
               </div>
-              <div className="w-9 h-9 bg-orange-500 rounded-xl flex items-center justify-center font-black">
+              <div className="w-8 h-8 lg:w-9 lg:h-9 bg-orange-500 rounded-xl flex items-center justify-center font-black group-hover:scale-110 transition-transform">
                 {currentUser?.firstName?.[0] || 'A'}
               </div>
-            </div>
+            </Link>
           </div>
         </header>
 
@@ -6483,14 +6517,14 @@ export const AdminDashboard = () => {
                 <Car className="w-6 h-6 text-indigo-500" />
                 إضافة تسعيرة جديدة
               </h3>
-              <button onClick={() => setShowLibyanModal(false)} className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-full transition-colors">
+              <button onClick={() => setShowLibyanModal(false)} title="إغلاق" aria-label="إغلاق" className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-full transition-colors">
                 <X className="w-5 h-5" />
               </button>
             </div>
             <div className="p-6 grid grid-cols-2 gap-4" dir="rtl">
               <div>
                 <label className="block text-sm font-bold text-slate-700 mb-2">الحالة</label>
-                <select value={libyanModalForm.condition} onChange={e => setLibyanModalForm({ ...libyanModalForm, condition: e.target.value })} className="w-full border rounded-lg p-2.5 outline-none focus:border-indigo-500">
+                <select title="الحالة" aria-label="الحالة" value={libyanModalForm.condition} onChange={e => setLibyanModalForm({ ...libyanModalForm, condition: e.target.value })} className="w-full border rounded-lg p-2.5 outline-none focus:border-indigo-500">
                   <option value="جديد">جديد</option>
                   <option value="مستعمل">مستعمل</option>
                 </select>
@@ -6551,7 +6585,7 @@ export const AdminDashboard = () => {
                 <FileText className="w-6 h-6 text-indigo-500" />
                 {showReportModal.title}
               </h3>
-              <button onClick={() => setShowReportModal(null)} className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-full transition-colors">
+              <button onClick={() => setShowReportModal(null)} title="إغلاق" aria-label="إغلاق" className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-full transition-colors">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -6567,6 +6601,99 @@ export const AdminDashboard = () => {
                  <Download className="w-4 h-4" />
                  تحميل PDF
                </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* EXTRA FEE / MANUAL INVOICE MODAL */}
+      {showAddFeeModal && showAddFeeModal.isOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[150] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200" dir="rtl">
+            <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-orange-100 text-orange-600 rounded-xl flex items-center justify-center">
+                  <Receipt className="w-6 h-6" />
+                </div>
+                <h3 className="text-xl font-black text-slate-800">إضافة رسوم / غرامة إضافية</h3>
+              </div>
+              <button 
+                aria-label="إغلاق"
+                onClick={() => setShowAddFeeModal(null)} 
+                className="p-2 text-slate-400 hover:bg-slate-100 rounded-full transition-all"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-8 space-y-6">
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 mr-1">نوع الرسوم</label>
+                <select
+                  aria-label="تحديد نوع المصروف"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 font-bold text-sm outline-none focus:border-orange-500 transition-all"
+                  value={feeForm.type}
+                  onChange={e => setFeeForm({ ...feeForm, type: e.target.value })}
+                >
+                  <option value="storage_fine">غرامة تخزين (Storage Fine)</option>
+                  <option value="extra_service">خدمة إضافية (Extra Service)</option>
+                  <option value="inspection_fee">رسوم فحص (Inspection Fee)</option>
+                  <option value="late_payment_fine">غرامة تأخير دفع</option>
+                  <option value="other">أخرى</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 mr-1">القيمة (USD)</label>
+                <div className="relative">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">$</span>
+                  <input
+                    aria-label="قيمة الرسوم"
+                    type="number"
+                    placeholder="0.00"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 pl-10 font-bold text-sm outline-none focus:border-orange-500 transition-all text-left"
+                    value={feeForm.amount}
+                    onChange={e => setFeeForm({ ...feeForm, amount: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 mr-1">تاريخ الاستحقاق (اختياري)</label>
+                <input
+                  aria-label="تاريخ الاستحقاق"
+                  type="date"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 font-bold text-sm outline-none focus:border-orange-500 transition-all"
+                  value={feeForm.dueDate}
+                  onChange={e => setFeeForm({ ...feeForm, dueDate: e.target.value })}
+                />
+              </div>
+
+              <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 flex gap-3">
+                <Info className="w-5 h-5 text-amber-500 shrink-0" />
+                <p className="text-[10px] text-amber-700 font-bold leading-relaxed">
+                  سيتم إنشاء فاتورة "غير مدفوعة" باسم العميل، وسيظهر له إشعار فوري في لوحة التحكم الخاصة به.
+                </p>
+              </div>
+
+              <div className="flex gap-4 pt-4">
+                <button
+                  onClick={handleCreateManualInvoice}
+                  disabled={isAddingFee}
+                  className="flex-[2] bg-slate-900 text-white py-4 rounded-2xl font-black shadow-xl hover:bg-slate-800 transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {isAddingFee ? (
+                    <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
+                  ) : (
+                    <>🚀 إصدار الفاتورة</>
+                  )}
+                </button>
+                <button
+                  onClick={() => setShowAddFeeModal(null)}
+                  className="flex-1 bg-slate-100 text-slate-500 py-4 rounded-2xl font-black hover:bg-slate-200 transition-all"
+                >
+                  إلغاء
+                </button>
+              </div>
             </div>
           </div>
         </div>
