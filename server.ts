@@ -156,12 +156,16 @@ db.exec(`
     id TEXT PRIMARY KEY,
     condition TEXT,
     make TEXT,
+    makeEn TEXT,
     model TEXT,
+    modelEn TEXT,
     year INTEGER,
     transmission TEXT,
     fuel TEXT,
     mileage TEXT,
-    priceLYD REAL
+    priceLYD REAL,
+    city TEXT,
+    lastUpdated DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
   CREATE TABLE IF NOT EXISTS proxy_bids (
@@ -288,6 +292,38 @@ db.exec(`
     lastUpdated TEXT
   );
 
+  CREATE TABLE IF NOT EXISTS inspections (
+    id TEXT PRIMARY KEY,
+    userId TEXT NOT NULL,
+    carMake TEXT,
+    carModel TEXT,
+    carYear INTEGER,
+    vin TEXT,
+    notes TEXT,
+    status TEXT DEFAULT 'pending',
+    reportUrl TEXT,
+    requestedAt TEXT,
+    updatedAt TEXT,
+    FOREIGN KEY(userId) REFERENCES users(id)
+  );
+`);
+
+  // Migration for missing columns in market_estimates
+  try {
+    db.prepare("ALTER TABLE market_estimates ADD COLUMN lastUpdated TEXT").run();
+  } catch (_) {}
+  try {
+    db.prepare("ALTER TABLE market_estimates ADD COLUMN makeEn TEXT").run();
+    db.prepare("ALTER TABLE market_estimates ADD COLUMN modelEn TEXT").run();
+    db.prepare("ALTER TABLE market_estimates ADD COLUMN condition TEXT").run();
+    db.prepare("ALTER TABLE market_estimates ADD COLUMN transmission TEXT").run();
+    db.prepare("ALTER TABLE market_estimates ADD COLUMN fuel TEXT").run();
+    db.prepare("ALTER TABLE market_estimates ADD COLUMN mileage TEXT").run();
+    db.prepare("ALTER TABLE market_estimates ADD COLUMN price TEXT").run();
+    db.prepare("ALTER TABLE market_estimates ADD COLUMN city TEXT").run();
+  } catch (_) {}
+
+  db.exec(`
   CREATE TABLE IF NOT EXISTS libyan_market_prices (
     id TEXT PRIMARY KEY,
     condition TEXT,
@@ -297,9 +333,20 @@ db.exec(`
     transmission TEXT,
     fuel TEXT,
     mileage TEXT,
-    priceLYD REAL
+    priceLYD REAL,
+    lastUpdated TEXT
   );
+`);
 
+  // Migration for missing columns in libyan_market_prices
+  try {
+    db.prepare("ALTER TABLE libyan_market_prices ADD COLUMN lastUpdated TEXT").run();
+    db.prepare("ALTER TABLE libyan_market_prices ADD COLUMN makeEn TEXT").run();
+    db.prepare("ALTER TABLE libyan_market_prices ADD COLUMN modelEn TEXT").run();
+    db.prepare("ALTER TABLE libyan_market_prices ADD COLUMN city TEXT").run();
+  } catch (_) {}
+
+  db.exec(`
   -- Consolidated external notifications table
 
   INSERT OR IGNORE INTO system_settings (key, value, description, updatedAt) VALUES
@@ -311,8 +358,8 @@ db.exec(`
   ('default_buying_power_multiplier', '10', 'Default multiplier for deposit to calculate buying power', CURRENT_TIMESTAMP),
   ('require_kyc_for_bidding', '1', 'Require KYC approval before allowing bids (1=Yes, 0=No)', CURRENT_TIMESTAMP),
   ('usd_lyd_rate', '7.00', 'Global exchange rate for USD to Libyan Dinar', CURRENT_TIMESTAMP),
-  ('enable_email_notifications', '1', 'Send notifications to buyer/seller email (1=Yes, 0=No)', CURRENT_TIMESTAMP),
-  ('enable_whatsapp_notifications', '1', 'Send notifications to buyer/seller WhatsApp (1=Yes, 0=No)', CURRENT_TIMESTAMP);
+  ('enable_email_notifications', '1', 'Send notifications to buyer-seller email (1=Yes, 0=No)', CURRENT_TIMESTAMP),
+  ('enable_whatsapp_notifications', '1', 'Send notifications to buyer-seller WhatsApp (1=Yes, 0=No)', CURRENT_TIMESTAMP);
 
   -- Insert default branch configs
   INSERT OR IGNORE INTO branch_configs (id, name, englishName, logoText, logoSubtext, currency, domain, primaryColor)
@@ -381,7 +428,7 @@ db.exec(`
   INSERT OR IGNORE INTO notification_templates (id, name, subject, body_html, body_whatsapp, updatedAt) VALUES
   ('marketing_campaign', 'حملة تسويقية سيارات', 'عروض سيارات حصرية بانتظارك من أوتو برو', 
   '', 
-  '🚗 *عروض سيارات مميزة من أوتو برو!*\n\nتتوفر لدينا مجموعة جديدة من السيارات (قادمة / في المزاد / عروض سوق).\n\n👇 *تصفح السيارات المختارة لك من هنا:* \nhttps://www.autopro.ac/marketplace',
+  '🚗 *عروض سيارات مميزة من أوتو برو!*\n\nتتوفر لدينا مجموعة جديدة من السيارات (قادمة - في المزاد - عروض سوق).\n\n👇 *تصفح السيارات المختارة لك من هنا:* \nhttps://www.autopro.ac/marketplace',
   CURRENT_TIMESTAMP);
 
   INSERT OR IGNORE INTO notification_templates (id, name, subject, body_html, body_whatsapp, updatedAt) VALUES
@@ -1037,10 +1084,6 @@ async function startServer() {
   }
 
   function createWinInvoices(userId: string, carId: string, amount: number) {
-    // Idempotency check: Ensure we don't create duplicate invoices and shipments for the same car win
-    const existingInvoice: any = db.prepare("SELECT id FROM invoices WHERE carId = ? AND type = 'purchase'").get(carId);
-    if (existingInvoice) return { purchaseInvoice: existingInvoice.id, transportInvoice: null, shippingInvoice: null, shipmentId: null };
-
     const now = new Date().toISOString();
     const dueDate7 = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
@@ -1054,20 +1097,32 @@ async function startServer() {
 
     const commission = amount * commissionRate;
     const car: any = db.prepare("SELECT * FROM cars WHERE id = ?").get(carId) as any;
+    const buyer: any = db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as any;
 
-    const inv1 = `inv-pur-${Date.now()}`;
-    db.prepare(`INSERT INTO invoices(id, userId, carId, amount, status, type, timestamp, dueDate) VALUES(?, ?, ?, ?, 'unpaid', 'purchase', ?, ?)`).run(inv1, userId, carId, amount + commission, now, dueDate7);
+    if (!car) return { error: "Car not found" };
 
-    const inv2 = `inv-trn-${Date.now()}`;
-    db.prepare(`INSERT INTO invoices(id, userId, carId, amount, status, type, timestamp, dueDate) VALUES(?, ?, ?, ?, 'pending', 'transport', ?, ?)`).run(inv2, userId, carId, transportFee, now, dueDate7);
+    // Deterministic IDs to PREVENT DUPLICATES
+    const inv1 = `inv-pur-${carId}`;
+    const inv2 = `inv-trn-${carId}`;
+    const inv3 = `inv-shp-${carId}`;
+    const shipId = `ship-${carId}`;
 
-    const inv3 = `inv-shp-${Date.now()}`;
-    db.prepare(`INSERT INTO invoices(id, userId, carId, amount, status, type, timestamp, dueDate) VALUES(?, ?, ?, ?, 'pending', 'shipping', ?, ?)`).run(inv3, userId, carId, shippingFee, now, dueDate7);
+    db.transaction(() => {
+      // Purchase Invoice
+      db.prepare(`INSERT OR IGNORE INTO invoices(id, userId, carId, amount, status, type, timestamp, dueDate) VALUES(?, ?, ?, ?, 'unpaid', 'purchase', ?, ?)`).run(inv1, userId, carId, amount + commission, now, dueDate7);
 
-    const shipId = `ship-${Date.now()}`;
-    db.prepare(`INSERT INTO shipments(id, carId, userId, status, createdAt, updatedAt) VALUES(?, ?, ?, 'awaiting_payment', ?, ?)`)
-      .run(shipId, carId, userId, now, now);
+      // Internal Transport Invoice (Pending)
+      db.prepare(`INSERT OR IGNORE INTO invoices(id, userId, carId, amount, status, type, timestamp, dueDate) VALUES(?, ?, ?, ?, 'pending', 'transport', ?, ?)`).run(inv2, userId, carId, transportFee, now, dueDate7);
 
+      // Ocean Shipping Invoice (Pending)
+      db.prepare(`INSERT OR IGNORE INTO invoices(id, userId, carId, amount, status, type, timestamp, dueDate) VALUES(?, ?, ?, ?, 'pending', 'shipping', ?, ?)`).run(inv3, userId, carId, shippingFee, now, dueDate7);
+
+      // Shipping Record (Physical Status)
+      db.prepare(`INSERT OR IGNORE INTO shipments(id, carId, userId, status, createdAt, updatedAt) VALUES(?, ?, ?, 'awaiting_dispatch', ?, ?)`)
+        .run(shipId, carId, userId, now, now);
+    })();
+
+    // ✅ NOTIFY SELLER
     if (car && car.sellerId) {
       sendNotification(car.sellerId, 'تم بيع سيارة! 💰', `تم بيع سيارتك ${car.make} ${car.model} بمبلغ $${amount.toLocaleString()}`, 'success', 'car_sold', {
         carLink: `https://www.autopro.ac/cars/${carId}`,
@@ -1081,20 +1136,63 @@ async function startServer() {
       );
     }
 
-    if (car) {
-      sendNotification(userId, 'تهانينا! فزت بسيارة 🎉', `لقد فزت بمزاد سيارة ${car.make} ${car.model} بمبلغ $${amount.toLocaleString()}. الفواتير متاحة الآن لدفعها.`, 'success', 'auction_win', {
+    // ✅ NOTIFY BUYER (Email + Internal)
+    if (car && buyer) {
+      const message = `لقد فزت بمزاد سيارة ${car.make} ${car.model} بمبلغ $${amount.toLocaleString()}. تم إصدار فواتير الشراء والشحن والنقل، يرجى سدادها للبدء في إجراءات الشحن.`;
+      
+      sendNotification(userId, 'تهانينا! فزت بسيارة 🎉', message, 'success', 'auction_win', {
         carLink: `https://www.autopro.ac/cars/${carId}`,
         winLink: `https://www.autopro.ac/dashboard/wins`,
         invoiceLink: `https://www.autopro.ac/dashboard/invoices`,
         itemInfo: `${car.year} ${car.make} ${car.model}`
       });
+
       sendInternalMessage('admin-1', userId, '🏆 إشعار فوز بالمزاد وإصدار فواتير',
         `أهلاً! لقد فزت بسيارة ${car.make} ${car.model} (${car.year}).\n\n` +
         `السعر النهائي: $${amount.toLocaleString()}\n` +
         `تم إصدار فاتورة الشراء وتكاليف النقل، يرجى سدادها خلال 7 أيام من تاريخ اليوم لإتمام عملية الشحن.`
       );
+
+      // HTML Email Notification
+      if (transporter && buyer.email) {
+        transporter.sendMail({
+          from: process.env.SMTP_FROM || '"AUTOPRO AUCTIONS" <info@autopro.ac>',
+          to: buyer.email,
+          subject: `تهانينا! فزت بـ ${car.make} ${car.model} 🏆`,
+          html: `
+            <div dir="rtl" style="font-family: Arial, sans-serif; padding: 20px; background: #f8fafc; color: #0f172a; line-height: 1.6;">
+              <div style="background: white; max-width: 600px; margin: 0 auto; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+                <div style="background: #f97316; padding: 30px; text-align: center;">
+                  <h1 style="color: white; margin: 0; font-size: 24px;">تهانينا! فزت بفرقة AutoPro 🏆</h1>
+                </div>
+                <div style="padding: 30px;">
+                  <h2 style="color: #1e293b; margin-top: 0;">عزيزي ${buyer.firstName}،</h2>
+                  <p>يسعدنا إبلاغك بأنك نجحت في الفوز بمزاد السيارة التالية:</p>
+                  <div style="background: #f1f5f9; padding: 20px; border-radius: 8px; margin: 20px 0; border-right: 4px solid #f97316;">
+                    <h3 style="margin: 0; color: #0f172a;">${car.year} ${car.make} ${car.model}</h3>
+                    <p style="margin: 5px 0 0 0; color: #64748b;">السعر النهائي: <strong style="color: #f97316;">$${amount.toLocaleString()}</strong></p>
+                  </div>
+                  <p>تم إصدار الفواتير المطلوبة أدناه وهي متاحة الآن للسداد عبر لوحة التحكم:</p>
+                  <ul style="padding-right: 20px;">
+                    <li>فاتورة شراء السيارة ومصروفات المنصة</li>
+                    <li>فاتورة النقل الداخلي (إلى الميناء)</li>
+                    <li>فاتورة الشحن الدولي (تقديرية)</li>
+                  </ul>
+                  <div style="text-align: center; margin: 30px 0;">
+                    <a href="https://autopro.ac/dashboard/invoices" style="background: #f97316; color: white; padding: 15px 30px; text-decoration: none; border-radius: 10px; font-weight: bold; display: inline-block;">اضغط هنا لسداد الفواتير</a>
+                  </div>
+                  <p style="font-size: 14px; color: #64748b;">ملاحظة: يرجى إتمام السداد خلال 7 أيام لتجنب أي غرامات تأخير أو إلغاء للطلب.</p>
+                </div>
+                <div style="background: #f8fafc; padding: 20px; text-align: center; font-size: 11px; color: #94a3b8; border-top: 1px solid #e2e8f0;">
+                  هذا البريد مرسل آلياً من منصة أوتو برو | بنغازي - ليبيا
+                </div>
+              </div>
+            </div>
+          `
+        }).catch(e => console.error("Buyer win email error:", e.message));
+      }
     }
-    
+
     return { purchaseInvoice: inv1, transportInvoice: inv2, shippingInvoice: inv3, shipmentId: shipId };
   }
 
@@ -1233,45 +1331,7 @@ async function startServer() {
   setInterval(tickAuctions, 1000);
 
   
-  app.get("/api/libyan-market", (req, res) => {
-    try {
-      const prices: any[] = db.prepare("SELECT * FROM market_estimates ORDER BY id DESC").all();
-      // Map it to ensure UI compatibility
-      const mappedPrices = prices.map(row => ({
-        ...row,
-        priceLYD: parseFloat(String(row.price).replace(/,/g, '') || '0'),
-      }));
-      res.json(mappedPrices);
-    } catch (err: any) {
-      res.status(500).json({ error: "Failed to fetch market prices", details: err.message });
-    }
-  });
 
-  app.post("/api/libyan-market", (req, res) => {
-    try {
-      const { condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, city } = req.body;
-      const priceStr = Number(priceLYD).toLocaleString('en-US');
-      const info = db.prepare("INSERT INTO market_estimates (condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, price, city) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run(
-        condition, make, makeEn || '', model, modelEn || '', year, transmission || 'اوتوماتيك', fuel || 'بنزين', mileage || '0', priceStr, city || 'طرابلس'
-      );
-      res.json({ success: true, id: info.lastInsertRowid });
-    } catch (err: any) {
-      res.status(500).json({ error: "Failed to save market estimate", details: err.message });
-    }
-  });
-
-  app.put("/api/libyan-market/:id", (req, res) => {
-    try {
-      const { condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, city } = req.body;
-      const priceStr = Number(priceLYD).toLocaleString('en-US');
-      db.prepare("UPDATE market_estimates SET condition = ?, make = ?, makeEn = ?, model = ?, modelEn = ?, year = ?, transmission = ?, fuel = ?, mileage = ?, price = ?, city = ? WHERE id = ?").run(
-        condition, make, makeEn || '', model, modelEn || '', year, transmission || 'اوتوماتيك', fuel || 'بنزين', mileage || '0', priceStr, city || 'طرابلس', req.params.id
-      );
-      res.json({ success: true });
-    } catch (err: any) {
-      res.status(500).json({ error: "Failed to update market estimate", details: err.message });
-    }
-  });
 
   app.delete("/api/libyan-market/:id", (req, res) => {
     try {
@@ -1520,6 +1580,49 @@ async function startServer() {
   });
 
   // POST /api/admin/payment-requests/:id/approve — admin approves top-up / withdrawal
+  function completeInvoicePayment(invoiceId: string, timestamp: string, paidVia: string) {
+    const invoice: any = db.prepare("SELECT i.*, c.sellerId, c.make, c.model, c.year FROM invoices i LEFT JOIN cars c ON i.carId = c.id WHERE i.id = ?").get(invoiceId) as any;
+    if (!invoice) return;
+
+    const pickupCode = `AUTH-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+    db.prepare("UPDATE invoices SET status = 'paid', pickupAuthCode = ?, paidAt = ?, paidVia = ? WHERE id = ?").run(pickupCode, timestamp, paidVia, invoiceId);
+
+    // If purchase invoice paid, activate transport invoice AND settle with seller
+    if (invoice.type === 'purchase') {
+      db.prepare("UPDATE invoices SET status = 'unpaid' WHERE carId = ? AND userId = ? AND type = 'transport' AND status = 'pending'")
+        .run(invoice.carId, invoice.userId);
+      db.prepare("UPDATE shipments SET status = 'paid', updatedAt = ? WHERE carId = ? AND userId = ?")
+        .run(timestamp, invoice.carId, invoice.userId);
+
+      if (invoice.sellerId) {
+        const seller: any = db.prepare("SELECT commission FROM users WHERE id = ?").get(invoice.sellerId) as any;
+        settleSaleToSellerWallet(invoice.sellerId, invoice.carId, invoice.amount, seller?.commission || 5, `بيع سيارة: ${invoice.year} ${invoice.make} ${invoice.model}`);
+        sendNotification(invoice.sellerId, '💰 تم استلام دفعة سيارة', `المشتري قام بدفع ثمن سيارتك ${invoice.make}. الرصيد أضيف لمحفظتك.`, 'success');
+      }
+
+      sendInternalMessage('admin-1', invoice.userId,
+        '💳 تم تأكيد دفع فاتورة الشراء',
+        `تم تأكيد دفع فاتورة الشراء بنجاح!\n\nكود الاستلام: ${pickupCode}\n\n📋 الخطوة التالية: ستجد فاتورة النقل الداخلي جاهزة للدفع في قسم الفواتير.\n\nفريق أوتو برو 🚗`
+      );
+    } else if (invoice.type === 'transport') {
+      db.prepare("UPDATE shipments SET status = 'in_transport', updatedAt = ? WHERE carId = ? AND userId = ?")
+        .run(timestamp, invoice.carId, invoice.userId);
+      
+      sendInternalMessage('admin-1', invoice.userId,
+        '🚛 تم تأكيد دفع فاتورة النقل',
+        `تم تأكيد دفع فاتورة النقل بنجاح! سيارتك الآن قيد النقل إلى المستودع.\n\nفريق أوتو برو 🚗`
+      );
+    } else if (invoice.type === 'shipping') {
+      db.prepare("UPDATE shipments SET status = 'in_shipping', updatedAt = ? WHERE carId = ? AND userId = ?")
+        .run(timestamp, invoice.carId, invoice.userId);
+      
+      sendInternalMessage('admin-1', invoice.userId,
+        '🚢 تم تأكيد دفع فاتورة الشحن',
+        `تم تأكيد دفع فاتورة الشحن الدولي بنجاح! سيارتك الآن جاري شحنها.\n\nفريق أوتو برو 🚗`
+      );
+    }
+  }
+
   app.post("/api/admin/payment-requests/:id/approve", (req, res) => {
     try {
       const { id } = req.params;
@@ -1528,18 +1631,29 @@ async function startServer() {
       if (!pr) return res.status(404).json({ error: "الطلب غير موجود" });
       if (pr.status !== 'pending') return res.status(400).json({ error: "الطلب تمت معالجته مسبقاً" });
 
-      if (pr.type === 'topup') {
-        walletCredit(pr.userId, pr.amount, `شحن محفظة — مراجعة Admin`, id);
-        sendNotification(pr.userId, '✅ تم شحن محفظتك', `تمت الموافقة على طلبك ✔ — تم إضافة $${Number(pr.amount).toLocaleString()} لمحفظتك. يمكنك الآن المزايدة!`, 'success');
-      } else if (pr.type === 'withdrawal') {
-        walletDebit(pr.userId, pr.amount, `سحب رصيد — مراجعة Admin`, id);
-        sendNotification(pr.userId, '💸 تمت الموافقة على السحب', `تمت الموافقة على سحب $${Number(pr.amount).toLocaleString()} — سيُحوَّل خلال 2-3 أيام عمل.`, 'success');
-      }
+      const timestamp = new Date().toISOString();
 
-      db.prepare("UPDATE payment_requests SET status='approved', adminNote=?, processedAt=? WHERE id=?")
-        .run(adminNote || null, new Date().toISOString(), id);
+      db.transaction(() => {
+        if (pr.type === 'topup') {
+          walletCredit(pr.userId, pr.amount, `شحن محفظة — مراجعة Admin`, id);
+          sendNotification(pr.userId, '✅ تم شحن محفظتك', `تمت الموافقة على طلبك ✔ — تم إضافة $${Number(pr.amount).toLocaleString()} لمحفظتك. يمكنك الآن المزايدة!`, 'success');
+        } else if (pr.type === 'withdrawal') {
+          walletDebit(pr.userId, pr.amount, `سحب رصيد — مراجعة Admin`, id);
+          sendNotification(pr.userId, '💸 تمت الموافقة على السحب', `تمت الموافقة على سحب $${Number(pr.amount).toLocaleString()} — سيُحوَّل خلال 2-3 أيام عمل.`, 'success');
+        } else if (pr.type === 'invoice_payment') {
+          completeInvoicePayment(pr.invoiceId, timestamp, pr.method);
+          sendNotification(pr.userId, '✅ تم تأكيد الدفع', `تمت الموافقة على تأكيد دفع الفاتورة #${pr.invoiceId} بنجاح.`, 'success');
+        }
+
+        db.prepare("UPDATE payment_requests SET status='approved', adminNote=?, processedAt=? WHERE id=?")
+          .run(adminNote || null, timestamp, id);
+      })();
+
       res.json({ success: true });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { 
+      console.error(err);
+      res.status(500).json({ error: err.message }); 
+    }
   });
 
   // POST /api/admin/payment-requests/:id/reject
@@ -1547,12 +1661,29 @@ async function startServer() {
     try {
       const { id } = req.params;
       const { adminNote } = req.body;
-      db.prepare("UPDATE payment_requests SET status='rejected', adminNote=?, processedAt=? WHERE id=?")
-        .run(adminNote || 'تم الرفض', new Date().toISOString(), id);
-      const pr: any = db.prepare("SELECT userId, type, amount FROM payment_requests WHERE id=?").get(id) as any;
-      if (pr) sendNotification(pr.userId, '❌ تم رفض طلبك', `للأسف، تم رفض طلب ${pr.type === 'topup' ? 'شحن المحفظة' : 'السحب'} بمبلغ $${Number(pr.amount).toLocaleString()}. السبب: ${adminNote || 'مراجعة البيانات'}.`, 'error');
+      const pr: any = db.prepare("SELECT * FROM payment_requests WHERE id = ?").get(id) as any;
+      if (!pr) return res.status(404).json({ error: "الطلب غير موجود" });
+      if (pr.status !== 'pending') return res.status(400).json({ error: "الطلب تمت معالجته مسبقاً" });
+
+      const timestamp = new Date().toISOString();
+
+      db.transaction(() => {
+        db.prepare("UPDATE payment_requests SET status='rejected', adminNote=?, processedAt=? WHERE id=?")
+          .run(adminNote || 'تم الرفض', timestamp, id);
+
+        if (pr.type === 'invoice_payment') {
+          db.prepare("UPDATE invoices SET status='unpaid', paidVia=NULL WHERE id=?").run(pr.invoiceId);
+          sendNotification(pr.userId, '❌ تم رفض تأكيد الدفع', `تم رفض إثبات الدفع للفاتورة #${pr.invoiceId}. السبب: ${adminNote || 'مراجعة البيانات'}. يرجى المحاولة مرة أخرى أو التواصل مع الدعم.`, 'error');
+        } else {
+          sendNotification(pr.userId, '❌ تم رفض طلبك', `للأسف، تم رفض طلب ${pr.type === 'topup' ? 'شحن المحفظة' : 'السحب'} بمبلغ $${Number(pr.amount).toLocaleString()}. السبب: ${adminNote || 'مراجعة البيانات'}.`, 'error');
+        }
+      })();
+
       res.json({ success: true });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+    } catch (err: any) { 
+      console.error(err);
+      res.status(500).json({ error: err.message }); 
+    }
   });
 
   // GET /api/admin/wallet-stats — admin: financial overview
@@ -1579,6 +1710,52 @@ async function startServer() {
         VALUES (?,?,?,?,?,?,?,?)`).run(id, userId, 'withdrawal', amount, 'bank_transfer', (iban || '') + '|' + (bankName || ''), 'pending', new Date().toISOString());
       sendNotification('admin-1', '💸 طلب سحب رصيد', `المستخدم ${userId} يطلب سحب $${Number(amount).toLocaleString()} — IBAN: ${iban || 'غير محدد'}`, 'warning');
       res.json({ success: true, message: "تم إرسال طلب السحب — سيُحوَّل خلال 2-3 أيام عمل بعد المراجعة" });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  // ======= INSPECTION ROUTES =======
+  app.get("/api/inspections/:userId", (req, res) => {
+    try {
+      const { userId } = req.params;
+      const inspections = db.prepare("SELECT * FROM inspections WHERE userId = ? ORDER BY requestedAt DESC").all(userId);
+      res.json(inspections);
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  app.post("/api/inspections", (req, res) => {
+    try {
+      const { userId, carMake, carModel, carYear, vin, notes } = req.body;
+      if (!userId || !carMake || !carModel) return res.status(400).json({ error: "Missing required fields" });
+      const id = `insp-${Date.now()}`;
+      const now = new Date().toISOString();
+      db.prepare(`INSERT INTO inspections (id, userId, carMake, carModel, carYear, vin, notes, status, requestedAt, updatedAt)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`).run(id, userId, carMake, carModel, carYear, vin, notes, now, now);
+      
+      sendNotification('admin-1', '🛡️ طلب فحص جديد', `طلب فحص لسيارة ${carMake} ${carModel} (${carYear}) من المستخدم ${userId}`, 'info');
+      res.json({ success: true, inspectionId: id });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  // ======= INSPECTION ROUTES =======
+  app.get("/api/inspections/:userId", (req, res) => {
+    try {
+      const { userId } = req.params;
+      const inspections = db.prepare("SELECT * FROM inspections WHERE userId = ? ORDER BY requestedAt DESC").all(userId);
+      res.json(inspections);
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  app.post("/api/inspections", (req, res) => {
+    try {
+      const { userId, carMake, carModel, carYear, vin, notes } = req.body;
+      if (!userId || !carMake || !carModel) return res.status(400).json({ error: "Missing required fields" });
+      const id = `insp-${Date.now()}`;
+      const now = new Date().toISOString();
+      db.prepare(`INSERT INTO inspections (id, userId, carMake, carModel, carYear, vin, notes, status, requestedAt, updatedAt)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`).run(id, userId, carMake, carModel, carYear, vin, notes, now, now);
+      
+      sendNotification('admin-1', '🛡️ طلب فحص جديد', `طلب فحص لسيارة ${carMake} ${carModel} (${carYear}) من المستخدم ${userId}`, 'info');
+      res.json({ success: true, inspectionId: id });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
@@ -2490,64 +2667,90 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     res.json(invoices);
   });
 
+  app.get("/api/offers/user/:userId", (req, res) => {
+    const { userId } = req.params;
+    try {
+      const offers = db.prepare("SELECT * FROM cars WHERE winnerId = ? AND status = 'offer_market'").all(userId);
+      res.json(offers);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   app.post("/api/invoices/:id/pay", (req, res) => {
     const { id } = req.params;
+    const { method, referenceNo, receiptUrl, userId } = req.body;
+
+    if (!method) return res.status(400).json({ error: "يرجى اختيار طريقة الدفع أولاً" });
+
     try {
       const invoice: any = db.prepare("SELECT i.*, c.sellerId, c.make, c.model, c.year FROM invoices i LEFT JOIN cars c ON i.carId = c.id WHERE i.id = ?").get(id) as any;
       if (!invoice) return res.status(404).json({ error: "الفاتورة غير موجودة" });
       if (invoice.status === 'paid') return res.status(400).json({ error: "الفاتورة مدفوعة بالفعل" });
+      if (invoice.status === 'pending_confirmation') return res.status(400).json({ error: "هذه الفاتورة بانتظار تأكيد الإدارة" });
 
-      const pickupCode = `AUTH-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
-      db.prepare("UPDATE invoices SET status = 'paid', pickupAuthCode = ?, paidAt = ? WHERE id = ?").run(pickupCode, new Date().toISOString(), id);
+      const timestamp = new Date().toISOString();
 
-      // If purchase invoice paid, activate transport invoice AND settle with seller
-      if (invoice.type === 'purchase') {
-        db.prepare("UPDATE invoices SET status = 'unpaid' WHERE carId = ? AND userId = ? AND type = 'transport' AND status = 'pending'")
-          .run(invoice.carId, invoice.userId);
-
-        // Update shipment status to 'paid'
-        db.prepare("UPDATE shipments SET status = 'paid', updatedAt = ? WHERE carId = ? AND userId = ?")
-          .run(new Date().toISOString(), invoice.carId, invoice.userId);
-
-        // 💰 Settle to Seller Wallet
-        if (invoice.sellerId) {
-          const seller: any = db.prepare("SELECT commission FROM users WHERE id = ?").get(invoice.sellerId) as any;
-          const commRate = seller?.commission || 5;
-          settleSaleToSellerWallet(invoice.sellerId, invoice.carId, invoice.amount, commRate, `بيع سيارة: ${invoice.year} ${invoice.make} ${invoice.model}`);
-
-          sendNotification(invoice.sellerId, '💰 تم استلام دفعة سيارة', `المشتري قام بدفع ثمن سيارتك ${invoice.make}. المبلغ المتبقي (الصافي) أضيف لرصيدك المعلق.`, 'success');
+      // 💳 METHOD 1: WALLET PAYMENT (INSTANT)
+      if (method === 'wallet') {
+        const wallet: any = db.prepare("SELECT balance FROM buyer_wallets WHERE userId = ?").get(userId) as any;
+        if (!wallet || wallet.balance < invoice.amount) {
+          return res.status(400).json({ error: `رصيد المحفظة غير كافٍ. الرصيد الحالي: $${(wallet?.balance || 0).toLocaleString()}` });
         }
 
-        sendInternalMessage('admin-1', invoice.userId,
-          '💳 تم تأكيد دفع فاتورة الشراء',
-          `تم دفع فاتورة الشراء بنجاح!\n\nكود الاستلام: ${pickupCode}\n\n📋 الخطوة التالية: ستجد فاتورة النقل الداخلي جاهزة للدفع في قسم الفواتير.\n\nفريق ماكينا أوتو برو 🚗`
-        );
+        db.transaction(() => {
+          walletDebit(userId, invoice.amount, `دفع فاتورة ${invoice.type}: ${invoice.id}`, invoice.id);
+          const pickupCode = `AUTH-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+          db.prepare("UPDATE invoices SET status = 'paid', pickupAuthCode = ?, paidAt = ?, paidVia = 'wallet' WHERE id = ?").run(pickupCode, timestamp, id);
+
+          // If purchase invoice paid, activate transport invoice AND settle with seller
+          if (invoice.type === 'purchase') {
+            db.prepare("UPDATE invoices SET status = 'unpaid' WHERE carId = ? AND userId = ? AND type = 'transport' AND status = 'pending'")
+              .run(invoice.carId, userId);
+            db.prepare("UPDATE shipments SET status = 'paid', updatedAt = ? WHERE carId = ? AND userId = ?")
+              .run(timestamp, invoice.carId, userId);
+
+            if (invoice.sellerId) {
+              const seller: any = db.prepare("SELECT commission FROM users WHERE id = ?").get(invoice.sellerId) as any;
+              settleSaleToSellerWallet(invoice.sellerId, invoice.carId, invoice.amount, seller?.commission || 5, `بيع سيارة: ${invoice.year} ${invoice.make} ${invoice.model}`);
+              sendNotification(invoice.sellerId, '💰 تم استلام دفعة سيارة', `المشتري قام بدفع ثمن سيارتك ${invoice.make} عبر المحفظة.`, 'success');
+            }
+          } else if (invoice.type === 'transport') {
+            db.prepare("UPDATE shipments SET status = 'in_transport', updatedAt = ? WHERE carId = ? AND userId = ?")
+              .run(timestamp, invoice.carId, userId);
+          } else if (invoice.type === 'shipping') {
+            db.prepare("UPDATE shipments SET status = 'in_shipping', updatedAt = ? WHERE carId = ? AND userId = ?")
+              .run(timestamp, invoice.carId, userId);
+          }
+        })();
+
+        return res.json({ success: true, status: 'paid', message: "تم الدفع بنجاح عبر المحفظة" });
       }
 
-      if (invoice.type === 'transport') {
-        db.prepare("UPDATE shipments SET status = 'in_transport', updatedAt = ? WHERE carId = ? AND userId = ?")
-          .run(new Date().toISOString(), invoice.carId, invoice.userId);
+      // 🏦 METHOD 2: MANUAL METHODS (Requires Admin Confirmation)
+      if (['bank_transfer', 'cash', 'card'].includes(method)) {
+        const requestId = `pr-inv-${Date.now()}`;
+        db.transaction(() => {
+          // Create payment request
+          db.prepare(`
+            INSERT INTO payment_requests (id, userId, type, amount, method, referenceNo, receiptUrl, invoiceId, status, requestedAt)
+            VALUES (?, ?, 'invoice_payment', ?, ?, ?, ?, ?, 'pending', ?)
+          `).run(requestId, userId, invoice.amount, method, referenceNo || null, receiptUrl || null, id, timestamp);
 
-        // Next invoice: shipping (stays pending until in_warehouse)
+          // Update invoice status
+          db.prepare("UPDATE invoices SET status = 'pending_confirmation', paidVia = ? WHERE id = ?").run(method, id);
+        })();
 
-        sendInternalMessage('admin-1', invoice.userId,
-          '🚛 تم تأكيد دفع فاتورة النقل',
-          `تم دفع فاتورة النقل بنجاح! سيارتك الآن قيد النقل إلى المستودع.\n\nسنرسل لك تحديثات فور وصولها.\n\nفريق ماكينا أوتو برو 🚗`
-        );
+        // Notify Admin
+        sendNotification('admin-1', '🧾 طلب تأكيد دفع فاتورة', `قام المستخدم بدفع فاتورة ${invoice.type} بمبلغ $${invoice.amount.toLocaleString()} عبر ${method}. يرجى التأكيد.`, 'info');
+        
+        return res.json({ success: true, status: 'pending_confirmation', message: "تم إرسال طلب الدفع للإدارة للمراجعة" });
       }
 
-      if (invoice.type === 'shipping') {
-        db.prepare("UPDATE shipments SET status = 'in_shipping', updatedAt = ? WHERE carId = ? AND userId = ?")
-          .run(new Date().toISOString(), invoice.carId, invoice.userId);
-        sendInternalMessage('admin-1', invoice.userId,
-          '🚢 تم تأكيد دفع فاتورة الشحن',
-          `تم دفع فاتورة الشحن الدولي بنجاح! سيارتك الآن جاري شحنها إلى وجهتك.\n\nسنرسل لك التحديثات أولاً بأول.\n\nفريق ماكينا أوتو برو 🚗`
-        );
-      }
-
-      res.json({ success: true, pickupAuthCode: pickupCode });
-    } catch (e) {
-      res.status(500).json({ error: "فشل عملية الدفع" });
+      res.status(400).json({ error: "طريقة دفع غير مدعومة" });
+    } catch (e: any) {
+      console.error(e);
+      res.status(500).json({ error: "فشل عملية الدفع: " + e.message });
     }
   });
 
@@ -3965,17 +4168,53 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     } catch (e) { res.status(500).json({ error: "Notifications fetch error" }); }
   });
 
-  app.get("/api/admin/all-invoices", (req, res) => {
+  app.post("/api/admin/invoices/manual", (req, res) => {
+    const { userId, carId, amount, type, dueDate } = req.body;
+    if (!userId || !carId || !amount || !type) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    try {
+      const id = `inv-man-${Date.now()}`;
+      const timestamp = new Date().toISOString();
+      const finalDueDate = dueDate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+      db.prepare(`
+        INSERT INTO invoices (id, userId, carId, amount, status, type, timestamp, dueDate)
+        VALUES (?, ?, ?, ?, 'unpaid', ?, ?, ?)
+      `).run(id, userId, carId, amount, type, timestamp, finalDueDate);
+
+      // Notify the user about the new invoice
+      const car: any = db.prepare("SELECT make, model, year FROM cars WHERE id = ?").get(carId);
+      const itemInfo = car ? `${car.year} ${car.make} ${car.model}` : "سيارة غير معروفة";
+      
+      db.prepare(`
+        INSERT INTO notifications (id, userId, title, message, type, timestamp)
+        VALUES (?, ?, ?, ?, 'invoice', ?)
+      `).run(`ntf-${Date.now()}`, userId, "فاتورة جديدة مستحقة 🧾", `تم إصدار فاتورة جديدة للمصاريف الإضافية (${type}) للسيارة ${itemInfo} بمبلغ $${amount.toLocaleString()}`, "info", timestamp);
+
+      res.json({ success: true, id });
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: "Failed to create manual invoice" });
+    }
+  });
+
+  app.get("/api/admin/invoices", (req, res) => {
     try {
       const invoices = db.prepare(`
-        SELECT i.*, u.firstName, u.lastName, c.make, c.model
+        SELECT i.*, u.firstName as buyerFirstName, u.lastName as buyerLastName, u.phone as buyerPhone, 
+               c.make, c.model, c.year, c.lotNumber, c.vin
         FROM invoices i
         LEFT JOIN users u ON i.userId = u.id
         LEFT JOIN cars c ON i.carId = c.id
         ORDER BY i.timestamp DESC
       `).all();
       res.json(invoices);
-    } catch (e) { res.status(500).json({ error: "Invoices fetch error" }); }
+    } catch (e) { 
+      console.error(e);
+      res.status(500).json({ error: "Invoices fetch error" }); 
+    }
   });
 
   app.put("/api/admin/invoices/:id", (req, res) => {
@@ -4072,8 +4311,18 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   // ====== MARKET ESTIMATES ======
   app.get("/api/admin/market-estimates", (req, res) => {
     try {
-      res.json(db.prepare("SELECT * FROM market_estimates ORDER BY lastUpdated DESC").all());
-    } catch (e) { res.status(500).json({ error: "Failed to fetch market estimates" }); }
+      // First try with lastUpdated, fallback to rowid if fails
+      let data;
+      try {
+        data = db.prepare("SELECT * FROM market_estimates ORDER BY lastUpdated DESC").all();
+      } catch (e) {
+        data = db.prepare("SELECT * FROM market_estimates ORDER BY rowid DESC").all();
+      }
+      res.json(data);
+    } catch (e) { 
+      console.error("Market estimates fetch crash:", e);
+      res.status(500).json({ error: "Failed to fetch market estimates" }); 
+    }
   });
 
   app.post("/api/admin/market-estimates", (req, res) => {
@@ -4124,6 +4373,23 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   });
 
   // ======= LIBYAN MARKET PRICES API =======
+  // Combined legacy route to avoid 500 errors
+  app.get('/api/reports/libyan-market', async (req, res) => {
+    try {
+      // Ensure we have a valid sort column
+      let prices;
+      try {
+        prices = db.prepare('SELECT * FROM libyan_market_prices ORDER BY lastUpdated DESC').all();
+      } catch (e) {
+        prices = db.prepare('SELECT * FROM libyan_market_prices ORDER BY rowid DESC').all();
+      }
+      res.json(prices);
+    } catch (err) {
+      console.error('Libyan market report error:', err);
+      res.status(500).json({ error: 'Internal Error' });
+    }
+  });
+
   app.get("/api/libyan-market", (req, res) => {
     try {
       const { make, model, year } = req.query;
@@ -4141,10 +4407,10 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
   app.post("/api/libyan-market", (req, res) => {
     try {
-      const { condition, make, model, year, transmission, fuel, mileage, priceLYD } = req.body;
+      const { condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, city } = req.body;
       const id = `lmp-${Date.now()}`;
-      db.prepare("INSERT INTO libyan_market_prices (id, condition, make, model, year, transmission, fuel, mileage, priceLYD) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
-        .run(id, condition, make, model, year, transmission, fuel, mileage, priceLYD);
+      db.prepare("INSERT INTO libyan_market_prices (id, condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, city) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        .run(id, condition, make, makeEn || '', model, modelEn || '', year, transmission, fuel, mileage, priceLYD, city || 'طرابلس');
       res.json({ success: true, id });
     } catch(e) { res.status(500).json({ error: "Failed" }); }
   });
@@ -4158,9 +4424,9 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
   app.put("/api/libyan-market/:id", (req, res) => {
     try {
-      const { condition, make, model, year, transmission, fuel, mileage, priceLYD } = req.body;
-      db.prepare("UPDATE libyan_market_prices SET condition = ?, make = ?, model = ?, year = ?, transmission = ?, fuel = ?, mileage = ?, priceLYD = ? WHERE id = ?")
-        .run(condition, make, model, year, transmission, fuel, mileage, priceLYD, req.params.id);
+      const { condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, city } = req.body;
+      db.prepare("UPDATE libyan_market_prices SET condition = ?, make = ?, makeEn = ?, model = ?, modelEn = ?, year = ?, transmission = ?, fuel = ?, mileage = ?, priceLYD = ?, city = ?, lastUpdated = CURRENT_TIMESTAMP WHERE id = ?")
+        .run(condition, make, makeEn, model, modelEn, year, transmission, fuel, mileage, priceLYD, city, req.params.id);
       res.json({ success: true });
     } catch(e) { res.status(500).json({ error: "Failed" }); }
   });

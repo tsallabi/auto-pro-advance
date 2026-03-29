@@ -174,17 +174,13 @@ export const DashboardLayout = () => {
       <aside className={`fixed inset-y-0 right-0 z-50 w-[280px] bg-slate-900 text-white flex flex-col flex-shrink-0 h-screen overflow-y-auto custom-scrollbar transition-transform duration-300 transform md:sticky md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : 'translate-x-full'}`}>
         <div className="p-6 flex items-center justify-between border-b border-slate-800 flex-shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-orange-500 rounded-xl flex items-center justify-center text-white shadow-lg shadow-orange-500/20">
-              <Car className="w-6 h-6" />
-            </div>
+            <img 
+              src="/logo.jpg" 
+              alt="Logo" 
+              className="h-10 w-auto object-contain rounded-lg shadow-md bg-white/10" 
+            />
             <div>
-              {branchConfig ? (
-                <h1 className="font-bold text-lg leading-tight text-white shrink-0">
-                  {branchConfig.logoText.split(' ')[0]} <span className="text-orange-500 text-sm">{branchConfig.logoText.split(' ').slice(1).join(' ')}</span>
-                </h1>
-              ) : (
-                <h1 className="font-bold text-lg leading-tight text-white shrink-0">ليبيا <span className="text-orange-500 text-sm">AUTO PRO</span></h1>
-              )}
+              <h1 className="font-bold text-lg leading-tight text-white shrink-0">ليبيا <span className="text-orange-500 text-sm">AUTO PRO</span></h1>
               <span className="text-[10px] text-slate-400 font-black uppercase tracking-widest shrink-0">
                 {(role as string) === 'admin' ? 'الإدارة العامة' : 'حساب العميل'}
               </span>

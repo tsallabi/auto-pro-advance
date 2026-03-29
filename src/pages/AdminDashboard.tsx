@@ -5398,9 +5398,11 @@ export const AdminDashboard = () => {
       `}>
         <div className="flex items-center justify-between mb-10 px-2 mt-2">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-orange-500 rounded-2xl flex items-center justify-center text-white shadow-xl shadow-orange-500/20">
-              <Car className="w-7 h-7" />
-            </div>
+            <img 
+              src="/logo.jpg" 
+              alt="Logo" 
+              className="h-12 w-auto object-contain rounded-xl shadow-lg bg-white/10" 
+            />
             <div>
               <h1 className="text-xl font-black tracking-tight leading-none text-white">ليبيا AUTO PRO</h1>
               <span className="text-[10px] font-black text-orange-500 uppercase tracking-widest">إدارة المنصة (Admin)</span>
