@@ -30,9 +30,11 @@ export const LandingPage = () => {
                 <div className="container mx-auto px-6 relative z-10 grid lg:grid-cols-2 gap-16 items-center">
                     {/* Hero Text */}
                     <div className="space-y-10 animate-in slide-in-from-right duration-1000">
-                        <div className="inline-flex items-center gap-3 bg-white/5 backdrop-blur-2xl px-6 py-2.5 rounded-full border border-white/10 shadow-2xl">
-                            <Zap className="w-5 h-5 text-orange-500 fill-orange-500" />
-                            <span className="text-sm font-black uppercase tracking-[0.2em] text-orange-100">{t('landingPage.badgeTop')}</span>
+                        <div className="flex flex-col gap-6 items-start">
+                            <div className="inline-flex items-center gap-3 bg-white/5 backdrop-blur-2xl px-6 py-2.5 rounded-full border border-white/10 shadow-2xl">
+                                <Zap className="w-5 h-5 text-orange-500 fill-orange-500" />
+                                <span className="text-sm font-black uppercase tracking-[0.2em] text-orange-100">المنصة الأقوى للمزادات في ليبيا والخليج</span>
+                            </div>
                         </div>
 
                         <h1 className="text-6xl lg:text-8xl font-black leading-[1.05] tracking-tight">
@@ -92,8 +94,16 @@ export const LandingPage = () => {
                     </div>
 
                     {/* Hero Visual Mockup (Image 1 style) */}
-                    <div className="relative animate-in zoom-in duration-1000 hidden lg:block">
-                        <div className="bg-[#1E293B] rounded-[3.5rem] p-4 shadow-[0_0_100px_-20px_rgba(255,61,0,0.3)] border border-white/5 relative group">
+                    <div className="relative animate-in zoom-in duration-1000 hidden lg:flex flex-col items-center gap-32">
+                        <div className="relative group mb-12">
+                            <img
+                                src="/logo_on_dark.png?v=3"
+                                alt="AutoPro Logo"
+                                className="h-20 lg:h-28 w-auto object-contain transition-transform hover:scale-105 duration-700"
+                            />
+                        </div>
+
+                        <div className="bg-[#1E293B] rounded-[3.5rem] p-4 shadow-[0_0_100px_-20px_rgba(255,61,0,0.3)] border border-white/5 relative group w-full">
                             <div className="bg-slate-900 rounded-[2.5rem] overflow-hidden relative aspect-[4/3]">
                                 <img
                                     src="https://images.unsplash.com/photo-1614162692292-7ac56d7f7f1e?auto=format&fit=crop&q=80&w=1200"

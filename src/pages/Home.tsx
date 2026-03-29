@@ -78,7 +78,7 @@ export const Home = () => {
   const [isBottomSheetOpen, setIsBottomSheetOpen] = useState(false);
   const [isDesktopMoreOpen, setIsDesktopMoreOpen] = useState(false);
   const [isMyAuctionsOpen, setIsMyAuctionsOpen] = useState(true);
-  
+
   // Advanced Filter States
   const [activeFilterPopover, setActiveFilterPopover] = useState<string | null>(null);
   const [filterMake, setFilterMake] = useState<string>('');
@@ -95,7 +95,7 @@ export const Home = () => {
   const [filterFuelTypes, setFilterFuelTypes] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState<'ending_soonest' | 'recommended' | 'priced_to_sell'>('ending_soonest');
   const [isSortOpen, setIsSortOpen] = useState(false);
-  
+
   // Refs for outside click detection
   const messagesRef = useRef<HTMLDivElement>(null);
   const notificationsRef = useRef<HTMLDivElement>(null);
@@ -131,14 +131,14 @@ export const Home = () => {
     setFilterBodyTypes([]);
     setFilterFuelTypes([]);
     setSortBy('ending_soonest');
-    
+
     // Clear URL params too
     const newParams = new URLSearchParams(searchParams);
     newParams.set('tab', 'all');
     newParams.delete('search');
     newParams.delete('make');
     setSearchParams(newParams);
-    
+
     setIsMobileMenuOpen(false);
     setIsBottomSheetOpen(false);
     setIsDesktopMoreOpen(false);
@@ -216,9 +216,9 @@ export const Home = () => {
     const isFuelTypeMatching = filterFuelTypes.length === 0 || filterFuelTypes.includes((car as any).fuelType || 'بنزين');
 
     return matchesSearch && matchesTab && isUrlMakeMatching && isStateMakeMatching && isStateModelMatching &&
-           isYearMinMatching && isYearMaxMatching && isMileageMinMatching && isMileageMaxMatching &&
-           isPriceMinMatching && isPriceMaxMatching && isAuctionTypeMatching &&
-           isDriveTypeMatching && isBodyTypeMatching && isFuelTypeMatching;
+      isYearMinMatching && isYearMaxMatching && isMileageMinMatching && isMileageMaxMatching &&
+      isPriceMinMatching && isPriceMaxMatching && isAuctionTypeMatching &&
+      isDriveTypeMatching && isBodyTypeMatching && isFuelTypeMatching;
   }).sort((a, b) => {
     if (sortBy === 'recommended') {
       return ((b as any).isRecommended ? 1 : 0) - ((a as any).isRecommended ? 1 : 0);
@@ -230,12 +230,12 @@ export const Home = () => {
     // Default: ending_soonest
     const aEnd = a.auctionEndDate ? new Date(a.auctionEndDate).getTime() : Number.MAX_SAFE_INTEGER;
     const bEnd = b.auctionEndDate ? new Date(b.auctionEndDate).getTime() : Number.MAX_SAFE_INTEGER;
-    
+
     // For closed auctions, sort by inverse of end date (most recently closed first)
     if (activeTab === 'closed') {
-       return bEnd - aEnd;
+      return bEnd - aEnd;
     }
-    
+
     return aEnd - bEnd;
   });
 
@@ -263,7 +263,7 @@ export const Home = () => {
     <div className="min-h-screen bg-[#F8FAFC] font-cairo text-slate-900" dir="rtl">
       {/* --- TOP FULL-WIDTH HEADER --- */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-[101] shadow-sm">
-        <div className="max-w-[1920px] mx-auto px-4 h-11 flex items-center justify-between">
+        <div className="max-w-[1920px] mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3 min-w-0">
             {/* Hamburger (Mobile Only) */}
             <button
@@ -277,10 +277,11 @@ export const Home = () => {
 
             {/* Logo */}
             <div onClick={() => navigate('/')} className="flex items-center gap-2 cursor-pointer group shrink-0">
-              <div className="w-9 h-9 bg-orange-600 rounded-xl flex items-center justify-center shadow-lg shadow-orange-500/20 group-hover:scale-110 transition-transform">
-                <CarIcon className="w-5 h-5 text-white" />
-              </div>
-              <span className="text-lg font-black text-slate-900 tracking-tight hidden sm:block">{t('nav.autoPro')}</span>
+              <img
+                src="/logo_on_white.jpg?v=4"
+                alt="AutoPro"
+                className="h-8 lg:h-10 w-auto object-contain transition-transform group-hover:scale-110"
+              />
             </div>
 
             {/* Navigation Links — only on xl+ to avoid crowding */}
@@ -400,7 +401,7 @@ export const Home = () => {
       </header>
 
       {/* --- TOP SEARCH & QUICK FILTERS BAR (Desktop Only) --- */}
-      <div className="hidden lg:block bg-white border-b border-slate-200 sticky top-[44px] z-[100]">
+      <div className="hidden lg:block bg-white border-b border-slate-200 sticky top-[64px] z-[100]">
         <div className="max-w-[1920px] mx-auto px-6 py-1 flex items-center gap-6 relative">
           {/* Main Search */}
           <div className="relative flex-1 max-w-2xl group">
@@ -413,313 +414,313 @@ export const Home = () => {
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
-          
+
           {/* Quick Filters */}
           <div className="flex items-center gap-2" ref={filtersRef}>
-             {/* Make & Model Popover */}
-             <div className="relative">
-               <button onClick={() => setActiveFilterPopover(activeFilterPopover === 'make' ? null : 'make')} className={`px-4 py-2.5 border rounded-lg text-sm font-bold transition-all whitespace-nowrap shadow-sm hover:shadow active:scale-95 flex items-center gap-1 ${activeFilterPopover === 'make' ? 'bg-orange-50 border-orange-200 text-orange-700' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:text-slate-900'}`}>
-                 {filterMake || 'الشركة والموديل'} {filterMake && filterModel && ` - ${filterModel}`}
-                 <ChevronDown className="w-4 h-4 opacity-50" />
-               </button>
-               {activeFilterPopover === 'make' && (
-                 <div className="absolute top-[calc(100%+0.5rem)] right-0 w-80 bg-white rounded-3xl shadow-[0_20px_60px_rgba(0,0,0,0.15)] border border-slate-200 p-5 flex flex-col z-[150] animate-in fade-in slide-in-from-top-4 overflow-hidden">
-                   <h3 className="font-black text-slate-900 text-base mb-4">الشركة والموديل (Make & Model)</h3>
-                   <div className="max-h-60 overflow-y-auto custom-scrollbar space-y-2 pr-2">
-                      {Object.keys(CAR_MAKES_AND_MODELS).map(make => (
-                        <div key={make} className="space-y-1">
-                           <label className="flex items-center justify-between cursor-pointer group p-2 hover:bg-slate-50 rounded-xl transition-colors">
-                             <div className="flex items-center gap-3">
-                               <input type="radio" name="make_filter" checked={filterMake === make} onChange={() => { setFilterMake(make); setFilterModel(''); }} className="hidden peer" />
-                               <div className="w-5 h-5 rounded-md border-2 border-slate-300 peer-checked:bg-orange-600 peer-checked:border-orange-600 flex items-center justify-center transition-all bg-white">
-                                  <CheckCircle2 className="w-3 h-3 text-white opacity-0 peer-checked:opacity-100 transition-opacity" />
-                               </div>
-                               <span className="text-sm font-bold text-slate-700 peer-checked:text-slate-900">{make}</span>
-                             </div>
-                             <ChevronDown className={`w-4 h-4 transition-transform ${filterMake === make ? 'rotate-180 text-orange-500' : 'text-slate-300'}`} />
-                           </label>
-                           {filterMake === make && (
-                             <div className="pl-9 pr-4 py-2 space-y-3 bg-slate-50 rounded-xl mt-1 mb-2 shadow-inner">
-                               {(CAR_MAKES_AND_MODELS[make] || []).map((mdl) => (
-                                  <label key={mdl} className="flex items-center gap-3 cursor-pointer group">
-                                    <input type="radio" name="model_filter" checked={filterModel === mdl} onChange={() => setFilterModel(mdl)} className="hidden peer" />
-                                    <div className="w-4 h-4 rounded-full border-2 border-slate-300 peer-checked:border-4 peer-checked:border-orange-500 bg-white transition-all"></div>
-                                    <span className="text-xs font-bold text-slate-600 peer-checked:text-slate-900">{mdl}</span>
-                                  </label>
-                               ))}
-                             </div>
-                           )}
-                        </div>
-                      ))}
-                   </div>
-                   <div className="pt-4 mt-2 border-t border-slate-100 flex items-center justify-between">
-                     <button onClick={() => { setFilterMake(''); setFilterModel(''); }} className="text-xs font-black text-slate-500 hover:text-slate-900">تفريغ (Clear)</button>
-                     <button onClick={() => setActiveFilterPopover(null)} className="px-6 py-2.5 bg-orange-600 text-white rounded-xl font-black text-xs hover:bg-orange-700 active:scale-95 transition-all shadow-lg shadow-orange-500/20">تم (Done)</button>
-                   </div>
-                 </div>
-               )}
-             </div>
-
-             {/* Price Popover */}
-             <div className="relative">
-               <button onClick={() => setActiveFilterPopover(activeFilterPopover === 'price' ? null : 'price')} className={`px-4 py-2.5 border rounded-lg text-sm font-bold transition-all whitespace-nowrap shadow-sm hover:shadow active:scale-95 flex items-center gap-1 ${activeFilterPopover === 'price' ? 'bg-orange-50 border-orange-200 text-orange-700' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:text-slate-900'}`}>
-                 {filterPriceMin || filterPriceMax ? `${filterPriceMin || 0}$ - ${filterPriceMax || '1M+'}$` : 'السعر'}
-                 <ChevronDown className="w-4 h-4 opacity-50" />
-               </button>
-               {activeFilterPopover === 'price' && (
-                 <div className="absolute top-[calc(100%+0.5rem)] right-0 w-80 bg-white rounded-3xl shadow-[0_20px_60px_rgba(0,0,0,0.15)] border border-slate-200 p-6 flex flex-col z-[150] animate-in fade-in slide-in-from-top-4 overflow-hidden">
-                   <h3 className="font-black text-slate-900 text-base mb-6">السعر (Price)</h3>
-                   
-                   <div className="mb-8">
-                     <DualRangeSlider 
-                       min={0} max={150000} step={500} 
-                       value={[Number(filterPriceMin) || 0, Number(filterPriceMax) || 150000]} 
-                       onChange={(val) => { setFilterPriceMin(val[0]); setFilterPriceMax(val[1]); }} 
-                     />
-                   </div>
-
-                   <div className="flex gap-4">
-                     <div className="flex-1 space-y-1 bg-slate-50 p-3 rounded-xl border border-slate-200 focus-within:border-orange-500 transition-colors">
-                       <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">Min Price</div>
-                       <div className="flex items-center gap-1 text-slate-900 font-bold overflow-hidden">
-                         <span className="text-xs text-slate-400">$</span>
-                         <input type="number" min="0" placeholder="0" className="w-full outline-none bg-transparent font-mono" value={filterPriceMin} onChange={e => setFilterPriceMin(e.target.value ? Number(e.target.value) : '')} />
-                       </div>
-                     </div>
-                     <div className="flex-1 space-y-1 bg-slate-50 p-3 rounded-xl border border-slate-200 focus-within:border-orange-500 transition-colors">
-                       <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">Max Price</div>
-                       <div className="flex items-center gap-1 text-slate-900 font-bold overflow-hidden">
-                         <span className="text-xs text-slate-400">$</span>
-                         <input type="number" min="0" placeholder="100,000+" className="w-full outline-none bg-transparent font-mono" value={filterPriceMax} onChange={e => setFilterPriceMax(e.target.value ? Number(e.target.value) : '')} />
-                       </div>
-                     </div>
-                   </div>
-
-                   <div className="pt-6 mt-6 border-t border-slate-100 flex items-center justify-between">
-                     <button onClick={() => { setFilterPriceMin(''); setFilterPriceMax(''); }} className="text-xs font-black text-slate-500 hover:text-slate-900">تفريغ (Clear)</button>
-                     <button onClick={() => setActiveFilterPopover(null)} className="px-6 py-2.5 bg-orange-600 text-white rounded-xl font-black text-xs hover:bg-orange-700 active:scale-95 transition-all shadow-lg shadow-orange-500/20">تم (Done)</button>
-                   </div>
-                 </div>
-               )}
-             </div>
-
-             {/* Year Popover */}
-             <div className="relative">
-               <button onClick={() => setActiveFilterPopover(activeFilterPopover === 'year' ? null : 'year')} className={`px-4 py-2.5 border rounded-lg text-sm font-bold transition-all whitespace-nowrap shadow-sm hover:shadow active:scale-95 flex items-center gap-1 ${activeFilterPopover === 'year' ? 'bg-orange-50 border-orange-200 text-orange-700' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:text-slate-900'}`}>
-                 {filterYearMin || filterYearMax ? `${filterYearMin || '<1901'} - ${filterYearMax || '2027'}` : 'السنة'}
-                 <ChevronDown className="w-4 h-4 opacity-50" />
-               </button>
-               {activeFilterPopover === 'year' && (
-                 <div className="absolute top-[calc(100%+0.5rem)] right-0 w-80 bg-white rounded-3xl shadow-[0_20px_60px_rgba(0,0,0,0.15)] border border-slate-200 p-6 flex flex-col z-[150] animate-in fade-in slide-in-from-top-4 overflow-hidden">
-                   <div className="flex justify-between items-center mb-6">
-                     <h3 className="font-black text-slate-900 text-base">السنة (Year)</h3>
-                     <button className="text-[10px] font-black text-blue-600 hover:text-blue-800">Switch By Year</button>
-                   </div>
-                   
-                   <div className="mb-8">
-                     <DualRangeSlider 
-                       min={1990} max={2027} step={1} 
-                       value={[Number(filterYearMin) || 1990, Number(filterYearMax) || 2027]} 
-                       onChange={(val) => { setFilterYearMin(val[0]); setFilterYearMax(val[1]); }} 
-                     />
-                   </div>
-
-                   <div className="flex gap-4">
-                     <div className="flex-1 bg-slate-50 p-3 rounded-xl border border-slate-200 focus-within:border-orange-500 transition-colors">
-                       <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Min Year</div>
-                       <input type="number" min="1901" max="2027" placeholder="<1901" className="w-full outline-none bg-transparent text-slate-900 font-bold font-mono text-sm" value={filterYearMin} onChange={e => setFilterYearMin(e.target.value ? Number(e.target.value) : '')} />
-                     </div>
-                     <div className="flex-1 bg-slate-50 p-3 rounded-xl border border-slate-200 focus-within:border-orange-500 transition-colors">
-                       <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Max Year</div>
-                       <input type="number" min="1901" max="2027" placeholder="2027" className="w-full outline-none bg-transparent text-slate-900 font-bold font-mono text-sm" value={filterYearMax} onChange={e => setFilterYearMax(e.target.value ? Number(e.target.value) : '')} />
-                     </div>
-                   </div>
-
-                   <div className="pt-6 mt-6 border-t border-slate-100 flex items-center justify-between">
-                     <button onClick={() => { setFilterYearMin(''); setFilterYearMax(''); }} className="text-xs font-black text-slate-500 hover:text-slate-900">تفريغ (Clear)</button>
-                     <button onClick={() => setActiveFilterPopover(null)} className="px-6 py-2.5 bg-orange-600 text-white rounded-xl font-black text-xs hover:bg-orange-700 active:scale-95 transition-all shadow-lg shadow-orange-500/20">تم (Done)</button>
-                   </div>
-                 </div>
-               )}
-             </div>
-
-             {/* Mileage Popover */}
-             <div className="relative">
-               <button onClick={() => setActiveFilterPopover(activeFilterPopover === 'mileage' ? null : 'mileage')} className={`px-4 py-2.5 border rounded-lg text-sm font-bold transition-all whitespace-nowrap shadow-sm hover:shadow active:scale-95 flex items-center gap-1 ${activeFilterPopover === 'mileage' ? 'bg-orange-50 border-orange-200 text-orange-700' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:text-slate-900'}`}>
-                 {filterMileageMin || filterMileageMax ? `${filterMileageMin || 0} - ${filterMileageMax || 'مفتوح'}` : 'المسافة'}
-                 <ChevronDown className="w-4 h-4 opacity-50" />
-               </button>
-               {activeFilterPopover === 'mileage' && (
-                 <div className="absolute top-[calc(100%+0.5rem)] right-0 w-80 bg-white rounded-3xl shadow-[0_20px_60px_rgba(0,0,0,0.15)] border border-slate-200 p-6 flex flex-col z-[150] animate-in fade-in slide-in-from-top-4 overflow-hidden">
-                   <h3 className="font-black text-slate-900 text-base mb-6">المسافة (Mileage)</h3>
-                   
-                   <div className="mb-8">
-                     <DualRangeSlider 
-                       min={0} max={300000} step={5000} 
-                       value={[Number(filterMileageMin) || 0, Number(filterMileageMax) || 300000]} 
-                       onChange={(val) => { setFilterMileageMin(val[0]); setFilterMileageMax(val[1]); }} 
-                     />
-                   </div>
-
-                   <div className="flex gap-4">
-                     <div className="flex-1 bg-slate-50 p-3 rounded-xl border border-slate-200 focus-within:border-orange-500 transition-colors">
-                       <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Min Miles</div>
-                       <input type="number" min="0" placeholder="0" className="w-full outline-none bg-transparent text-slate-900 font-bold font-mono text-sm" value={filterMileageMin} onChange={e => setFilterMileageMin(e.target.value ? Number(e.target.value) : '')} />
-                     </div>
-                     <div className="flex-1 bg-slate-50 p-3 rounded-xl border border-slate-200 focus-within:border-orange-500 transition-colors">
-                       <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Max Miles</div>
-                       <input type="number" min="0" placeholder="100k+" className="w-full outline-none bg-transparent text-slate-900 font-bold font-mono text-sm" value={filterMileageMax} onChange={e => setFilterMileageMax(e.target.value ? Number(e.target.value) : '')} />
-                     </div>
-                   </div>
-
-                   <div className="pt-6 mt-6 border-t border-slate-100 flex items-center justify-between">
-                     <button onClick={() => { setFilterMileageMin(''); setFilterMileageMax(''); }} className="text-xs font-black text-slate-500 hover:text-slate-900">تفريغ (Clear)</button>
-                     <button onClick={() => setActiveFilterPopover(null)} className="px-6 py-2.5 bg-orange-600 text-white rounded-xl font-black text-xs hover:bg-orange-700 active:scale-95 transition-all shadow-lg shadow-orange-500/20">تم (Done)</button>
-                   </div>
-                 </div>
-               )}
-             </div>
-
-             {/* Auction Type Popover */}
-             <div className="relative">
-               <button onClick={() => setActiveFilterPopover(activeFilterPopover === 'auctionType' ? null : 'auctionType')} className={`px-4 py-2.5 border rounded-lg text-sm font-bold transition-all whitespace-nowrap shadow-sm hover:shadow active:scale-95 flex items-center gap-1 ${activeFilterPopover === 'auctionType' ? 'bg-orange-50 border-orange-200 text-orange-700' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:text-slate-900'}`}>
-                 {filterAuctionTypes.length > 0 ? `نوع المزاد (${filterAuctionTypes.length})` : 'نوع المزاد'}
-                 <ChevronDown className="w-4 h-4 opacity-50" />
-               </button>
-               {activeFilterPopover === 'auctionType' && (
-                 <div className="absolute top-[calc(100%+0.5rem)] right-0 w-80 bg-white rounded-3xl shadow-[0_20px_60px_rgba(0,0,0,0.15)] border border-slate-200 p-6 flex flex-col z-[150] animate-in fade-in slide-in-from-top-4 overflow-hidden">
-                   <h3 className="font-black text-slate-900 text-base mb-4">نوع المزاد (Auction Type)</h3>
-                   
-                   <div className="space-y-2">
-                     {['بيع مباشر', 'سعر احتياطي', 'اشتري الآن', 'تصفية معارض', 'سيارات الخليج', 'Ready to Sell', 'Live Appraisal'].map(opt => (
-                       <label key={opt} className="flex items-center gap-3 cursor-pointer group hover:bg-slate-50 p-2 rounded-xl transition-colors">
-                         <input 
-                           type="checkbox" 
-                           checked={filterAuctionTypes.includes(opt)} 
-                           className="hidden peer"
-                           onChange={(e) => {
-                             if (e.target.checked) setFilterAuctionTypes([...filterAuctionTypes, opt]);
-                             else setFilterAuctionTypes(filterAuctionTypes.filter(a => a !== opt));
-                           }}
-                         />
-                         <div className="w-5 h-5 rounded-md border-2 border-slate-300 peer-checked:bg-orange-600 peer-checked:border-orange-600 flex items-center justify-center transition-all bg-white">
-                            <CheckCircle2 className="w-3 h-3 text-white opacity-0 peer-checked:opacity-100 transition-opacity" />
-                         </div>
-                         <span className="text-sm font-bold text-slate-700 peer-checked:text-slate-900">{opt}</span>
-                       </label>
-                     ))}
-                   </div>
-
-                   <div className="pt-6 mt-4 border-t border-slate-100 flex items-center justify-between">
-                     <button onClick={() => setFilterAuctionTypes([])} className="text-xs font-black text-slate-500 hover:text-slate-900">تفريغ (Clear)</button>
-                     <button onClick={() => setActiveFilterPopover(null)} className="px-6 py-2.5 bg-orange-600 text-white rounded-xl font-black text-xs hover:bg-orange-700 active:scale-95 transition-all shadow-lg shadow-orange-500/20">تم (Done)</button>
-                   </div>
-                 </div>
-               )}
-             </div>
-
-             {/* Sort Select */}
-             <div className="relative border-l border-slate-200 pl-2 ml-2" ref={sortRef}>
-                <button onClick={() => setIsSortOpen(!isSortOpen)} className={`px-4 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-all shadow-sm active:scale-95 ${isSortOpen ? 'bg-slate-900 text-white shadow-slate-900/20' : 'bg-slate-900 text-white hover:bg-slate-800 hover:shadow'}`}>
-                   ترتيب <SlidersHorizontal className="w-4 h-4" />
-                </button>
-                {isSortOpen && (
-                  <div className="absolute top-[calc(100%+0.5rem)] right-0 w-60 bg-white rounded-3xl shadow-[0_20px_60px_rgba(0,0,0,0.15)] border border-slate-200 p-3 flex flex-col z-[150] animate-in fade-in slide-in-from-top-4 overflow-hidden">
-                     <span className="text-xs font-black text-slate-400 uppercase tracking-widest px-3 py-2 mb-1 block">Sort Options</span>
-                     <button onClick={() => { setSortBy('ending_soonest'); setIsSortOpen(false); }} className={`flex items-center gap-3 w-full p-3 rounded-xl transition-all text-sm font-bold ${sortBy === 'ending_soonest' ? 'bg-orange-50 text-orange-700' : 'hover:bg-slate-50 text-slate-700'}`}>
-                        <div className="w-4 h-4 rounded-full border-2 border-slate-300 flex items-center justify-center p-[2px]">
-                           {sortBy === 'ending_soonest' && <div className="w-full h-full bg-orange-600 rounded-full"></div>}
-                        </div>
-                        ينتهي أولاً (Ending Soonest)
-                     </button>
-                     <button onClick={() => { setSortBy('recommended'); setIsSortOpen(false); }} className={`flex items-center gap-3 w-full p-3 rounded-xl transition-all text-sm font-bold ${sortBy === 'recommended' ? 'bg-orange-50 text-orange-700' : 'hover:bg-slate-50 text-slate-700'}`}>
-                        <div className="w-4 h-4 rounded-full border-2 border-slate-300 flex items-center justify-center p-[2px]">
-                           {sortBy === 'recommended' && <div className="w-full h-full bg-orange-600 rounded-full"></div>}
-                        </div>
-                        مُوصى به (Recommended)
-                     </button>
-                     <button onClick={() => { setSortBy('priced_to_sell'); setIsSortOpen(false); }} className={`flex items-center gap-3 w-full p-3 rounded-xl transition-all text-sm font-bold ${sortBy === 'priced_to_sell' ? 'bg-orange-50 text-orange-700' : 'hover:bg-slate-50 text-slate-700'}`}>
-                        <div className="w-4 h-4 rounded-full border-2 border-slate-300 flex items-center justify-center p-[2px]">
-                           {sortBy === 'priced_to_sell' && <div className="w-full h-full bg-orange-600 rounded-full"></div>}
-                        </div>
-                        سعر منافس (Priced to Sell)
-                     </button>
-                  </div>
-                )}
-             </div>
+            {/* Make & Model Popover */}
             <div className="relative">
-               <button onClick={() => setIsDesktopMoreOpen(!isDesktopMoreOpen)} className={`px-4 py-2.5 border rounded-lg text-sm font-bold flex items-center gap-2 transition-all shadow-sm active:scale-95 ${isDesktopMoreOpen ? 'bg-slate-900 border-slate-900 text-white shadow-slate-900/20' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:text-slate-900 hover:shadow'}`}>
-                  المزيد <SlidersHorizontal className="w-4 h-4" />
-               </button>
-               {isDesktopMoreOpen && (
-                 <div className="absolute top-[calc(100%+0.5rem)] left-0 w-[600px] bg-white rounded-3xl shadow-[0_20px_60px_rgba(0,0,0,0.15)] border border-slate-200 flex flex-col z-[150] animate-in fade-in slide-in-from-top-4 overflow-hidden">
-                    <div className="flex items-center justify-between p-6 border-b border-slate-100 bg-slate-50/50">
-                       <h3 className="font-black text-xl text-slate-900 flex items-center gap-2">
-                         <SlidersHorizontal className="w-5 h-5 text-orange-500" /> الفلاتر المتقدمة
-                       </h3>
-                       <button title="إغلاق الشاشة" aria-label="إغلاق الشاشة" onClick={() => setIsDesktopMoreOpen(false)} className="p-2 bg-slate-100 hover:bg-slate-200 rounded-full transition-colors"><X className="w-5 h-5 text-slate-500 hover:text-slate-900" /></button>
-                    </div>
-                    <div className="p-6 grid grid-cols-2 gap-x-8 gap-y-8 max-h-[60vh] overflow-y-auto custom-scrollbar">
-                       
-                       {/* Year Range */}
-                       <div className="col-span-2 sm:col-span-1 space-y-3">
-                         <label className="text-xs font-black text-slate-900 uppercase tracking-wider">سنة الصنع (Year)</label>
-                         <div className="flex items-center gap-3">
-                           <input title="من سنة" type="number" placeholder="من" className="w-full bg-slate-50 border border-slate-200 shadow-sm rounded-xl py-3 px-4 outline-none focus:border-orange-500 focus:bg-white transition-all font-mono font-bold text-sm text-center" value={filterYearMin} onChange={e => setFilterYearMin(e.target.value ? Number(e.target.value) : '')} />
-                           <span className="text-slate-400 font-black">-</span>
-                           <input title="إلى سنة" type="number" placeholder="إلى" className="w-full bg-slate-50 border border-slate-200 shadow-sm rounded-xl py-3 px-4 outline-none focus:border-orange-500 focus:bg-white transition-all font-mono font-bold text-sm text-center" value={filterYearMax} onChange={e => setFilterYearMax(e.target.value ? Number(e.target.value) : '')} />
-                         </div>
-                       </div>
-
-                       {/* Mileage Range */}
-                       <div className="col-span-2 sm:col-span-1 space-y-3">
-                         <label className="text-xs font-black text-slate-900 uppercase tracking-wider">الممشى (Mileage)</label>
-                         <div className="flex items-center gap-3">
-                           <input title="الممشى الأدنى" type="number" placeholder="من" className="w-full bg-slate-50 border border-slate-200 shadow-sm rounded-xl py-3 px-4 outline-none focus:border-orange-500 focus:bg-white transition-all font-mono font-bold text-sm text-center" value={filterMileageMin} onChange={e => setFilterMileageMin(e.target.value ? Number(e.target.value) : '')} />
-                           <span className="text-slate-400 font-black">-</span>
-                           <input title="الممشى الأقصى" type="number" placeholder="إلى" className="w-full bg-slate-50 border border-slate-200 shadow-sm rounded-xl py-3 px-4 outline-none focus:border-orange-500 focus:bg-white transition-all font-mono font-bold text-sm text-center" value={filterMileageMax} onChange={e => setFilterMileageMax(e.target.value ? Number(e.target.value) : '')} />
-                         </div>
-                       </div>
-
-                       {/* Drive Type */}
-                       <div className="col-span-2 space-y-3">
-                         <div className="flex justify-between items-center">
-                           <label className="text-xs font-black text-slate-900 uppercase tracking-wider">نظام الدفع (Drive Type)</label>
-                         </div>
-                         <div className="flex flex-wrap gap-2">
-                           {['دفع رباعي 4x4', 'AWD', 'دفع أمامي FWD', 'دفع خلفي RWD'].map(opt => (
-                              <label key={opt} className="cursor-pointer group">
-                                <input 
-                                  type="checkbox" 
-                                  className="peer hidden" 
-                                  checked={filterDriveTypes.includes(opt)}
-                                  onChange={(e) => {
-                                    if (e.target.checked) setFilterDriveTypes([...filterDriveTypes, opt]);
-                                    else setFilterDriveTypes(filterDriveTypes.filter(d => d !== opt));
-                                  }}
-                                />
-                                <div className="px-4 py-2 border border-slate-200 bg-slate-50 rounded-xl text-xs font-bold text-slate-500 peer-checked:bg-orange-500 peer-checked:border-orange-500 peer-checked:text-white hover:border-orange-300 transition-all select-none">
-                                  {opt}
-                                </div>
+              <button onClick={() => setActiveFilterPopover(activeFilterPopover === 'make' ? null : 'make')} className={`px-4 py-2.5 border rounded-lg text-sm font-bold transition-all whitespace-nowrap shadow-sm hover:shadow active:scale-95 flex items-center gap-1 ${activeFilterPopover === 'make' ? 'bg-orange-50 border-orange-200 text-orange-700' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:text-slate-900'}`}>
+                {filterMake || 'الشركة والموديل'} {filterMake && filterModel && ` - ${filterModel}`}
+                <ChevronDown className="w-4 h-4 opacity-50" />
+              </button>
+              {activeFilterPopover === 'make' && (
+                <div className="absolute top-[calc(100%+0.5rem)] right-0 w-80 bg-white rounded-3xl shadow-[0_20px_60px_rgba(0,0,0,0.15)] border border-slate-200 p-5 flex flex-col z-[150] animate-in fade-in slide-in-from-top-4 overflow-hidden">
+                  <h3 className="font-black text-slate-900 text-base mb-4">الشركة والموديل (Make & Model)</h3>
+                  <div className="max-h-60 overflow-y-auto custom-scrollbar space-y-2 pr-2">
+                    {Object.keys(CAR_MAKES_AND_MODELS).map(make => (
+                      <div key={make} className="space-y-1">
+                        <label className="flex items-center justify-between cursor-pointer group p-2 hover:bg-slate-50 rounded-xl transition-colors">
+                          <div className="flex items-center gap-3">
+                            <input type="radio" name="make_filter" checked={filterMake === make} onChange={() => { setFilterMake(make); setFilterModel(''); }} className="hidden peer" />
+                            <div className="w-5 h-5 rounded-md border-2 border-slate-300 peer-checked:bg-orange-600 peer-checked:border-orange-600 flex items-center justify-center transition-all bg-white">
+                              <CheckCircle2 className="w-3 h-3 text-white opacity-0 peer-checked:opacity-100 transition-opacity" />
+                            </div>
+                            <span className="text-sm font-bold text-slate-700 peer-checked:text-slate-900">{make}</span>
+                          </div>
+                          <ChevronDown className={`w-4 h-4 transition-transform ${filterMake === make ? 'rotate-180 text-orange-500' : 'text-slate-300'}`} />
+                        </label>
+                        {filterMake === make && (
+                          <div className="pl-9 pr-4 py-2 space-y-3 bg-slate-50 rounded-xl mt-1 mb-2 shadow-inner">
+                            {(CAR_MAKES_AND_MODELS[make] || []).map((mdl) => (
+                              <label key={mdl} className="flex items-center gap-3 cursor-pointer group">
+                                <input type="radio" name="model_filter" checked={filterModel === mdl} onChange={() => setFilterModel(mdl)} className="hidden peer" />
+                                <div className="w-4 h-4 rounded-full border-2 border-slate-300 peer-checked:border-4 peer-checked:border-orange-500 bg-white transition-all"></div>
+                                <span className="text-xs font-bold text-slate-600 peer-checked:text-slate-900">{mdl}</span>
                               </label>
-                           ))}
-                         </div>
-                       </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="pt-4 mt-2 border-t border-slate-100 flex items-center justify-between">
+                    <button onClick={() => { setFilterMake(''); setFilterModel(''); }} className="text-xs font-black text-slate-500 hover:text-slate-900">تفريغ (Clear)</button>
+                    <button onClick={() => setActiveFilterPopover(null)} className="px-6 py-2.5 bg-orange-600 text-white rounded-xl font-black text-xs hover:bg-orange-700 active:scale-95 transition-all shadow-lg shadow-orange-500/20">تم (Done)</button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Price Popover */}
+            <div className="relative">
+              <button onClick={() => setActiveFilterPopover(activeFilterPopover === 'price' ? null : 'price')} className={`px-4 py-2.5 border rounded-lg text-sm font-bold transition-all whitespace-nowrap shadow-sm hover:shadow active:scale-95 flex items-center gap-1 ${activeFilterPopover === 'price' ? 'bg-orange-50 border-orange-200 text-orange-700' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:text-slate-900'}`}>
+                {filterPriceMin || filterPriceMax ? `${filterPriceMin || 0}$ - ${filterPriceMax || '1M+'}$` : 'السعر'}
+                <ChevronDown className="w-4 h-4 opacity-50" />
+              </button>
+              {activeFilterPopover === 'price' && (
+                <div className="absolute top-[calc(100%+0.5rem)] right-0 w-80 bg-white rounded-3xl shadow-[0_20px_60px_rgba(0,0,0,0.15)] border border-slate-200 p-6 flex flex-col z-[150] animate-in fade-in slide-in-from-top-4 overflow-hidden">
+                  <h3 className="font-black text-slate-900 text-base mb-6">السعر (Price)</h3>
+
+                  <div className="mb-8">
+                    <DualRangeSlider
+                      min={0} max={150000} step={500}
+                      value={[Number(filterPriceMin) || 0, Number(filterPriceMax) || 150000]}
+                      onChange={(val) => { setFilterPriceMin(val[0]); setFilterPriceMax(val[1]); }}
+                    />
+                  </div>
+
+                  <div className="flex gap-4">
+                    <div className="flex-1 space-y-1 bg-slate-50 p-3 rounded-xl border border-slate-200 focus-within:border-orange-500 transition-colors">
+                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">Min Price</div>
+                      <div className="flex items-center gap-1 text-slate-900 font-bold overflow-hidden">
+                        <span className="text-xs text-slate-400">$</span>
+                        <input type="number" min="0" placeholder="0" className="w-full outline-none bg-transparent font-mono" value={filterPriceMin} onChange={e => setFilterPriceMin(e.target.value ? Number(e.target.value) : '')} />
+                      </div>
+                    </div>
+                    <div className="flex-1 space-y-1 bg-slate-50 p-3 rounded-xl border border-slate-200 focus-within:border-orange-500 transition-colors">
+                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">Max Price</div>
+                      <div className="flex items-center gap-1 text-slate-900 font-bold overflow-hidden">
+                        <span className="text-xs text-slate-400">$</span>
+                        <input type="number" min="0" placeholder="100,000+" className="w-full outline-none bg-transparent font-mono" value={filterPriceMax} onChange={e => setFilterPriceMax(e.target.value ? Number(e.target.value) : '')} />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="pt-6 mt-6 border-t border-slate-100 flex items-center justify-between">
+                    <button onClick={() => { setFilterPriceMin(''); setFilterPriceMax(''); }} className="text-xs font-black text-slate-500 hover:text-slate-900">تفريغ (Clear)</button>
+                    <button onClick={() => setActiveFilterPopover(null)} className="px-6 py-2.5 bg-orange-600 text-white rounded-xl font-black text-xs hover:bg-orange-700 active:scale-95 transition-all shadow-lg shadow-orange-500/20">تم (Done)</button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Year Popover */}
+            <div className="relative">
+              <button onClick={() => setActiveFilterPopover(activeFilterPopover === 'year' ? null : 'year')} className={`px-4 py-2.5 border rounded-lg text-sm font-bold transition-all whitespace-nowrap shadow-sm hover:shadow active:scale-95 flex items-center gap-1 ${activeFilterPopover === 'year' ? 'bg-orange-50 border-orange-200 text-orange-700' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:text-slate-900'}`}>
+                {filterYearMin || filterYearMax ? `${filterYearMin || '<1901'} - ${filterYearMax || '2027'}` : 'السنة'}
+                <ChevronDown className="w-4 h-4 opacity-50" />
+              </button>
+              {activeFilterPopover === 'year' && (
+                <div className="absolute top-[calc(100%+0.5rem)] right-0 w-80 bg-white rounded-3xl shadow-[0_20px_60px_rgba(0,0,0,0.15)] border border-slate-200 p-6 flex flex-col z-[150] animate-in fade-in slide-in-from-top-4 overflow-hidden">
+                  <div className="flex justify-between items-center mb-6">
+                    <h3 className="font-black text-slate-900 text-base">السنة (Year)</h3>
+                    <button className="text-[10px] font-black text-blue-600 hover:text-blue-800">Switch By Year</button>
+                  </div>
+
+                  <div className="mb-8">
+                    <DualRangeSlider
+                      min={1990} max={2027} step={1}
+                      value={[Number(filterYearMin) || 1990, Number(filterYearMax) || 2027]}
+                      onChange={(val) => { setFilterYearMin(val[0]); setFilterYearMax(val[1]); }}
+                    />
+                  </div>
+
+                  <div className="flex gap-4">
+                    <div className="flex-1 bg-slate-50 p-3 rounded-xl border border-slate-200 focus-within:border-orange-500 transition-colors">
+                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Min Year</div>
+                      <input type="number" min="1901" max="2027" placeholder="<1901" className="w-full outline-none bg-transparent text-slate-900 font-bold font-mono text-sm" value={filterYearMin} onChange={e => setFilterYearMin(e.target.value ? Number(e.target.value) : '')} />
+                    </div>
+                    <div className="flex-1 bg-slate-50 p-3 rounded-xl border border-slate-200 focus-within:border-orange-500 transition-colors">
+                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Max Year</div>
+                      <input type="number" min="1901" max="2027" placeholder="2027" className="w-full outline-none bg-transparent text-slate-900 font-bold font-mono text-sm" value={filterYearMax} onChange={e => setFilterYearMax(e.target.value ? Number(e.target.value) : '')} />
+                    </div>
+                  </div>
+
+                  <div className="pt-6 mt-6 border-t border-slate-100 flex items-center justify-between">
+                    <button onClick={() => { setFilterYearMin(''); setFilterYearMax(''); }} className="text-xs font-black text-slate-500 hover:text-slate-900">تفريغ (Clear)</button>
+                    <button onClick={() => setActiveFilterPopover(null)} className="px-6 py-2.5 bg-orange-600 text-white rounded-xl font-black text-xs hover:bg-orange-700 active:scale-95 transition-all shadow-lg shadow-orange-500/20">تم (Done)</button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Mileage Popover */}
+            <div className="relative">
+              <button onClick={() => setActiveFilterPopover(activeFilterPopover === 'mileage' ? null : 'mileage')} className={`px-4 py-2.5 border rounded-lg text-sm font-bold transition-all whitespace-nowrap shadow-sm hover:shadow active:scale-95 flex items-center gap-1 ${activeFilterPopover === 'mileage' ? 'bg-orange-50 border-orange-200 text-orange-700' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:text-slate-900'}`}>
+                {filterMileageMin || filterMileageMax ? `${filterMileageMin || 0} - ${filterMileageMax || 'مفتوح'}` : 'المسافة'}
+                <ChevronDown className="w-4 h-4 opacity-50" />
+              </button>
+              {activeFilterPopover === 'mileage' && (
+                <div className="absolute top-[calc(100%+0.5rem)] right-0 w-80 bg-white rounded-3xl shadow-[0_20px_60px_rgba(0,0,0,0.15)] border border-slate-200 p-6 flex flex-col z-[150] animate-in fade-in slide-in-from-top-4 overflow-hidden">
+                  <h3 className="font-black text-slate-900 text-base mb-6">المسافة (Mileage)</h3>
+
+                  <div className="mb-8">
+                    <DualRangeSlider
+                      min={0} max={300000} step={5000}
+                      value={[Number(filterMileageMin) || 0, Number(filterMileageMax) || 300000]}
+                      onChange={(val) => { setFilterMileageMin(val[0]); setFilterMileageMax(val[1]); }}
+                    />
+                  </div>
+
+                  <div className="flex gap-4">
+                    <div className="flex-1 bg-slate-50 p-3 rounded-xl border border-slate-200 focus-within:border-orange-500 transition-colors">
+                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Min Miles</div>
+                      <input type="number" min="0" placeholder="0" className="w-full outline-none bg-transparent text-slate-900 font-bold font-mono text-sm" value={filterMileageMin} onChange={e => setFilterMileageMin(e.target.value ? Number(e.target.value) : '')} />
+                    </div>
+                    <div className="flex-1 bg-slate-50 p-3 rounded-xl border border-slate-200 focus-within:border-orange-500 transition-colors">
+                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Max Miles</div>
+                      <input type="number" min="0" placeholder="100k+" className="w-full outline-none bg-transparent text-slate-900 font-bold font-mono text-sm" value={filterMileageMax} onChange={e => setFilterMileageMax(e.target.value ? Number(e.target.value) : '')} />
+                    </div>
+                  </div>
+
+                  <div className="pt-6 mt-6 border-t border-slate-100 flex items-center justify-between">
+                    <button onClick={() => { setFilterMileageMin(''); setFilterMileageMax(''); }} className="text-xs font-black text-slate-500 hover:text-slate-900">تفريغ (Clear)</button>
+                    <button onClick={() => setActiveFilterPopover(null)} className="px-6 py-2.5 bg-orange-600 text-white rounded-xl font-black text-xs hover:bg-orange-700 active:scale-95 transition-all shadow-lg shadow-orange-500/20">تم (Done)</button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Auction Type Popover */}
+            <div className="relative">
+              <button onClick={() => setActiveFilterPopover(activeFilterPopover === 'auctionType' ? null : 'auctionType')} className={`px-4 py-2.5 border rounded-lg text-sm font-bold transition-all whitespace-nowrap shadow-sm hover:shadow active:scale-95 flex items-center gap-1 ${activeFilterPopover === 'auctionType' ? 'bg-orange-50 border-orange-200 text-orange-700' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:text-slate-900'}`}>
+                {filterAuctionTypes.length > 0 ? `نوع المزاد (${filterAuctionTypes.length})` : 'نوع المزاد'}
+                <ChevronDown className="w-4 h-4 opacity-50" />
+              </button>
+              {activeFilterPopover === 'auctionType' && (
+                <div className="absolute top-[calc(100%+0.5rem)] right-0 w-80 bg-white rounded-3xl shadow-[0_20px_60px_rgba(0,0,0,0.15)] border border-slate-200 p-6 flex flex-col z-[150] animate-in fade-in slide-in-from-top-4 overflow-hidden">
+                  <h3 className="font-black text-slate-900 text-base mb-4">نوع المزاد (Auction Type)</h3>
+
+                  <div className="space-y-2">
+                    {['بيع مباشر', 'سعر احتياطي', 'اشتري الآن', 'تصفية معارض', 'سيارات الخليج', 'Ready to Sell', 'Live Appraisal'].map(opt => (
+                      <label key={opt} className="flex items-center gap-3 cursor-pointer group hover:bg-slate-50 p-2 rounded-xl transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={filterAuctionTypes.includes(opt)}
+                          className="hidden peer"
+                          onChange={(e) => {
+                            if (e.target.checked) setFilterAuctionTypes([...filterAuctionTypes, opt]);
+                            else setFilterAuctionTypes(filterAuctionTypes.filter(a => a !== opt));
+                          }}
+                        />
+                        <div className="w-5 h-5 rounded-md border-2 border-slate-300 peer-checked:bg-orange-600 peer-checked:border-orange-600 flex items-center justify-center transition-all bg-white">
+                          <CheckCircle2 className="w-3 h-3 text-white opacity-0 peer-checked:opacity-100 transition-opacity" />
+                        </div>
+                        <span className="text-sm font-bold text-slate-700 peer-checked:text-slate-900">{opt}</span>
+                      </label>
+                    ))}
+                  </div>
+
+                  <div className="pt-6 mt-4 border-t border-slate-100 flex items-center justify-between">
+                    <button onClick={() => setFilterAuctionTypes([])} className="text-xs font-black text-slate-500 hover:text-slate-900">تفريغ (Clear)</button>
+                    <button onClick={() => setActiveFilterPopover(null)} className="px-6 py-2.5 bg-orange-600 text-white rounded-xl font-black text-xs hover:bg-orange-700 active:scale-95 transition-all shadow-lg shadow-orange-500/20">تم (Done)</button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Sort Select */}
+            <div className="relative border-l border-slate-200 pl-2 ml-2" ref={sortRef}>
+              <button onClick={() => setIsSortOpen(!isSortOpen)} className={`px-4 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-all shadow-sm active:scale-95 ${isSortOpen ? 'bg-slate-900 text-white shadow-slate-900/20' : 'bg-slate-900 text-white hover:bg-slate-800 hover:shadow'}`}>
+                ترتيب <SlidersHorizontal className="w-4 h-4" />
+              </button>
+              {isSortOpen && (
+                <div className="absolute top-[calc(100%+0.5rem)] right-0 w-60 bg-white rounded-3xl shadow-[0_20px_60px_rgba(0,0,0,0.15)] border border-slate-200 p-3 flex flex-col z-[150] animate-in fade-in slide-in-from-top-4 overflow-hidden">
+                  <span className="text-xs font-black text-slate-400 uppercase tracking-widest px-3 py-2 mb-1 block">Sort Options</span>
+                  <button onClick={() => { setSortBy('ending_soonest'); setIsSortOpen(false); }} className={`flex items-center gap-3 w-full p-3 rounded-xl transition-all text-sm font-bold ${sortBy === 'ending_soonest' ? 'bg-orange-50 text-orange-700' : 'hover:bg-slate-50 text-slate-700'}`}>
+                    <div className="w-4 h-4 rounded-full border-2 border-slate-300 flex items-center justify-center p-[2px]">
+                      {sortBy === 'ending_soonest' && <div className="w-full h-full bg-orange-600 rounded-full"></div>}
+                    </div>
+                    ينتهي أولاً (Ending Soonest)
+                  </button>
+                  <button onClick={() => { setSortBy('recommended'); setIsSortOpen(false); }} className={`flex items-center gap-3 w-full p-3 rounded-xl transition-all text-sm font-bold ${sortBy === 'recommended' ? 'bg-orange-50 text-orange-700' : 'hover:bg-slate-50 text-slate-700'}`}>
+                    <div className="w-4 h-4 rounded-full border-2 border-slate-300 flex items-center justify-center p-[2px]">
+                      {sortBy === 'recommended' && <div className="w-full h-full bg-orange-600 rounded-full"></div>}
+                    </div>
+                    مُوصى به (Recommended)
+                  </button>
+                  <button onClick={() => { setSortBy('priced_to_sell'); setIsSortOpen(false); }} className={`flex items-center gap-3 w-full p-3 rounded-xl transition-all text-sm font-bold ${sortBy === 'priced_to_sell' ? 'bg-orange-50 text-orange-700' : 'hover:bg-slate-50 text-slate-700'}`}>
+                    <div className="w-4 h-4 rounded-full border-2 border-slate-300 flex items-center justify-center p-[2px]">
+                      {sortBy === 'priced_to_sell' && <div className="w-full h-full bg-orange-600 rounded-full"></div>}
+                    </div>
+                    سعر منافس (Priced to Sell)
+                  </button>
+                </div>
+              )}
+            </div>
+            <div className="relative">
+              <button onClick={() => setIsDesktopMoreOpen(!isDesktopMoreOpen)} className={`px-4 py-2.5 border rounded-lg text-sm font-bold flex items-center gap-2 transition-all shadow-sm active:scale-95 ${isDesktopMoreOpen ? 'bg-slate-900 border-slate-900 text-white shadow-slate-900/20' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:text-slate-900 hover:shadow'}`}>
+                المزيد <SlidersHorizontal className="w-4 h-4" />
+              </button>
+              {isDesktopMoreOpen && (
+                <div className="absolute top-[calc(100%+0.5rem)] left-0 w-[600px] bg-white rounded-3xl shadow-[0_20px_60px_rgba(0,0,0,0.15)] border border-slate-200 flex flex-col z-[150] animate-in fade-in slide-in-from-top-4 overflow-hidden">
+                  <div className="flex items-center justify-between p-6 border-b border-slate-100 bg-slate-50/50">
+                    <h3 className="font-black text-xl text-slate-900 flex items-center gap-2">
+                      <SlidersHorizontal className="w-5 h-5 text-orange-500" /> الفلاتر المتقدمة
+                    </h3>
+                    <button title="إغلاق الشاشة" aria-label="إغلاق الشاشة" onClick={() => setIsDesktopMoreOpen(false)} className="p-2 bg-slate-100 hover:bg-slate-200 rounded-full transition-colors"><X className="w-5 h-5 text-slate-500 hover:text-slate-900" /></button>
+                  </div>
+                  <div className="p-6 grid grid-cols-2 gap-x-8 gap-y-8 max-h-[60vh] overflow-y-auto custom-scrollbar">
+
+                    {/* Year Range */}
+                    <div className="col-span-2 sm:col-span-1 space-y-3">
+                      <label className="text-xs font-black text-slate-900 uppercase tracking-wider">سنة الصنع (Year)</label>
+                      <div className="flex items-center gap-3">
+                        <input title="من سنة" type="number" placeholder="من" className="w-full bg-slate-50 border border-slate-200 shadow-sm rounded-xl py-3 px-4 outline-none focus:border-orange-500 focus:bg-white transition-all font-mono font-bold text-sm text-center" value={filterYearMin} onChange={e => setFilterYearMin(e.target.value ? Number(e.target.value) : '')} />
+                        <span className="text-slate-400 font-black">-</span>
+                        <input title="إلى سنة" type="number" placeholder="إلى" className="w-full bg-slate-50 border border-slate-200 shadow-sm rounded-xl py-3 px-4 outline-none focus:border-orange-500 focus:bg-white transition-all font-mono font-bold text-sm text-center" value={filterYearMax} onChange={e => setFilterYearMax(e.target.value ? Number(e.target.value) : '')} />
+                      </div>
                     </div>
 
-                    {/* Footer Actions */}
-                    <div className="p-6 bg-slate-50 border-t border-slate-100 flex items-center justify-between mt-auto">
-                       <button onClick={clearAllFilters} className="px-6 py-3 text-sm font-black text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 rounded-xl transition-colors">إعادة ضبط الكل</button>
-                       <button onClick={() => setIsDesktopMoreOpen(false)} className="px-8 py-3 bg-orange-600 text-white rounded-xl font-black text-sm hover:bg-orange-700 transition-all active:scale-95 shadow-lg shadow-orange-500/20 flex items-center gap-2">
-                         <CheckCircle2 className="w-5 h-5" /> تطبيق الفلاتر
-                       </button>
+                    {/* Mileage Range */}
+                    <div className="col-span-2 sm:col-span-1 space-y-3">
+                      <label className="text-xs font-black text-slate-900 uppercase tracking-wider">الممشى (Mileage)</label>
+                      <div className="flex items-center gap-3">
+                        <input title="الممشى الأدنى" type="number" placeholder="من" className="w-full bg-slate-50 border border-slate-200 shadow-sm rounded-xl py-3 px-4 outline-none focus:border-orange-500 focus:bg-white transition-all font-mono font-bold text-sm text-center" value={filterMileageMin} onChange={e => setFilterMileageMin(e.target.value ? Number(e.target.value) : '')} />
+                        <span className="text-slate-400 font-black">-</span>
+                        <input title="الممشى الأقصى" type="number" placeholder="إلى" className="w-full bg-slate-50 border border-slate-200 shadow-sm rounded-xl py-3 px-4 outline-none focus:border-orange-500 focus:bg-white transition-all font-mono font-bold text-sm text-center" value={filterMileageMax} onChange={e => setFilterMileageMax(e.target.value ? Number(e.target.value) : '')} />
+                      </div>
                     </div>
-                 </div>
-               )}
+
+                    {/* Drive Type */}
+                    <div className="col-span-2 space-y-3">
+                      <div className="flex justify-between items-center">
+                        <label className="text-xs font-black text-slate-900 uppercase tracking-wider">نظام الدفع (Drive Type)</label>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {['دفع رباعي 4x4', 'AWD', 'دفع أمامي FWD', 'دفع خلفي RWD'].map(opt => (
+                          <label key={opt} className="cursor-pointer group">
+                            <input
+                              type="checkbox"
+                              className="peer hidden"
+                              checked={filterDriveTypes.includes(opt)}
+                              onChange={(e) => {
+                                if (e.target.checked) setFilterDriveTypes([...filterDriveTypes, opt]);
+                                else setFilterDriveTypes(filterDriveTypes.filter(d => d !== opt));
+                              }}
+                            />
+                            <div className="px-4 py-2 border border-slate-200 bg-slate-50 rounded-xl text-xs font-bold text-slate-500 peer-checked:bg-orange-500 peer-checked:border-orange-500 peer-checked:text-white hover:border-orange-300 transition-all select-none">
+                              {opt}
+                            </div>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Footer Actions */}
+                  <div className="p-6 bg-slate-50 border-t border-slate-100 flex items-center justify-between mt-auto">
+                    <button onClick={clearAllFilters} className="px-6 py-3 text-sm font-black text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 rounded-xl transition-colors">إعادة ضبط الكل</button>
+                    <button onClick={() => setIsDesktopMoreOpen(false)} className="px-8 py-3 bg-orange-600 text-white rounded-xl font-black text-sm hover:bg-orange-700 transition-all active:scale-95 shadow-lg shadow-orange-500/20 flex items-center gap-2">
+                      <CheckCircle2 className="w-5 h-5" /> تطبيق الفلاتر
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
-            
+
             <div className="h-8 w-px bg-slate-200 mx-2"></div>
-            
+
             <div className="flex bg-slate-100 p-1 rounded-lg shrink-0">
               <button title="شبكة" onClick={() => setViewMode('grid')} className={`p-2 rounded-md transition-all ${viewMode === 'grid' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
                 <LayoutGrid className="w-5 h-5" />
@@ -1039,35 +1040,35 @@ export const Home = () => {
                       { year: 2010, make: 'Toyota', model: '4Runner', trim: 'Limited • AWD • 6cyl', miles: '133,456 miles', time: '42:26', bid: 11100, winning: true, image: 'https://images.unsplash.com/photo-1590362891991-f7000bf49dc2?auto=format&fit=crop&q=80&w=300', lot: '194857' }
                     ].map((item, idx) => (
                       <div key={idx} className={`flex gap-3 p-2.5 rounded-2xl bg-white border cursor-pointer hover:shadow-md transition-all ${item.winning ? 'border-emerald-500/50 shadow-emerald-500/5 bg-emerald-50/10' : 'border-rose-500/50 bg-rose-50/30 shadow-rose-500/5'}`}>
-                         <div className="relative w-20 h-[60px] shrink-0 rounded-xl overflow-hidden bg-slate-100">
-                            <img src={item.image} alt="car" className="w-full h-full object-cover" />
-                            <div className="absolute top-1 left-1 w-4 h-4 bg-black/60 backdrop-blur rounded-full flex items-center justify-center">
-                              <Heart className="w-2.5 h-2.5 text-rose-500 fill-current" />
+                        <div className="relative w-20 h-[60px] shrink-0 rounded-xl overflow-hidden bg-slate-100">
+                          <img src={item.image} alt="car" className="w-full h-full object-cover" />
+                          <div className="absolute top-1 left-1 w-4 h-4 bg-black/60 backdrop-blur rounded-full flex items-center justify-center">
+                            <Heart className="w-2.5 h-2.5 text-rose-500 fill-current" />
+                          </div>
+                        </div>
+                        <div className="flex-1 flex flex-col justify-between min-w-0">
+                          <div className="flex justify-between items-start">
+                            <div className="min-w-0 pr-1">
+                              <h4 className="text-[12px] font-black text-slate-900 truncate leading-none mb-1">{item.year || '2016'} {item.make} {item.model}</h4>
+                              <div className="text-[9px] text-slate-500 truncate mt-0.5 leading-none">{item.trim}</div>
+                              <div className="text-[9px] text-slate-400 mt-0.5">{item.miles}</div>
                             </div>
-                         </div>
-                         <div className="flex-1 flex flex-col justify-between min-w-0">
-                           <div className="flex justify-between items-start">
-                             <div className="min-w-0 pr-1">
-                               <h4 className="text-[12px] font-black text-slate-900 truncate leading-none mb-1">{item.year || '2016'} {item.make} {item.model}</h4>
-                               <div className="text-[9px] text-slate-500 truncate mt-0.5 leading-none">{item.trim}</div>
-                               <div className="text-[9px] text-slate-400 mt-0.5">{item.miles}</div>
-                             </div>
-                             <div className={`w-4 h-4 rounded-full flex items-center justify-center shrink-0 ${item.winning ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`}>
-                               <CheckCircle2 className="w-3 h-3" />
-                             </div>
-                           </div>
-                           <div className="flex justify-between items-end mt-1">
-                             <div className="flex items-center gap-1 text-[10px] font-black text-slate-500 font-mono">
-                               <Clock className="w-3 h-3 text-slate-400" /> {item.time}
-                             </div>
-                             <div className={`text-sm font-black font-mono leading-none ${item.winning ? 'text-emerald-600' : 'text-rose-600'}`}>
-                               ${item.bid.toLocaleString()}
-                             </div>
-                           </div>
-                         </div>
+                            <div className={`w-4 h-4 rounded-full flex items-center justify-center shrink-0 ${item.winning ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`}>
+                              <CheckCircle2 className="w-3 h-3" />
+                            </div>
+                          </div>
+                          <div className="flex justify-between items-end mt-1">
+                            <div className="flex items-center gap-1 text-[10px] font-black text-slate-500 font-mono">
+                              <Clock className="w-3 h-3 text-slate-400" /> {item.time}
+                            </div>
+                            <div className={`text-sm font-black font-mono leading-none ${item.winning ? 'text-emerald-600' : 'text-rose-600'}`}>
+                              ${item.bid.toLocaleString()}
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     ))}
-                    
+
                     <button onClick={() => navigate('/dashboard/user?view=bids')} className="w-full mt-2 py-2.5 bg-slate-50 border border-slate-200 text-slate-600 rounded-xl font-black text-[11px] hover:bg-slate-100 hover:text-slate-900 transition-all flex items-center justify-center gap-2">
                       عرض جميع المزايدات <ArrowUpRight className="w-3 h-3" />
                     </button>
@@ -1084,7 +1085,7 @@ export const Home = () => {
         <div className="fixed inset-0 z-[200] lg:hidden flex">
           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsMobileMenuOpen(false)}></div>
           <div className="relative w-[85%] max-w-md ml-auto bg-slate-50 h-full overflow-hidden animate-in slide-in-from-right duration-300 rtl:slide-in-from-left flex flex-col shadow-2xl">
-            
+
             {/* Header */}
             <div className="bg-white px-6 py-4 flex justify-between items-center border-b border-slate-100 z-10 sticky top-0 shadow-sm">
               <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
@@ -1100,124 +1101,124 @@ export const Home = () => {
 
             {/* Scrollable Filters Content */}
             <div className="flex-1 overflow-y-auto p-6 space-y-8 pb-24">
-               {/* Search */}
-               <div className="space-y-3">
-                 <label className="text-xs font-black text-slate-900 uppercase tracking-wider">البحث (Search)</label>
-                 <div className="relative group">
-                    <Search className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-orange-500 transition-colors" />
-                    <input
-                      type="text"
-                      placeholder="رقم اللوت، الشاصي، الخ..."
-                      className="w-full bg-white border border-slate-200 shadow-sm rounded-xl py-3 pr-12 pl-4 outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 transition-all font-bold text-sm"
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                    />
-                 </div>
-               </div>
+              {/* Search */}
+              <div className="space-y-3">
+                <label className="text-xs font-black text-slate-900 uppercase tracking-wider">البحث (Search)</label>
+                <div className="relative group">
+                  <Search className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-orange-500 transition-colors" />
+                  <input
+                    type="text"
+                    placeholder="رقم اللوت، الشاصي، الخ..."
+                    className="w-full bg-white border border-slate-200 shadow-sm rounded-xl py-3 pr-12 pl-4 outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 transition-all font-bold text-sm"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
+                </div>
+              </div>
 
-               {/* Make & Model */}
-               <div className="grid grid-cols-2 gap-4">
-                 <div className="space-y-3 cursor-pointer group relative">
-                   <label className="text-xs font-black text-slate-900 uppercase tracking-wider">المصنع (Make)</label>
-                   <select title="المصنع" aria-label="المصنع" value={filterMake} onChange={(e) => { setFilterMake(e.target.value); setFilterModel(''); }} className="w-full bg-white border border-slate-200 shadow-sm rounded-xl py-3 px-4 outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 transition-all font-bold text-sm text-slate-700 appearance-none cursor-pointer">
-                     <option value="">الكل (All)</option>
-                     {Object.keys(CAR_MAKES_AND_MODELS).map(make => (
-                        <option key={make} value={make}>{make}</option>
-                     ))}
-                   </select>
-                   <ChevronDown className="absolute left-3 top-10 w-4 h-4 text-slate-400 group-hover:text-orange-500 transition-colors pointer-events-none" />
-                 </div>
-                 <div className="space-y-3 relative group">
-                   <label className="text-xs font-black text-slate-900 uppercase tracking-wider">الموديل (Model)</label>
-                   <select title="الموديل" aria-label="الموديل" value={filterModel} onChange={(e) => setFilterModel(e.target.value)} disabled={!filterMake} className="w-full bg-white border border-slate-200 shadow-sm rounded-xl py-3 px-4 outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 transition-all font-bold text-sm text-slate-700 appearance-none disabled:bg-slate-50 disabled:text-slate-400 cursor-pointer">
-                     <option value="">الكل (All)</option>
-                     {filterMake && (CAR_MAKES_AND_MODELS[filterMake] || []).map(m => (
-                        <option key={m} value={m}>{m}</option>
-                     ))}
-                   </select>
-                   <ChevronDown className="absolute left-3 top-10 w-4 h-4 text-slate-400 group-hover:text-orange-500 transition-colors pointer-events-none" />
-                 </div>
-               </div>
+              {/* Make & Model */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-3 cursor-pointer group relative">
+                  <label className="text-xs font-black text-slate-900 uppercase tracking-wider">المصنع (Make)</label>
+                  <select title="المصنع" aria-label="المصنع" value={filterMake} onChange={(e) => { setFilterMake(e.target.value); setFilterModel(''); }} className="w-full bg-white border border-slate-200 shadow-sm rounded-xl py-3 px-4 outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 transition-all font-bold text-sm text-slate-700 appearance-none cursor-pointer">
+                    <option value="">الكل (All)</option>
+                    {Object.keys(CAR_MAKES_AND_MODELS).map(make => (
+                      <option key={make} value={make}>{make}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute left-3 top-10 w-4 h-4 text-slate-400 group-hover:text-orange-500 transition-colors pointer-events-none" />
+                </div>
+                <div className="space-y-3 relative group">
+                  <label className="text-xs font-black text-slate-900 uppercase tracking-wider">الموديل (Model)</label>
+                  <select title="الموديل" aria-label="الموديل" value={filterModel} onChange={(e) => setFilterModel(e.target.value)} disabled={!filterMake} className="w-full bg-white border border-slate-200 shadow-sm rounded-xl py-3 px-4 outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 transition-all font-bold text-sm text-slate-700 appearance-none disabled:bg-slate-50 disabled:text-slate-400 cursor-pointer">
+                    <option value="">الكل (All)</option>
+                    {filterMake && (CAR_MAKES_AND_MODELS[filterMake] || []).map(m => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute left-3 top-10 w-4 h-4 text-slate-400 group-hover:text-orange-500 transition-colors pointer-events-none" />
+                </div>
+              </div>
 
-               {/* Price Range */}
-               <div className="space-y-3">
-                 <div className="flex justify-between items-center">
-                    <label className="text-xs font-black text-slate-900 uppercase tracking-wider">السعر (Price)</label>
-                    <span className="text-xs font-bold text-slate-500">{filterPriceMin || 0}$ - {filterPriceMax || '1M+'}$</span>
-                 </div>
-                 <DualRangeSlider 
-                    min={0} max={150000} step={500} 
-                    value={[Number(filterPriceMin) || 0, Number(filterPriceMax) || 150000]} 
-                    onChange={(val) => { setFilterPriceMin(val[0]); setFilterPriceMax(val[1]); }} 
-                 />
-                 <div className="flex items-center gap-4 mt-2">
-                   <input type="number" value={filterPriceMin} onChange={(e) => setFilterPriceMin(e.target.value ? Number(e.target.value) : '')} placeholder="Min $" className="w-full bg-white border border-slate-200 shadow-sm rounded-xl py-2 px-3 outline-none focus:border-orange-500 transition-all font-mono font-bold text-[11px] text-center" />
-                   <span className="text-slate-400 font-black">-</span>
-                   <input type="number" value={filterPriceMax} onChange={(e) => setFilterPriceMax(e.target.value ? Number(e.target.value) : '')} placeholder="Max $" className="w-full bg-white border border-slate-200 shadow-sm rounded-xl py-2 px-3 outline-none focus:border-orange-500 transition-all font-mono font-bold text-[11px] text-center" />
-                 </div>
-               </div>
+              {/* Price Range */}
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <label className="text-xs font-black text-slate-900 uppercase tracking-wider">السعر (Price)</label>
+                  <span className="text-xs font-bold text-slate-500">{filterPriceMin || 0}$ - {filterPriceMax || '1M+'}$</span>
+                </div>
+                <DualRangeSlider
+                  min={0} max={150000} step={500}
+                  value={[Number(filterPriceMin) || 0, Number(filterPriceMax) || 150000]}
+                  onChange={(val) => { setFilterPriceMin(val[0]); setFilterPriceMax(val[1]); }}
+                />
+                <div className="flex items-center gap-4 mt-2">
+                  <input type="number" value={filterPriceMin} onChange={(e) => setFilterPriceMin(e.target.value ? Number(e.target.value) : '')} placeholder="Min $" className="w-full bg-white border border-slate-200 shadow-sm rounded-xl py-2 px-3 outline-none focus:border-orange-500 transition-all font-mono font-bold text-[11px] text-center" />
+                  <span className="text-slate-400 font-black">-</span>
+                  <input type="number" value={filterPriceMax} onChange={(e) => setFilterPriceMax(e.target.value ? Number(e.target.value) : '')} placeholder="Max $" className="w-full bg-white border border-slate-200 shadow-sm rounded-xl py-2 px-3 outline-none focus:border-orange-500 transition-all font-mono font-bold text-[11px] text-center" />
+                </div>
+              </div>
 
-               {/* Year Range */}
-               <div className="space-y-3">
-                 <div className="flex justify-between items-center">
-                    <label className="text-xs font-black text-slate-900 uppercase tracking-wider">سنة الصنع (Year)</label>
-                    <span className="text-xs font-bold text-slate-500">{filterYearMin || '<1901'} - {filterYearMax || '2027'}</span>
-                 </div>
-                 <DualRangeSlider 
-                    min={1990} max={2027} step={1} 
-                    value={[Number(filterYearMin) || 1990, Number(filterYearMax) || 2027]} 
-                    onChange={(val) => { setFilterYearMin(val[0]); setFilterYearMax(val[1]); }} 
-                 />
-                 <div className="flex items-center gap-4 mt-2">
-                   <input type="number" value={filterYearMin} onChange={(e) => setFilterYearMin(e.target.value ? Number(e.target.value) : '')} placeholder="من سنة" className="w-full bg-white border border-slate-200 shadow-sm rounded-xl py-2 px-3 outline-none focus:border-orange-500 transition-all font-mono font-bold text-[11px] text-center" />
-                   <span className="text-slate-400 font-black">-</span>
-                   <input type="number" value={filterYearMax} onChange={(e) => setFilterYearMax(e.target.value ? Number(e.target.value) : '')} placeholder="إلى سنة" className="w-full bg-white border border-slate-200 shadow-sm rounded-xl py-2 px-3 outline-none focus:border-orange-500 transition-all font-mono font-bold text-[11px] text-center" />
-                 </div>
-               </div>
+              {/* Year Range */}
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <label className="text-xs font-black text-slate-900 uppercase tracking-wider">سنة الصنع (Year)</label>
+                  <span className="text-xs font-bold text-slate-500">{filterYearMin || '<1901'} - {filterYearMax || '2027'}</span>
+                </div>
+                <DualRangeSlider
+                  min={1990} max={2027} step={1}
+                  value={[Number(filterYearMin) || 1990, Number(filterYearMax) || 2027]}
+                  onChange={(val) => { setFilterYearMin(val[0]); setFilterYearMax(val[1]); }}
+                />
+                <div className="flex items-center gap-4 mt-2">
+                  <input type="number" value={filterYearMin} onChange={(e) => setFilterYearMin(e.target.value ? Number(e.target.value) : '')} placeholder="من سنة" className="w-full bg-white border border-slate-200 shadow-sm rounded-xl py-2 px-3 outline-none focus:border-orange-500 transition-all font-mono font-bold text-[11px] text-center" />
+                  <span className="text-slate-400 font-black">-</span>
+                  <input type="number" value={filterYearMax} onChange={(e) => setFilterYearMax(e.target.value ? Number(e.target.value) : '')} placeholder="إلى سنة" className="w-full bg-white border border-slate-200 shadow-sm rounded-xl py-2 px-3 outline-none focus:border-orange-500 transition-all font-mono font-bold text-[11px] text-center" />
+                </div>
+              </div>
 
-               {/* Mileage Range */}
-               <div className="space-y-3">
-                 <div className="flex justify-between items-center">
-                    <label className="text-xs font-black text-slate-900 uppercase tracking-wider">المسافة (Mileage)</label>
-                    <span className="text-xs font-bold text-slate-500">{filterMileageMin || 0} - {filterMileageMax || 'مفتوح'}</span>
-                 </div>
-                 <DualRangeSlider 
-                    min={0} max={300000} step={5000} 
-                    value={[Number(filterMileageMin) || 0, Number(filterMileageMax) || 300000]} 
-                    onChange={(val) => { setFilterMileageMin(val[0]); setFilterMileageMax(val[1]); }} 
-                 />
-                 <div className="flex items-center gap-4 mt-2">
-                   <input type="number" value={filterMileageMin} onChange={(e) => setFilterMileageMin(e.target.value ? Number(e.target.value) : '')} placeholder="Min mi" className="w-full bg-white border border-slate-200 shadow-sm rounded-xl py-2 px-3 outline-none focus:border-orange-500 transition-all font-mono font-bold text-[11px] text-center" />
-                   <span className="text-slate-400 font-black">-</span>
-                   <input type="number" value={filterMileageMax} onChange={(e) => setFilterMileageMax(e.target.value ? Number(e.target.value) : '')} placeholder="Max mi" className="w-full bg-white border border-slate-200 shadow-sm rounded-xl py-2 px-3 outline-none focus:border-orange-500 transition-all font-mono font-bold text-[11px] text-center" />
-                 </div>
-               </div>
+              {/* Mileage Range */}
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <label className="text-xs font-black text-slate-900 uppercase tracking-wider">المسافة (Mileage)</label>
+                  <span className="text-xs font-bold text-slate-500">{filterMileageMin || 0} - {filterMileageMax || 'مفتوح'}</span>
+                </div>
+                <DualRangeSlider
+                  min={0} max={300000} step={5000}
+                  value={[Number(filterMileageMin) || 0, Number(filterMileageMax) || 300000]}
+                  onChange={(val) => { setFilterMileageMin(val[0]); setFilterMileageMax(val[1]); }}
+                />
+                <div className="flex items-center gap-4 mt-2">
+                  <input type="number" value={filterMileageMin} onChange={(e) => setFilterMileageMin(e.target.value ? Number(e.target.value) : '')} placeholder="Min mi" className="w-full bg-white border border-slate-200 shadow-sm rounded-xl py-2 px-3 outline-none focus:border-orange-500 transition-all font-mono font-bold text-[11px] text-center" />
+                  <span className="text-slate-400 font-black">-</span>
+                  <input type="number" value={filterMileageMax} onChange={(e) => setFilterMileageMax(e.target.value ? Number(e.target.value) : '')} placeholder="Max mi" className="w-full bg-white border border-slate-200 shadow-sm rounded-xl py-2 px-3 outline-none focus:border-orange-500 transition-all font-mono font-bold text-[11px] text-center" />
+                </div>
+              </div>
 
-               {/* Auction Type */}
-               <div className="space-y-3">
-                 <label className="text-xs font-black text-slate-900 uppercase tracking-wider">نوع المزاد (Auction Type)</label>
-                 <div className="space-y-2">
-                   {['بيع مباشر', 'سعر احتياطي', 'اشتري الآن', 'تصفية معارض', 'سيارات الخليج'].map(type => (
-                      <label key={type} className="flex items-center gap-3 p-3 bg-white border border-slate-100 shadow-sm rounded-xl cursor-pointer hover:bg-slate-50 transition-colors group">
-                        <input type="checkbox" checked={filterAuctionTypes.includes(type)} onChange={(e) => {
-                             if (e.target.checked) setFilterAuctionTypes([...filterAuctionTypes, type]);
-                             else setFilterAuctionTypes(filterAuctionTypes.filter(a => a !== type));
-                           }} className="w-5 h-5 rounded border-slate-300 text-orange-500 focus:ring-orange-500/20" />
-                        <span className="font-bold text-sm text-slate-700 group-hover:text-slate-900">{type}</span>
-                      </label>
-                   ))}
-                 </div>
-               </div>
+              {/* Auction Type */}
+              <div className="space-y-3">
+                <label className="text-xs font-black text-slate-900 uppercase tracking-wider">نوع المزاد (Auction Type)</label>
+                <div className="space-y-2">
+                  {['بيع مباشر', 'سعر احتياطي', 'اشتري الآن', 'تصفية معارض', 'سيارات الخليج'].map(type => (
+                    <label key={type} className="flex items-center gap-3 p-3 bg-white border border-slate-100 shadow-sm rounded-xl cursor-pointer hover:bg-slate-50 transition-colors group">
+                      <input type="checkbox" checked={filterAuctionTypes.includes(type)} onChange={(e) => {
+                        if (e.target.checked) setFilterAuctionTypes([...filterAuctionTypes, type]);
+                        else setFilterAuctionTypes(filterAuctionTypes.filter(a => a !== type));
+                      }} className="w-5 h-5 rounded border-slate-300 text-orange-500 focus:ring-orange-500/20" />
+                      <span className="font-bold text-sm text-slate-700 group-hover:text-slate-900">{type}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
 
             </div>
 
             {/* Footer Sticky Button */}
             <div className="bg-white p-6 border-t border-slate-100 shadow-[0_-10px_30px_rgba(0,0,0,0.05)] z-10 sticky bottom-0">
-               <button onClick={() => setIsMobileMenuOpen(false)} className="w-full bg-orange-600 hover:bg-orange-700 text-white py-4 rounded-2xl font-black text-sm active:scale-95 transition-all shadow-lg shadow-orange-500/25 flex items-center justify-center gap-2">
-                 <CheckCircle2 className="w-5 h-5" /> عرض النتائج ({filteredCars.length})
-               </button>
+              <button onClick={() => setIsMobileMenuOpen(false)} className="w-full bg-orange-600 hover:bg-orange-700 text-white py-4 rounded-2xl font-black text-sm active:scale-95 transition-all shadow-lg shadow-orange-500/25 flex items-center justify-center gap-2">
+                <CheckCircle2 className="w-5 h-5" /> عرض النتائج ({filteredCars.length})
+              </button>
             </div>
-            
+
           </div>
         </div>
       )}
@@ -1233,10 +1234,10 @@ export const Home = () => {
               <span className="font-black text-slate-900 tracking-wide">حالة المزايدات والملخص</span>
             </div>
             {currentUser && (
-               <div className="text-right">
-                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">القوة الشرائية</div>
-                  <div className="text-sm font-black font-mono text-emerald-600">${currentUser.buyingPower?.toLocaleString()}</div>
-               </div>
+              <div className="text-right">
+                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">القوة الشرائية</div>
+                <div className="text-sm font-black font-mono text-emerald-600">${currentUser.buyingPower?.toLocaleString()}</div>
+              </div>
             )}
           </div>
         ) : (
@@ -1255,82 +1256,82 @@ export const Home = () => {
                 </button>
               </div>
             </div>
-            
+
             <div className="px-6 space-y-8 pb-10 flex-1">
               {currentUser ? (
                 <>
                   {/* Bids Status content cloned from right sidebar */}
                   <div className="p-6 rounded-3xl bg-slate-50 border border-slate-100 flex items-center justify-between shadow-sm">
-                      <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center">
-                          <Wallet className="w-6 h-6" />
-                        </div>
-                        <div>
-                          <div className="text-xs font-bold text-slate-500 mb-1 leading-none">{t('home.rightSidebar.buyingPower')}</div>
-                          <div className="text-xl font-black text-slate-900 font-mono leading-none">${currentUser.buyingPower?.toLocaleString()}</div>
-                        </div>
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center">
+                        <Wallet className="w-6 h-6" />
                       </div>
-                      <button title="إضافة رصيد" onClick={() => navigate('/dashboard/user?view=wallet')} className="w-10 h-10 bg-white rounded-xl shadow-sm text-slate-400 hover:text-emerald-500 transition-all flex items-center justify-center">
-                        <Plus className="w-5 h-5" />
-                      </button>
-                  </div>
-                  
-                  <div className="space-y-4">
-                      <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-right flex items-center gap-2">
-                        <Gavel className="w-4 h-4 text-orange-500" />
-                        {t('home.rightSidebar.activeAuctions')} (2)
-                      </h4>
-                      <div className="space-y-3">
-                        {[
-                          { year: 2016, make: 'Chevrolet', model: 'Silverado 25...', trim: 'LT 1LT • 4WD • 8cyl', miles: '131,332 miles', time: '26:37', bid: 22550, winning: true, image: 'https://images.unsplash.com/photo-1559416523-140ddc3d238c?auto=format&fit=crop&q=80&w=300', lot: '448555' },
-                          { year: 2014, make: 'Chevrolet', model: 'Corvette', trim: 'Stingray Z51 2LT', miles: '48,565 miles', time: '38:44', bid: 28500, winning: false, image: 'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?auto=format&fit=crop&q=80&w=300', lot: '184920' },
-                          { year: 2010, make: 'Toyota', model: '4Runner', trim: 'Limited • AWD • 6cyl', miles: '133,456 miles', time: '42:26', bid: 11100, winning: true, image: 'https://images.unsplash.com/photo-1590362891991-f7000bf49dc2?auto=format&fit=crop&q=80&w=300', lot: '194857' }
-                        ].map((item, idx) => (
-                          <div key={idx} className={`flex gap-3 p-2.5 rounded-2xl bg-white border cursor-pointer hover:shadow-md transition-all ${item.winning ? 'border-emerald-500/50 shadow-emerald-500/5 bg-emerald-50/10' : 'border-rose-500/50 bg-rose-50/30 shadow-rose-500/5'}`}>
-                             <div className="relative w-20 h-[60px] shrink-0 rounded-xl overflow-hidden bg-slate-100">
-                                <img src={item.image} alt="car" className="w-full h-full object-cover" />
-                                <div className="absolute top-1 left-1 w-4 h-4 bg-black/60 backdrop-blur rounded-full flex items-center justify-center">
-                                  <Heart className="w-2.5 h-2.5 text-rose-500 fill-current" />
-                                </div>
-                             </div>
-                             <div className="flex-1 flex flex-col justify-between min-w-0">
-                               <div className="flex justify-between items-start">
-                                 <div className="min-w-0 pr-1">
-                                   <h4 className="text-[12px] font-black text-slate-900 truncate leading-none mb-1">{item.year || '2016'} {item.make} {item.model}</h4>
-                                   <div className="text-[9px] text-slate-500 truncate mt-0.5 leading-none">{item.trim}</div>
-                                   <div className="text-[9px] text-slate-400 mt-0.5">{item.miles}</div>
-                                 </div>
-                                 <div className={`w-4 h-4 rounded-full flex items-center justify-center shrink-0 ${item.winning ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`}>
-                                   <CheckCircle2 className="w-3 h-3" />
-                                 </div>
-                               </div>
-                               <div className="flex justify-between items-end mt-1">
-                                 <div className="flex items-center gap-1 text-[10px] font-black text-slate-500 font-mono">
-                                   <Clock className="w-3 h-3 text-slate-400" /> {item.time}
-                                 </div>
-                                 <div className={`text-sm font-black font-mono leading-none ${item.winning ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                   ${item.bid.toLocaleString()}
-                                 </div>
-                               </div>
-                             </div>
-                          </div>
-                        ))}
+                      <div>
+                        <div className="text-xs font-bold text-slate-500 mb-1 leading-none">{t('home.rightSidebar.buyingPower')}</div>
+                        <div className="text-xl font-black text-slate-900 font-mono leading-none">${currentUser.buyingPower?.toLocaleString()}</div>
                       </div>
                     </div>
-
-                    <button onClick={() => navigate('/dashboard/user?view=bids')} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-sm active:scale-95 transition-all flex items-center justify-center gap-2 shadow-xl shadow-slate-900/20">
-                      {t('home.rightSidebar.viewAllBids')}
-                      <ArrowUpRight className="w-4 h-4" />
+                    <button title="إضافة رصيد" onClick={() => navigate('/dashboard/user?view=wallet')} className="w-10 h-10 bg-white rounded-xl shadow-sm text-slate-400 hover:text-emerald-500 transition-all flex items-center justify-center">
+                      <Plus className="w-5 h-5" />
                     </button>
+                  </div>
+
+                  <div className="space-y-4">
+                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-right flex items-center gap-2">
+                      <Gavel className="w-4 h-4 text-orange-500" />
+                      {t('home.rightSidebar.activeAuctions')} (2)
+                    </h4>
+                    <div className="space-y-3">
+                      {[
+                        { year: 2016, make: 'Chevrolet', model: 'Silverado 25...', trim: 'LT 1LT • 4WD • 8cyl', miles: '131,332 miles', time: '26:37', bid: 22550, winning: true, image: 'https://images.unsplash.com/photo-1559416523-140ddc3d238c?auto=format&fit=crop&q=80&w=300', lot: '448555' },
+                        { year: 2014, make: 'Chevrolet', model: 'Corvette', trim: 'Stingray Z51 2LT', miles: '48,565 miles', time: '38:44', bid: 28500, winning: false, image: 'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?auto=format&fit=crop&q=80&w=300', lot: '184920' },
+                        { year: 2010, make: 'Toyota', model: '4Runner', trim: 'Limited • AWD • 6cyl', miles: '133,456 miles', time: '42:26', bid: 11100, winning: true, image: 'https://images.unsplash.com/photo-1590362891991-f7000bf49dc2?auto=format&fit=crop&q=80&w=300', lot: '194857' }
+                      ].map((item, idx) => (
+                        <div key={idx} className={`flex gap-3 p-2.5 rounded-2xl bg-white border cursor-pointer hover:shadow-md transition-all ${item.winning ? 'border-emerald-500/50 shadow-emerald-500/5 bg-emerald-50/10' : 'border-rose-500/50 bg-rose-50/30 shadow-rose-500/5'}`}>
+                          <div className="relative w-20 h-[60px] shrink-0 rounded-xl overflow-hidden bg-slate-100">
+                            <img src={item.image} alt="car" className="w-full h-full object-cover" />
+                            <div className="absolute top-1 left-1 w-4 h-4 bg-black/60 backdrop-blur rounded-full flex items-center justify-center">
+                              <Heart className="w-2.5 h-2.5 text-rose-500 fill-current" />
+                            </div>
+                          </div>
+                          <div className="flex-1 flex flex-col justify-between min-w-0">
+                            <div className="flex justify-between items-start">
+                              <div className="min-w-0 pr-1">
+                                <h4 className="text-[12px] font-black text-slate-900 truncate leading-none mb-1">{item.year || '2016'} {item.make} {item.model}</h4>
+                                <div className="text-[9px] text-slate-500 truncate mt-0.5 leading-none">{item.trim}</div>
+                                <div className="text-[9px] text-slate-400 mt-0.5">{item.miles}</div>
+                              </div>
+                              <div className={`w-4 h-4 rounded-full flex items-center justify-center shrink-0 ${item.winning ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`}>
+                                <CheckCircle2 className="w-3 h-3" />
+                              </div>
+                            </div>
+                            <div className="flex justify-between items-end mt-1">
+                              <div className="flex items-center gap-1 text-[10px] font-black text-slate-500 font-mono">
+                                <Clock className="w-3 h-3 text-slate-400" /> {item.time}
+                              </div>
+                              <div className={`text-sm font-black font-mono leading-none ${item.winning ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                ${item.bid.toLocaleString()}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <button onClick={() => navigate('/dashboard/user?view=bids')} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-sm active:scale-95 transition-all flex items-center justify-center gap-2 shadow-xl shadow-slate-900/20">
+                    {t('home.rightSidebar.viewAllBids')}
+                    <ArrowUpRight className="w-4 h-4" />
+                  </button>
                 </>
               ) : (
                 <div className="py-12 text-center bg-slate-50 rounded-3xl border border-slate-100">
-                    <Shield className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-                    <h3 className="font-black text-lg text-slate-900 mb-2">قم بتسجيل الدخول للمنصة</h3>
-                    <p className="text-xs text-slate-500 font-bold mb-8 px-6 leading-relaxed">لعرض وتتبع حالة المزايدات الخاصة بك والقوة الشرائية وتلقي تنبيهات فورية بحالة سياراتك.</p>
-                    <button onClick={() => navigate('/auth')} className="bg-orange-600 text-white px-8 py-3.5 rounded-2xl font-black text-sm hover:bg-orange-700 active:scale-95 transition-all shadow-lg shadow-orange-500/20">
-                      {t('nav.loginRegister')}
-                    </button>
+                  <Shield className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+                  <h3 className="font-black text-lg text-slate-900 mb-2">قم بتسجيل الدخول للمنصة</h3>
+                  <p className="text-xs text-slate-500 font-bold mb-8 px-6 leading-relaxed">لعرض وتتبع حالة المزايدات الخاصة بك والقوة الشرائية وتلقي تنبيهات فورية بحالة سياراتك.</p>
+                  <button onClick={() => navigate('/auth')} className="bg-orange-600 text-white px-8 py-3.5 rounded-2xl font-black text-sm hover:bg-orange-700 active:scale-95 transition-all shadow-lg shadow-orange-500/20">
+                    {t('nav.loginRegister')}
+                  </button>
                 </div>
               )}
             </div>
@@ -1361,29 +1362,29 @@ export const Home = () => {
       {/* Mobile Sort Menu Popup */}
       {isMobileSortOpen && (
         <div className="fixed inset-0 z-[210] flex items-end justify-center px-4 pb-20">
-           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsMobileSortOpen(false)}></div>
-           <div className="relative w-full max-w-sm bg-white rounded-[2.5rem] shadow-2xl p-6 animate-in slide-in-from-bottom duration-300">
-             <div className="flex justify-between items-center mb-6">
-               <h3 className="font-black text-xl text-slate-900">ترتيب النتائج</h3>
-               <button title="إغلاق الترتيب" aria-label="إغلاق" onClick={() => setIsMobileSortOpen(false)} className="p-2 bg-slate-100 rounded-full text-slate-500 hover:text-slate-800 transition-colors">
-                 <X className="w-5 h-5" />
-               </button>
-             </div>
-             <div className="space-y-3">
-               <button onClick={() => { setSortBy('ending_soonest'); setIsMobileSortOpen(false); }} className={`flex items-center justify-between w-full p-4 rounded-2xl border-2 transition-all ${sortBy === 'ending_soonest' ? 'border-orange-500 bg-orange-50 text-orange-700' : 'border-slate-100 bg-slate-50 text-slate-600'}`}>
-                 <span className="font-black text-sm">ينتهي أولاً (Ending Soon)</span>
-                 {sortBy === 'ending_soonest' && <CheckCircle2 className="w-5 h-5" />}
-               </button>
-               <button onClick={() => { setSortBy('recommended'); setIsMobileSortOpen(false); }} className={`flex items-center justify-between w-full p-4 rounded-2xl border-2 transition-all ${sortBy === 'recommended' ? 'border-orange-500 bg-orange-50 text-orange-700' : 'border-slate-100 bg-slate-50 text-slate-600'}`}>
-                 <span className="font-black text-sm">مُوصى به (Recommended)</span>
-                 {sortBy === 'recommended' && <CheckCircle2 className="w-5 h-5" />}
-               </button>
-               <button onClick={() => { setSortBy('priced_to_sell'); setIsMobileSortOpen(false); }} className={`flex items-center justify-between w-full p-4 rounded-2xl border-2 transition-all ${sortBy === 'priced_to_sell' ? 'border-orange-500 bg-orange-50 text-orange-700' : 'border-slate-100 bg-slate-50 text-slate-600'}`}>
-                 <span className="font-black text-sm">سعر منافس (Priced to Sell)</span>
-                 {sortBy === 'priced_to_sell' && <CheckCircle2 className="w-5 h-5" />}
-               </button>
-             </div>
-           </div>
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsMobileSortOpen(false)}></div>
+          <div className="relative w-full max-w-sm bg-white rounded-[2.5rem] shadow-2xl p-6 animate-in slide-in-from-bottom duration-300">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="font-black text-xl text-slate-900">ترتيب النتائج</h3>
+              <button title="إغلاق الترتيب" aria-label="إغلاق" onClick={() => setIsMobileSortOpen(false)} className="p-2 bg-slate-100 rounded-full text-slate-500 hover:text-slate-800 transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="space-y-3">
+              <button onClick={() => { setSortBy('ending_soonest'); setIsMobileSortOpen(false); }} className={`flex items-center justify-between w-full p-4 rounded-2xl border-2 transition-all ${sortBy === 'ending_soonest' ? 'border-orange-500 bg-orange-50 text-orange-700' : 'border-slate-100 bg-slate-50 text-slate-600'}`}>
+                <span className="font-black text-sm">ينتهي أولاً (Ending Soon)</span>
+                {sortBy === 'ending_soonest' && <CheckCircle2 className="w-5 h-5" />}
+              </button>
+              <button onClick={() => { setSortBy('recommended'); setIsMobileSortOpen(false); }} className={`flex items-center justify-between w-full p-4 rounded-2xl border-2 transition-all ${sortBy === 'recommended' ? 'border-orange-500 bg-orange-50 text-orange-700' : 'border-slate-100 bg-slate-50 text-slate-600'}`}>
+                <span className="font-black text-sm">مُوصى به (Recommended)</span>
+                {sortBy === 'recommended' && <CheckCircle2 className="w-5 h-5" />}
+              </button>
+              <button onClick={() => { setSortBy('priced_to_sell'); setIsMobileSortOpen(false); }} className={`flex items-center justify-between w-full p-4 rounded-2xl border-2 transition-all ${sortBy === 'priced_to_sell' ? 'border-orange-500 bg-orange-50 text-orange-700' : 'border-slate-100 bg-slate-50 text-slate-600'}`}>
+                <span className="font-black text-sm">سعر منافس (Priced to Sell)</span>
+                {sortBy === 'priced_to_sell' && <CheckCircle2 className="w-5 h-5" />}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

@@ -83,25 +83,15 @@ export const Navbar = () => {
         dir={i18n.dir()}
         className="sticky top-0 z-[200] bg-slate-900 shadow-lg border-b border-slate-800 font-cairo"
       >
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-20 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
 
           {/* ── Logo ── */}
           <Link to="/" className="flex items-center gap-3 group shrink-0">
-            <div className="w-10 h-10 bg-orange-500 rounded-xl flex items-center justify-center shadow-lg shadow-orange-500/30 group-hover:scale-110 transition-transform">
-              <Car className="w-6 h-6 text-white" />
-            </div>
-            {branchConfig ? (
-              <span className="font-black text-xl tracking-tight leading-tight text-white">
-                {i18n.language === 'en' ? (branchConfig.englishName?.split(' ')[0] || 'Libya') : branchConfig.logoText?.split(' ')[0]}<br />
-                <span className="text-orange-500 text-sm font-bold">
-                  {i18n.language === 'en' ? 'AUTO PRO' : branchConfig.logoText?.split(' ').slice(1).join(' ')}
-                </span>
-              </span>
-            ) : (
-              <span className="font-black text-xl tracking-tight leading-tight text-white">
-                {t('nav.libya')}<br /><span className="text-orange-500 text-sm font-bold">{t('nav.autoPro')}</span>
-              </span>
-            )}
+            <img 
+              src="/logo_on_dark.png?v=3" 
+              alt="Logo" 
+              className="h-10 w-auto object-contain transition-transform group-hover:scale-105"
+            />
           </Link>
 
           {/* ── Desktop Nav ── */}
